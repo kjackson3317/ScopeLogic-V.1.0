@@ -3,6 +3,17 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { buildPdfBytes, buildReleasePackageBytes, type PdfKind } from './pdf-generator';
 import { importLocalScopeLogicData, inspectPriorImport, type LocalImportReport } from '../lib/import-local-data';
+import {
+  completeCloudCutover,
+  createProjectFileUrl,
+  loadWorkspaceFromCloud,
+  removeProjectFile,
+  saveOfficialRelease,
+  saveWorkspaceToCloud,
+  uploadProjectFile,
+  type CloudWorkspaceStatus,
+  type WorkspaceSnapshot,
+} from '../lib/cloud-workspace';
 
 
 function pdfBytesToArrayBuffer(bytes: Uint8Array<ArrayBufferLike>): ArrayBuffer {
@@ -112,6 +123,7 @@ type Doc = {
   fileName: string;
   fileType: string;
   sizeBytes: number;
+  storagePath?: string;
 };
 type ExportEntry = { id: string; fileName: string; deliverable: string; downloadedAt: string; projectRevision: string };
 type View = 'projects' | 'dashboard' | 'setup' | 'internal' | 'documents' | 'notes' | 'sow' | 'clarifications' | 'rfi' | 'checklist' | 'leveling' | 'snippets' | 'customers' | 'exports' | 'email' | 'production' | 'standards';
@@ -311,7 +323,31 @@ async function removeStoredFile(key: string) {
   database.close();
 }
 
-export default function Workspace({ userEmail }: { userEmail: string }) {
+const LOCAL_WORKSPACE_KEYS = ['scopelogic-r14-8', 'scopelogic-r14-7', 'scopelogic-r14-6', 'scopelogic-r14-5', 'scopelogic-r14-4', 'scopelogic-r14-3', 'scopelogic-r14-2'];
+const LOCAL_SYNC_META_KEY = 'scopelogic-cloud-sync-meta-v1';
+type LocalSyncMeta = { pendingCloudChanges: boolean; changedAt?: string; lastCloudSyncAt?: string };
+
+function readLocalSyncMeta(): LocalSyncMeta {
+  try { return JSON.parse(localStorage.getItem(LOCAL_SYNC_META_KEY) || '{}') as LocalSyncMeta; } catch { return { pendingCloudChanges: false }; }
+}
+function writeLocalSyncMeta(meta: LocalSyncMeta) {
+  localStorage.setItem(LOCAL_SYNC_META_KEY, JSON.stringify(meta));
+}
+
+function readLocalWorkspace(): Partial<WorkspaceSnapshot> | null {
+  for (const key of LOCAL_WORKSPACE_KEYS) {
+    const raw = localStorage.getItem(key);
+    if (!raw) continue;
+    try {
+      return JSON.parse(raw) as Partial<WorkspaceSnapshot>;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+export default function Workspace({ userEmail, userId }: { userEmail: string; userId: string }) {
   const [view, setView] = useState<View>('projects');
   const [projects, setProjects] = useState<Project[]>([blankProject('p1')]);
   const [projectId, setProjectId] = useState('p1');
@@ -336,33 +372,100 @@ export default function Workspace({ userEmail }: { userEmail: string }) {
   const [calendarEntries, setCalendarEntries] = useState<CalendarEntry[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [releaseSelection, setReleaseSelection] = useState<ReleaseSelection | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+  const [dataMode, setDataMode] = useState<'cloud' | 'local-fallback' | 'loading'>('loading');
+  const [syncState, setSyncState] = useState<'loading' | 'synced' | 'saving' | 'error'>('loading');
+  const [syncError, setSyncError] = useState('');
+  const [cloudStatus, setCloudStatus] = useState<CloudWorkspaceStatus>({ source: 'empty', cutoverCompletedAt: null, cloudRevision: 0, documentCount: 0, storedDocumentCount: 0 });
+  const [storageMigration, setStorageMigration] = useState({ running: false, total: 0, processed: 0, uploaded: 0, missing: 0, failed: 0 });
+  const skipNextCloudSync = useRef(true);
+
+  const applySnapshot = (data: Partial<WorkspaceSnapshot> | null) => {
+    const restoredProjects = ((data?.projects as Project[] | undefined) || [blankProject('p1')]).map((item) => normalizeProject(item));
+    const safeProjects = restoredProjects.length ? restoredProjects : [blankProject('p1')];
+    const requestedProjectId = String(data?.projectId || '');
+    const nextProjectId = safeProjects.some((item) => item.id === requestedProjectId) ? requestedProjectId : safeProjects[0].id;
+    const rawIssues = (data?.issuesByProject || {}) as Record<string, Issue[]>;
+    const restoredIssues = Object.fromEntries(safeProjects.map((item) => [item.id, normalizeIssues((rawIssues[item.id] || []).map((issue) => normalizeIssue(issue)))]));
+    const rawDocs = (data?.docsByProject || {}) as Record<string, Doc[]>;
+    const restoredDocs = Object.fromEntries(safeProjects.map((item) => [item.id, (rawDocs[item.id] || []).map((doc) => ({ ...doc, storagePath: doc.storagePath || undefined }))]));
+    const rawNotes = (data?.notesByProject || {}) as Record<string, string>;
+    const rawExports = (data?.exportsByProject || {}) as Record<string, ExportEntry[]>;
+    setProjects(safeProjects);
+    setProjectId(nextProjectId);
+    setIssuesByProject(restoredIssues);
+    setDocsByProject(restoredDocs);
+    setTemplates((data?.templates as Template[] | undefined) || []);
+    setNotesByProject(Object.fromEntries(safeProjects.map((item) => [item.id, rawNotes[item.id] || ''])));
+    setExportsByProject(Object.fromEntries(safeProjects.map((item) => [item.id, rawExports[item.id] || []])));
+    setEmailSettings({ defaultFrom: '', additionalFrom: [], replyTo: '', ...((data?.emailSettings as EmailSettings | undefined) || {}) });
+    setCalendarEntries((data?.calendarEntries as CalendarEntry[] | undefined) || []);
+    setCustomers((data?.customers as Customer[] | undefined) || []);
+  };
 
   useEffect(() => {
-    const raw = localStorage.getItem('scopelogic-r14-8') || localStorage.getItem('scopelogic-r14-7') || localStorage.getItem('scopelogic-r14-6') || localStorage.getItem('scopelogic-r14-5') || localStorage.getItem('scopelogic-r14-4') || localStorage.getItem('scopelogic-r14-3') || localStorage.getItem('scopelogic-r14-2');
-    if (!raw) return;
-    try {
-      const data = JSON.parse(raw);
-      const restoredProjects = (data.projects || [blankProject('p1')]).map((item: Project) => normalizeProject(item));
-      setProjects(restoredProjects);
-      setProjectId(data.projectId || restoredProjects[0]?.id || 'p1');
-      const restoredIssues = Object.fromEntries(Object.entries(data.issuesByProject || { p1: [] }).map(([id, items]) => [id, normalizeIssues((items as Issue[]).map((item) => normalizeIssue(item)))]));
-      setIssuesByProject(restoredIssues);
-      setDocsByProject(data.docsByProject || { p1: [] });
-      setTemplates(data.templates || []);
-      setNotesByProject(data.notesByProject || { p1: '' });
-      setExportsByProject(data.exportsByProject || { p1: [] });
-      setEmailSettings(data.emailSettings || { defaultFrom: '', additionalFrom: [], replyTo: '' });
-      setCalendarEntries(data.calendarEntries || []);
-      setCustomers(data.customers || []);
-    } catch {
-      setDialog({ kind: 'message', title: 'Saved Data Could Not Be Loaded', message: 'ScopeLogic started with a clean local workspace because the saved browser data was unreadable.' });
-    }
+    let active = true;
+    const localSnapshot = readLocalWorkspace();
+    const localMeta = readLocalSyncMeta();
+    if (localSnapshot) applySnapshot(localSnapshot);
+    loadWorkspaceFromCloud().then((result) => {
+      if (!active) return;
+      setCloudStatus(result.status);
+      if (result.snapshot && !(localMeta.pendingCloudChanges && localSnapshot)) {
+        applySnapshot(result.snapshot);
+        skipNextCloudSync.current = true;
+      } else if (localMeta.pendingCloudChanges && localSnapshot) {
+        applySnapshot(localSnapshot);
+        skipNextCloudSync.current = false;
+      } else {
+        if (!localSnapshot) applySnapshot(null);
+        skipNextCloudSync.current = false;
+      }
+      setDataMode('cloud');
+      setSyncState('synced');
+      setSyncError('');
+    }).catch((cause) => {
+      if (!active) return;
+      if (!localSnapshot) applySnapshot(null);
+      setDataMode('local-fallback');
+      setSyncState('error');
+      setSyncError(cause instanceof Error ? cause.message : 'Cloud data could not be loaded.');
+      setDialog({ kind: 'message', title: 'Local Fallback Active', message: 'ScopeLogic could not load the production database. The browser copy remains available and no local data was deleted.' });
+    }).finally(() => { if (active) setHydrated(true); });
+    return () => { active = false; };
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem('scopelogic-r14-8', JSON.stringify({ projects, projectId, issuesByProject, docsByProject, templates, notesByProject, exportsByProject, emailSettings, calendarEntries, customers }));
-  }, [projects, projectId, issuesByProject, docsByProject, templates, notesByProject, exportsByProject, emailSettings, calendarEntries, customers]);
+  const cloudSnapshot = useMemo<WorkspaceSnapshot>(() => ({
+    projects, projectId, issuesByProject, docsByProject, templates, notesByProject, exportsByProject, emailSettings, calendarEntries, customers,
+  }), [projects, projectId, issuesByProject, docsByProject, templates, notesByProject, exportsByProject, emailSettings, calendarEntries, customers]);
 
+  useEffect(() => {
+    if (!hydrated) return;
+    localStorage.setItem('scopelogic-r14-8', JSON.stringify(cloudSnapshot));
+  }, [hydrated, cloudSnapshot]);
+
+  useEffect(() => {
+    if (!hydrated || dataMode !== 'cloud') return;
+    if (skipNextCloudSync.current) {
+      skipNextCloudSync.current = false;
+      return;
+    }
+    setSyncState('saving');
+    setSyncError('');
+    writeLocalSyncMeta({ pendingCloudChanges: true, changedAt: new Date().toISOString(), lastCloudSyncAt: readLocalSyncMeta().lastCloudSyncAt });
+    const timer = window.setTimeout(() => {
+      saveWorkspaceToCloud(cloudSnapshot).then(() => {
+        writeLocalSyncMeta({ pendingCloudChanges: false, lastCloudSyncAt: new Date().toISOString() });
+        setSyncState('synced');
+        setCloudStatus((current) => ({ ...current, source: 'cloud', cloudRevision: current.cloudRevision + 1, documentCount: Object.values(cloudSnapshot.docsByProject).reduce((sum, items) => sum + items.length, 0), storedDocumentCount: Object.values(cloudSnapshot.docsByProject).flat().filter((doc) => Boolean(doc.storagePath)).length }));
+      }).catch((cause) => {
+        writeLocalSyncMeta({ pendingCloudChanges: true, changedAt: new Date().toISOString(), lastCloudSyncAt: readLocalSyncMeta().lastCloudSyncAt });
+        setSyncState('error');
+        setSyncError(cause instanceof Error ? cause.message : 'Cloud save failed. The local browser fallback remains current.');
+      });
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [hydrated, dataMode, cloudSnapshot]);
 
   const project = projects.find((item) => item.id === projectId) || projects[0];
   const issues = issuesByProject[projectId] || [];
@@ -455,6 +558,78 @@ export default function Workspace({ userEmail }: { userEmail: string }) {
     setView('setup');
   };
 
+  const retryCloudSync = async () => {
+    setSyncState('saving');
+    setSyncError('');
+    try {
+      await saveWorkspaceToCloud(cloudSnapshot);
+      writeLocalSyncMeta({ pendingCloudChanges: false, lastCloudSyncAt: new Date().toISOString() });
+      setDataMode('cloud');
+      setSyncState('synced');
+      message('Cloud Connection Restored', 'The current browser workspace was saved to Supabase and cloud synchronization is active.');
+    } catch (cause) {
+      writeLocalSyncMeta({ pendingCloudChanges: true, changedAt: new Date().toISOString(), lastCloudSyncAt: readLocalSyncMeta().lastCloudSyncAt });
+      setDataMode('local-fallback');
+      setSyncState('error');
+      const text = cause instanceof Error ? cause.message : 'Cloud synchronization could not be restored.';
+      setSyncError(text);
+      message('Cloud Connection Failed', `${text} The local browser fallback remains available.`);
+    }
+  };
+
+  const migrateDocumentFiles = async () => {
+    if (storageMigration.running) return;
+    const pending = projects.flatMap((item) => (docsByProject[item.id] || []).filter((doc) => !doc.storagePath).map((doc) => ({ projectId: item.id, doc })));
+    setStorageMigration({ running: true, total: pending.length, processed: 0, uploaded: 0, missing: 0, failed: 0 });
+    const nextDocs: Record<string, Doc[]> = Object.fromEntries(Object.entries(docsByProject).map(([id, items]) => [id, items.map((doc) => ({ ...doc }))]));
+    let uploaded = 0;
+    let missing = 0;
+    let failed = 0;
+    let processed = 0;
+    try {
+      for (const item of pending) {
+        const blob = await readStoredFile(`${item.projectId}:${item.doc.id}`);
+        if (!blob) {
+          missing += 1;
+        } else {
+          try {
+            const storagePath = await uploadProjectFile(item.projectId, item.doc.id, blob, item.doc.fileName, item.doc.fileType);
+            nextDocs[item.projectId] = (nextDocs[item.projectId] || []).map((doc) => doc.id === item.doc.id ? { ...doc, storagePath } : doc);
+            uploaded += 1;
+          } catch {
+            failed += 1;
+          }
+        }
+        processed += 1;
+        setStorageMigration({ running: true, total: pending.length, processed, uploaded, missing, failed });
+      }
+      setDocsByProject(nextDocs);
+      const updatedSnapshot: WorkspaceSnapshot = { ...cloudSnapshot, docsByProject: nextDocs };
+      await saveWorkspaceToCloud(updatedSnapshot);
+      writeLocalSyncMeta({ pendingCloudChanges: false, lastCloudSyncAt: new Date().toISOString() });
+      const totalDocuments = Object.values(nextDocs).reduce((sum, items) => sum + items.length, 0);
+      const storedDocuments = Object.values(nextDocs).flat().filter((doc) => Boolean(doc.storagePath)).length;
+      let cutoverCompletedAt = cloudStatus.cutoverCompletedAt;
+      if (storedDocuments === totalDocuments && failed === 0 && missing === 0) {
+        cutoverCompletedAt = await completeCloudCutover({ documents: totalDocuments, uploaded });
+      }
+      setCloudStatus((current) => ({ ...current, source: 'cloud', cutoverCompletedAt, documentCount: totalDocuments, storedDocumentCount: storedDocuments }));
+      setDataMode('cloud');
+      setSyncState('synced');
+      if (failed || missing) {
+        message('Storage Migration Needs Attention', `${uploaded} file${uploaded === 1 ? '' : 's'} uploaded. ${missing} browser file${missing === 1 ? '' : 's'} could not be found and ${failed} upload${failed === 1 ? '' : 's'} failed. The local fallback was retained.`);
+      } else {
+        message('Cloud Cutover Complete', `${storedDocuments} project file${storedDocuments === 1 ? '' : 's'} are stored in the private Supabase bucket. The browser fallback was retained.`);
+      }
+    } catch (cause) {
+      setSyncState('error');
+      setSyncError(cause instanceof Error ? cause.message : 'Document storage migration failed.');
+      message('Storage Migration Failed', cause instanceof Error ? cause.message : 'The browser file copy remains available.');
+    } finally {
+      setStorageMigration((current) => ({ ...current, running: false }));
+    }
+  };
+
   const updatePdf = async (kind: PdfKind, title: string) => {
     try {
       const bytes = await buildPdfBytes(kind, project, issues);
@@ -482,8 +657,17 @@ export default function Workspace({ userEmail }: { userEmail: string }) {
       if (!kinds.length) return message('Select Deliverables', 'Choose at least one deliverable for the official release.');
       const bytes = await buildReleasePackageBytes(project, issues, kinds, notes);
       const blob = pdfBytesToBlob(bytes);
-      const url = URL.createObjectURL(blob);
       const fileName = releaseFileName();
+      let archived = false;
+      if (dataMode === 'cloud') {
+        try {
+          await saveOfficialRelease(projectId, project.revision, project.versionDate, fileName, notes, kinds, blob);
+          archived = true;
+        } catch {
+          archived = false;
+        }
+      }
+      const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
       anchor.download = fileName;
@@ -492,7 +676,7 @@ export default function Workspace({ userEmail }: { userEmail: string }) {
       anchor.remove();
       recordDownload(fileName, 'Official GC Release Package');
       setTimeout(() => URL.revokeObjectURL(url), 3000);
-      message('Saved', 'The selected official GC release package was generated and downloaded.');
+      message('Saved', archived ? 'The selected official GC release package was generated, archived in private cloud storage, and downloaded.' : 'The selected official GC release package was generated and downloaded. Cloud archival was not completed; the download remains available.');
     } catch (error) {
       message('Official Release Failed', error instanceof Error ? error.message : 'The combined PDF package could not be generated.');
     }
@@ -543,10 +727,24 @@ export default function Workspace({ userEmail }: { userEmail: string }) {
     }
   };
 
+  const syncLabel = dataMode === 'loading'
+    ? 'Cloud loading'
+    : dataMode === 'local-fallback'
+      ? 'Local fallback'
+      : syncState === 'saving'
+        ? 'Saving to cloud'
+        : syncState === 'error'
+          ? 'Cloud save error'
+          : 'Cloud synced';
+
+  if (!hydrated) {
+    return <main className="auth-page"><section className="auth-card"><img className="auth-logo" src="/brand/scopelogic-logo-full.png" alt="ScopeLogic LLC" /><div className="auth-heading"><span>Production Workspace</span><h1>Loading ScopeLogic</h1><p>Retrieving the encrypted session and cloud workspace…</p></div></section></main>;
+  }
+
   return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileNav ? 'show' : ''}`}>
-        <div className="brand"><div className="brand-mark"><img src="/brand/scopelogic-logo-mark.png" alt="ScopeLogic" /></div><div><div className="brand-name-box"><img className="brand-wordmark" src="/brand/scopelogic-wordmark.png" alt="ScopeLogic" /></div><span>v1.0 RC2</span></div></div>
+        <div className="brand"><div className="brand-mark"><img src="/brand/scopelogic-logo-mark.png" alt="ScopeLogic" /></div><div><div className="brand-name-box"><img className="brand-wordmark" src="/brand/scopelogic-wordmark.png" alt="ScopeLogic" /></div><span>v1.0 RC3</span></div></div>
         <button className="project-switch" onClick={() => setView('projects')}><span>Current project</span><b>{project.name}</b><small>Switch projects</small></button>
         <Nav label="PROJECT" items={[["projects", "Project Library"], ["dashboard", "Dashboard"], ["setup", "Project Setup"]]} view={view} setView={setView} />
         <Nav label="WORKSPACE" items={[["internal", "ScopeLogic Internal Matrix"], ["documents", "Project Documents"], ["notes", "Internal Notes"]]} view={view} setView={setView} />
@@ -557,14 +755,14 @@ export default function Workspace({ userEmail }: { userEmail: string }) {
         <header className="topbar">
           <button className="mobile-menu" onClick={() => setMobileNav(!mobileNav)}>Menu</button>
           <div><span>{project.client || 'ScopeLogic project'}</span><b>{project.name}</b></div>
-          <div className="top-actions"><span className="signed-in-user">{userEmail}</span><button className="secondary" onClick={() => setReleaseSelection({ mode: 'download', kinds: [...ALL_RELEASE_KINDS], notes: '' })}>Generate All PDFs</button><button className="secondary" onClick={() => setReleaseSelection({ mode: 'email', kinds: [...ALL_RELEASE_KINDS], notes: '' })}>Email All PDFs</button><button className="secondary" onClick={() => setView('documents')}>Documents</button><form action="/auth/signout" method="post"><button className="secondary" type="submit">Sign Out</button></form></div>
+          <div className="top-actions"><span className={`cloud-sync-badge ${dataMode === 'local-fallback' || syncState === 'error' ? 'warn' : syncState === 'saving' ? 'saving' : 'ok'}`} title={syncError || syncLabel}>{syncLabel}</span><span className="signed-in-user">{userEmail}</span><button className="secondary" onClick={() => setReleaseSelection({ mode: 'download', kinds: [...ALL_RELEASE_KINDS], notes: '' })}>Generate All PDFs</button><button className="secondary" onClick={() => setReleaseSelection({ mode: 'email', kinds: [...ALL_RELEASE_KINDS], notes: '' })}>Email All PDFs</button><button className="secondary" onClick={() => setView('documents')}>Documents</button><form action="/auth/signout" method="post"><button className="secondary" type="submit">Sign Out</button></form></div>
         </header>
         <div className="page">
           {view === 'projects' && <ProjectLibrary projects={projects} active={projectId} entries={calendarEntries} open={(id) => { setProjectId(id); setSelectedUid(''); setDraft(null); setView('dashboard'); }} add={addProject} addEntry={(entry) => setCalendarEntries((items) => [...items, entry])} deleteEntry={(id) => setCalendarEntries((items) => items.filter((item) => item.id !== id))} message={message} />}
           {view === 'dashboard' && <Dashboard project={project} issues={issues} docs={docs} customers={customers} go={setView} generateAll={() => setReleaseSelection({ mode: 'download', kinds: [...ALL_RELEASE_KINDS], notes: '' })} emailAll={() => setReleaseSelection({ mode: 'email', kinds: [...ALL_RELEASE_KINDS], notes: '' })} saveContract={(contract) => setProjects((items) => items.map((item) => item.id === projectId ? { ...item, contract, modified: 'Now' } : item))} saveContacts={(contactIds) => setProjects((items) => items.map((item) => item.id === projectId ? { ...item, contactIds, modified: 'Now' } : item))} message={message} />}
           {view === 'setup' && <ProjectSetup project={project} customers={customers} save={(updated) => { setProjects((items) => items.map((item) => item.id === projectId ? { ...updated, modified: 'Now' } : item)); message('Saved', 'Project Setup was saved.'); }} />}
           {view === 'internal' && <InternalMatrix issues={filtered} allCount={issues.length} draft={draft} selectedUid={selectedUid} edit={editIssue} setDraft={setDraft} submit={submit} remove={deleteEntry} newDraft={newDraft} saveTemplate={saveTemplate} templates={templates} deleteTemplate={requestDeleteTemplate} search={search} setSearch={setSearch} systems={systems} systemFilter={systemFilter} setSystemFilter={setSystemFilter} statusFilter={statusFilter} setStatusFilter={setStatusFilter} tab={tab} setTab={setTab} />}
-          {view === 'documents' && <Documents projectId={projectId} docs={docs} setDocs={setDocs} openPreview={setPreview} confirmAction={confirmAction} requestInput={requestInput} message={message} />}
+          {view === 'documents' && <Documents projectId={projectId} docs={docs} setDocs={setDocs} openPreview={setPreview} confirmAction={confirmAction} requestInput={requestInput} message={message} cloudEnabled={dataMode === 'cloud'} />}
           {view === 'sow' && <Deliverable title="Recommended SOW Matrix" eyebrow="Primary Flagship Deliverable" description="Uses submitted Internal Matrix entries assigned to Recommended SOW." rows={issues.filter((i) => i.sow)} columns={['SLR', 'System', 'Scope Item', 'Scope Concern', 'Recommended Bid Basis', 'Reference']} values={(i) => [i.id, systemName(i), i.title, i.concern, i.basis, i.reference]} update={() => updatePdf('sow', 'Recommended SOW Matrix')} url={pdfUrls.sow} onDownload={() => recordDownload('Recommended_SOW_Matrix.pdf', 'Recommended SOW Matrix')} preview={(url) => setPreview({ title: 'Recommended SOW Matrix', url, mode: 'pdf' })} send={() => prepareEmail('sow', 'Recommended SOW Matrix')} />}
           {view === 'clarifications' && <Deliverable title="Clarification Matrix" eyebrow="GC Working Document" description="When an SLR is also a Formal RFI, its RFI number appears directly below the SLR number." rows={issues.filter((i) => i.clarification)} columns={['SLR / RFI', 'System', 'Question / Issue', 'Recommended Bid Basis', 'Resolution', 'Status', 'Reference']} values={(i) => [[i.id, i.rfi].filter(Boolean).join('\n'), systemName(i), i.concern, i.basis, i.resolution, i.status, i.reference]} update={() => updatePdf('clarifications', 'Clarification Matrix')} url={pdfUrls.clarifications} onDownload={() => recordDownload('Clarification_Matrix.pdf', 'Clarification Matrix')} preview={(url) => setPreview({ title: 'Clarification Matrix', url, mode: 'pdf' })} send={() => prepareEmail('clarifications', 'Clarification Matrix')} />}
           {view === 'rfi' && <Deliverable title="Formal RFI" eyebrow="A/E Deliverable" description="RFI numbers are generated automatically from submitted entries assigned to Formal RFI." rows={issues.filter((i) => i.formalRfi)} columns={['RFI No.', 'System', 'Question', 'Answer']} values={(i) => [i.rfi, systemName(i), i.rfiQuestion || i.concern, i.resolution]} update={() => updatePdf('rfi', 'Formal RFI')} url={pdfUrls.rfi} onDownload={() => recordDownload('Formal_RFI.pdf', 'Formal RFI')} preview={(url) => setPreview({ title: 'Formal RFI', url, mode: 'pdf' })} send={() => prepareEmail('rfi', 'Formal RFI')} />}
@@ -575,7 +773,7 @@ export default function Workspace({ userEmail }: { userEmail: string }) {
           {view === 'customers' && <CustomerDatabase customers={customers} save={setCustomers} message={message} />}
           {view === 'exports' && <ExportLog entries={exportEntries} />}
           {view === 'email' && <EmailSettingsPage settings={emailSettings} save={setEmailSettings} message={message} />}
-          {view === 'production' && <ProductionSetup projects={projects} issuesByProject={issuesByProject} docsByProject={docsByProject} templates={templates} notesByProject={notesByProject} exportsByProject={exportsByProject} emailSettings={emailSettings} calendarEntries={calendarEntries} customers={customers} message={message} />}
+          {view === 'production' && <ProductionSetup projects={projects} issuesByProject={issuesByProject} docsByProject={docsByProject} templates={templates} notesByProject={notesByProject} exportsByProject={exportsByProject} emailSettings={emailSettings} calendarEntries={calendarEntries} customers={customers} message={message} dataMode={dataMode} syncState={syncState} syncError={syncError} cloudStatus={cloudStatus} storageMigration={storageMigration} migrateDocumentFiles={migrateDocumentFiles} retryCloudSync={retryCloudSync} userId={userId} />}
           {view === 'standards' && <OfficialLogoStandard />}
         </div>
       </main>
@@ -628,7 +826,7 @@ function InternalMatrix(props: any) {
   </>;
 }
 
-function Documents({ projectId, docs, setDocs, openPreview, confirmAction, requestInput, message }: { projectId: string; docs: Doc[]; setDocs: (change: (items: Doc[]) => Doc[]) => void; openPreview: (preview: PreviewState) => void; confirmAction: (title: string, body: string, onConfirm: () => void | Promise<void>, confirmLabel?: string, danger?: boolean) => void; requestInput: (title: string, body: string, initialValue: string, onConfirm: (value: string) => void | Promise<void>, confirmLabel?: string) => void; message: (title: string, body: string) => void }) {
+function Documents({ projectId, docs, setDocs, openPreview, confirmAction, requestInput, message, cloudEnabled }: { projectId: string; docs: Doc[]; setDocs: (change: (items: Doc[]) => Doc[]) => void; openPreview: (preview: PreviewState) => void; confirmAction: (title: string, body: string, onConfirm: () => void | Promise<void>, confirmLabel?: string, danger?: boolean) => void; requestInput: (title: string, body: string, initialValue: string, onConfirm: (value: string) => void | Promise<void>, confirmLabel?: string) => void; message: (title: string, body: string) => void; cloudEnabled: boolean }) {
   const [folder, setFolder] = useState<'current' | 'previous'>('current');
   const [selectedId, setSelectedId] = useState('');
   const [uploadType, setUploadType] = useState(DOCUMENT_TYPES[0]);
@@ -643,6 +841,14 @@ function Documents({ projectId, docs, setDocs, openPreview, confirmAction, reque
     let active = true;
     const created: string[] = [];
     Promise.all(docs.map(async (doc) => {
+      if (doc.storagePath && cloudEnabled) {
+        try {
+          const url = await createProjectFileUrl(doc.storagePath);
+          return [doc.id, url] as const;
+        } catch {
+          // Continue to the browser fallback below.
+        }
+      }
       const blob = await readStoredFile(`${projectId}:${doc.id}`);
       if (!blob) return null;
       const url = URL.createObjectURL(blob);
@@ -656,7 +862,7 @@ function Documents({ projectId, docs, setDocs, openPreview, confirmAction, reque
       active = false;
       created.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [docs, projectId]);
+  }, [docs, projectId, cloudEnabled]);
 
   useEffect(() => {
     if (selected && ((folder === 'current' && !selected.current) || (folder === 'previous' && selected.current))) setSelectedId('');
@@ -672,12 +878,23 @@ function Documents({ projectId, docs, setDocs, openPreview, confirmAction, reque
     for (const file of files) {
       const id = crypto.randomUUID();
       await storeFile(fileKey(id), file);
-      additions.push({ id, type: uploadType, name: file.name.replace(/\.[^.]+$/, ''), revision: 'Revision 0', date: new Date().toISOString().slice(0, 10), current: true, notes: '', fileName: file.name, fileType: file.type || 'application/octet-stream', sizeBytes: file.size });
+      let storagePath: string | undefined;
+      if (cloudEnabled) {
+        try {
+          storagePath = await uploadProjectFile(projectId, id, file, file.name, file.type || 'application/octet-stream');
+        } catch {
+          storagePath = undefined;
+        }
+      }
+      additions.push({ id, type: uploadType, name: file.name.replace(/\.[^.]+$/, ''), revision: 'Revision 0', date: new Date().toISOString().slice(0, 10), current: true, notes: '', fileName: file.name, fileType: file.type || 'application/octet-stream', sizeBytes: file.size, storagePath });
     }
     setDocs((items) => [...items, ...additions]);
     setFolder('current');
     setSelectedId(additions[additions.length - 1].id);
-    message('Saved', `${additions.length} project document${additions.length === 1 ? '' : 's'} uploaded and saved.`);
+    const cloudSaved = additions.filter((doc) => Boolean(doc.storagePath)).length;
+    message('Saved', cloudEnabled && cloudSaved < additions.length
+      ? `${additions.length} document${additions.length === 1 ? '' : 's'} saved to the browser fallback; ${cloudSaved} also reached private cloud storage. Use Production Setup to retry pending files.`
+      : `${additions.length} project document${additions.length === 1 ? '' : 's'} uploaded and saved${cloudEnabled ? ' to private cloud storage and the browser fallback' : ''}.`);
   };
 
   const replaceFile = (event: ChangeEvent<HTMLInputElement>) => {
@@ -687,11 +904,21 @@ function Documents({ projectId, docs, setDocs, openPreview, confirmAction, reque
     requestInput('Replace Document Revision', 'Enter the revision name for the new current document. The existing file will move to Previous Documents.', nextRevision(selected.revision), async (revision) => {
       const id = crypto.randomUUID();
       await storeFile(fileKey(id), file);
-      const replacement: Doc = { ...selected, id, revision: revision.trim() || nextRevision(selected.revision), date: new Date().toISOString().slice(0, 10), current: true, fileName: file.name, fileType: file.type || 'application/octet-stream', sizeBytes: file.size };
+      let storagePath: string | undefined;
+      if (cloudEnabled) {
+        try {
+          storagePath = await uploadProjectFile(projectId, id, file, file.name, file.type || 'application/octet-stream');
+        } catch {
+          storagePath = undefined;
+        }
+      }
+      const replacement: Doc = { ...selected, id, revision: revision.trim() || nextRevision(selected.revision), date: new Date().toISOString().slice(0, 10), current: true, fileName: file.name, fileType: file.type || 'application/octet-stream', sizeBytes: file.size, storagePath };
       setDocs((items) => [...items.map((doc) => doc.id === selected.id ? { ...doc, current: false } : doc), replacement]);
       setFolder('current');
       setSelectedId(id);
-      message('Saved', 'The replacement revision was saved and the prior file was moved to Previous Documents.');
+      message('Saved', storagePath || !cloudEnabled
+        ? 'The replacement revision was saved and the prior file was moved to Previous Documents.'
+        : 'The replacement revision was saved to the browser fallback, but the cloud upload needs to be retried from Production Setup.');
     }, 'Replace Revision');
   };
 
@@ -699,21 +926,48 @@ function Documents({ projectId, docs, setDocs, openPreview, confirmAction, reque
     if (!selected) return;
     confirmAction('Delete Project Document?', `Delete "${selected.fileName}" from this project?`, async () => {
       await removeStoredFile(fileKey(selected.id));
+      if (selected.storagePath && cloudEnabled) await removeProjectFile(selected.storagePath).catch(() => undefined);
       setDocs((items) => items.filter((doc) => doc.id !== selected.id));
       setSelectedId('');
     }, 'Delete Document', true);
   };
 
-  const openDocument = (doc: Doc) => {
-    const url = fileUrls[doc.id];
-    if (!url) return message('File Not Available', 'The file data could not be found in this browser. Upload the document again.');
-    if (doc.fileType === 'application/pdf') return openPreview({ title: doc.fileName, url, mode: 'pdf' });
-    if (doc.fileType.startsWith('image/')) return openPreview({ title: doc.fileName, url, mode: 'image' });
-    window.open(url, '_blank', 'noopener,noreferrer');
+  const openDocument = async (doc: Doc) => {
+    try {
+      const url = doc.storagePath && cloudEnabled
+        ? await createProjectFileUrl(doc.storagePath)
+        : fileUrls[doc.id];
+      if (!url) return message('File Not Available', 'The file could not be opened from cloud storage or the retained browser fallback. Upload the document again.');
+      if (doc.fileType === 'application/pdf') return openPreview({ title: doc.fileName, url, mode: 'pdf' });
+      if (doc.fileType.startsWith('image/')) return openPreview({ title: doc.fileName, url, mode: 'image' });
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (cause) {
+      message('File Could Not Be Opened', cause instanceof Error ? cause.message : 'The private file link could not be created.');
+    }
   };
 
   const openSelected = () => {
-    if (selected) openDocument(selected);
+    if (selected) void openDocument(selected);
+  };
+
+  const downloadSelected = async () => {
+    if (!selected) return;
+    try {
+      const url = selected.storagePath && cloudEnabled
+        ? await createProjectFileUrl(selected.storagePath, true)
+        : fileUrls[selected.id];
+      if (!url) return message('File Not Available', 'The file could not be downloaded from cloud storage or the browser fallback.');
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = selected.fileName;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (cause) {
+      message('Download Failed', cause instanceof Error ? cause.message : 'The selected file could not be downloaded.');
+    }
   };
 
   const patch = (key: keyof Doc, value: string | boolean) => setDetailsDraft((current) => current ? { ...current, [key]: value } : current);
@@ -724,13 +978,13 @@ function Documents({ projectId, docs, setDocs, openPreview, confirmAction, reque
   };
 
   return <>
-    <PageHead eyebrow="Current Project" title="Project Documents" description="Current documents remain at the project root. Superseded revisions are retained in the Previous Documents folder." action={<div className="document-upload-controls"><SelectField label="Document Type" value={uploadType} options={DOCUMENT_TYPES} onChange={setUploadType} compact /><button className="primary" onClick={() => uploadRef.current?.click()}>Upload Documents</button><input ref={uploadRef} hidden type="file" multiple accept=".pdf,.dwg,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.tif,.tiff" onChange={uploadFiles} /></div>} />
+    <PageHead eyebrow="Current Project" title="Project Documents" description="Current documents remain at the project root. Files use private Supabase Storage with a retained browser fallback during production verification." action={<div className="document-upload-controls"><SelectField label="Document Type" value={uploadType} options={DOCUMENT_TYPES} onChange={setUploadType} compact /><button className="primary" onClick={() => uploadRef.current?.click()}>Upload Documents</button><input ref={uploadRef} hidden type="file" multiple accept=".pdf,.dwg,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.tif,.tiff" onChange={uploadFiles} /></div>} />
     <div className="explorer-shell">
       <aside className="folder-tree"><div className="folder-tree-title">Folders</div><button className={folder === 'current' ? 'active' : ''} onClick={() => setFolder('current')}><span className="folder-icon">P</span><div><b>Project Documents</b><small>{docs.filter((doc) => doc.current).length} current files</small></div></button><button className={folder === 'previous' ? 'active nested' : 'nested'} onClick={() => setFolder('previous')}><span className="folder-icon">F</span><div><b>Previous Documents</b><small>{docs.filter((doc) => !doc.current).length} prior files</small></div></button></aside>
       <section className="file-explorer">
-        <div className="explorer-toolbar"><div><b>{folder === 'current' ? 'Project Documents' : 'Previous Documents'}</b><span>{visibleDocs.length} item{visibleDocs.length === 1 ? '' : 's'}</span></div><div className="button-row"><button className="secondary" disabled={!selected} onClick={openSelected}>Open / Preview</button><button className="secondary" disabled={!selected?.current} onClick={() => replaceRef.current?.click()}>Replace Revision</button><input ref={replaceRef} hidden type="file" accept=".pdf,.dwg,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.tif,.tiff" onChange={replaceFile} />{selected && fileUrls[selected.id] ? <a className="secondary link-button" href={fileUrls[selected.id]} download={selected.fileName}>Download</a> : <button className="secondary" disabled>Download</button>}<button className="danger-button" disabled={!selected} onClick={deleteSelected}>Delete</button></div></div>
-        <div className="file-table"><div className="file-row file-head"><span>Name</span><span>Type</span><span>Revision</span><span>Date</span><span>Size</span></div>{visibleDocs.map((doc) => <button className={`file-row ${selectedId === doc.id ? 'selected' : ''}`} key={doc.id} onClick={() => setSelectedId(doc.id)} onDoubleClick={() => openDocument(doc)}><span className="file-name"><i>{documentIcon(doc)}</i><b>{doc.name || doc.fileName}</b></span><span>{doc.type}</span><span>{doc.revision}</span><span>{doc.date}</span><span>{formatBytes(doc.sizeBytes)}</span></button>)}{!visibleDocs.length && <div className="empty-folder"><b>{folder === 'current' ? 'No current project documents' : 'No previous documents'}</b><p>{folder === 'current' ? 'Choose a document type and upload one or more files.' : 'Previous revisions appear here after Replace Revision is used.'}</p></div>}</div>
-        {detailsDraft && <div className="file-properties"><div className="properties-title"><div><span>{detailsDraft.current ? 'Current document' : 'Previous document'}</span><h2>{detailsDraft.fileName}</h2></div><button className="primary" onClick={saveDetails}>Save Details</button></div><div className="editor-grid"><Field label="Display Name" value={detailsDraft.name} onChange={(value) => patch('name', value)} /><SelectField label="Document Type" value={detailsDraft.type} options={DOCUMENT_TYPES} onChange={(value) => patch('type', value)} /><Field label="Revision" value={detailsDraft.revision} onChange={(value) => patch('revision', value)} /><Field label="Issue Date" type="date" value={detailsDraft.date} onChange={(value) => patch('date', value)} /><label className="field checkbox-field"><span>Current Document</span><div><input type="checkbox" checked={detailsDraft.current} onChange={(event) => patch('current', event.target.checked)} /><b>{detailsDraft.current ? 'Current' : 'Previous'}</b></div></label></div><TextArea label="Notes" value={detailsDraft.notes} onChange={(value) => patch('notes', value)} /></div>}
+        <div className="explorer-toolbar"><div><b>{folder === 'current' ? 'Project Documents' : 'Previous Documents'}</b><span>{visibleDocs.length} item{visibleDocs.length === 1 ? '' : 's'}</span></div><div className="button-row"><button className="secondary" disabled={!selected} onClick={openSelected}>Open / Preview</button><button className="secondary" disabled={!selected?.current} onClick={() => replaceRef.current?.click()}>Replace Revision</button><input ref={replaceRef} hidden type="file" accept=".pdf,.dwg,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.tif,.tiff" onChange={replaceFile} /><button className="secondary" disabled={!selected || (!selected.storagePath && !fileUrls[selected.id])} onClick={downloadSelected}>Download</button><button className="danger-button" disabled={!selected} onClick={deleteSelected}>Delete</button></div></div>
+        <div className="file-table"><div className="file-row file-head"><span>Name</span><span>Type</span><span>Revision</span><span>Date</span><span>Size</span></div>{visibleDocs.map((doc) => <button className={`file-row ${selectedId === doc.id ? 'selected' : ''}`} key={doc.id} onClick={() => setSelectedId(doc.id)} onDoubleClick={() => { void openDocument(doc); }}><span className="file-name"><i>{documentIcon(doc)}</i><b>{doc.name || doc.fileName}</b><em className={`document-storage-badge ${doc.storagePath ? 'cloud' : 'local'}`}>{doc.storagePath ? 'Cloud' : 'Fallback'}</em></span><span>{doc.type}</span><span>{doc.revision}</span><span>{doc.date}</span><span>{formatBytes(doc.sizeBytes)}</span></button>)}{!visibleDocs.length && <div className="empty-folder"><b>{folder === 'current' ? 'No current project documents' : 'No previous documents'}</b><p>{folder === 'current' ? 'Choose a document type and upload one or more files.' : 'Previous revisions appear here after Replace Revision is used.'}</p></div>}</div>
+        {detailsDraft && <div className="file-properties"><div className="properties-title"><div><span>{detailsDraft.current ? 'Current document' : 'Previous document'} · {detailsDraft.storagePath ? 'Private cloud storage' : 'Browser fallback pending migration'}</span><h2>{detailsDraft.fileName}</h2></div><button className="primary" onClick={saveDetails}>Save Details</button></div><div className="editor-grid"><Field label="Display Name" value={detailsDraft.name} onChange={(value) => patch('name', value)} /><SelectField label="Document Type" value={detailsDraft.type} options={DOCUMENT_TYPES} onChange={(value) => patch('type', value)} /><Field label="Revision" value={detailsDraft.revision} onChange={(value) => patch('revision', value)} /><Field label="Issue Date" type="date" value={detailsDraft.date} onChange={(value) => patch('date', value)} /><label className="field checkbox-field"><span>Current Document</span><div><input type="checkbox" checked={detailsDraft.current} onChange={(event) => patch('current', event.target.checked)} /><b>{detailsDraft.current ? 'Current' : 'Previous'}</b></div></label></div><TextArea label="Notes" value={detailsDraft.notes} onChange={(value) => patch('notes', value)} /></div>}
       </section>
     </div>
   </>;
@@ -899,7 +1153,7 @@ function ReleaseSelectionDialog({ selection, change, close, confirm }: { selecti
 }
 
 
-function ProductionSetup({ projects, issuesByProject, docsByProject, templates, notesByProject, exportsByProject, emailSettings, calendarEntries, customers, message }: {
+function ProductionSetup({ projects, issuesByProject, docsByProject, templates, notesByProject, exportsByProject, emailSettings, calendarEntries, customers, message, dataMode, syncState, syncError, cloudStatus, storageMigration, migrateDocumentFiles, retryCloudSync, userId }: {
   projects: Project[];
   issuesByProject: Record<string, Issue[]>;
   docsByProject: Record<string, Doc[]>;
@@ -910,6 +1164,14 @@ function ProductionSetup({ projects, issuesByProject, docsByProject, templates, 
   calendarEntries: CalendarEntry[];
   customers: Customer[];
   message: (title: string, body: string) => void;
+  dataMode: 'cloud' | 'local-fallback' | 'loading';
+  syncState: 'loading' | 'synced' | 'saving' | 'error';
+  syncError: string;
+  cloudStatus: CloudWorkspaceStatus;
+  storageMigration: { running: boolean; total: number; processed: number; uploaded: number; missing: number; failed: number };
+  migrateDocumentFiles: () => Promise<void>;
+  retryCloudSync: () => Promise<void>;
+  userId: string;
 }) {
   const [checking, setChecking] = useState(true);
   const [importing, setImporting] = useState(false);
@@ -928,12 +1190,16 @@ function ProductionSetup({ projects, issuesByProject, docsByProject, templates, 
     calendarEvents: calendarEntries.length,
     exports: Object.values(exportsByProject).reduce((sum, items) => sum + items.length, 0),
   }), [projects, customers, issuesByProject, templates, docsByProject, calendarEntries, exportsByProject]);
+  const localStoredDocuments = useMemo(() => Object.values(docsByProject).flat().filter((doc) => Boolean(doc.storagePath)).length, [docsByProject]);
+  const pendingDocuments = Math.max(0, localCounts.documents - localStoredDocuments);
+  const cutoverComplete = Boolean(cloudStatus.cutoverCompletedAt) && pendingDocuments === 0;
+  const migrationNeeded = /cloud_revision|selected_project_legacy_id|data_mode|last_cloud_sync_at|cloud_cutover_completed_at|column .* does not exist/i.test(syncError);
 
   useEffect(() => {
     inspectPriorImport().then((data) => setPriorImport(data)).catch((cause) => {
       const text = cause instanceof Error ? cause.message : 'Database status could not be checked.';
       setError(/relation .*import_runs.*does not exist|could not find the table/i.test(text)
-        ? 'The ScopeLogic database migration has not been applied yet. Follow PRODUCTION-DEPLOYMENT.md and run npx supabase db push before importing.'
+        ? 'The ScopeLogic database foundation migration has not been applied. Run npx.cmd supabase@latest db push from the repository folder.'
         : text);
     }).finally(() => setChecking(false));
   }, []);
@@ -959,35 +1225,76 @@ function ProductionSetup({ projects, issuesByProject, docsByProject, templates, 
     URL.revokeObjectURL(url);
   };
 
+  const downloadCutoverReport = () => {
+    const content = JSON.stringify({
+      generatedAt: new Date().toISOString(),
+      userId,
+      dataMode,
+      syncState,
+      syncError,
+      cloudStatus,
+      localCounts,
+      storedDocuments: localStoredDocuments,
+      pendingDocuments,
+      migration: storageMigration,
+      browserFallbackRetained: true,
+    }, null, 2);
+    const url = URL.createObjectURL(new Blob([content], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url; link.download = 'ScopeLogic_RC3_Cloud_Cutover_Report.json'; link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const progress = storageMigration.total ? Math.round((storageMigration.processed / storageMigration.total) * 100) : 0;
+
   return <>
-    <PageHead eyebrow="Production Hardening" title="Production Setup" description="Verify the Supabase foundation and safely copy the existing browser workspace into the production database." />
+    <PageHead eyebrow="Production Hardening" title="Production Setup" description="Verify live Supabase data, migrate retained browser files to private cloud storage, and preserve the local recovery copy during cutover." />
     <div className="production-grid">
       <section className="panel production-status-panel">
-        <div className="section-title"><span>Foundation Status</span><h2>Authentication and database</h2></div>
+        <div className="section-title"><span>Foundation Status</span><h2>Authentication and live data</h2></div>
         <div className="production-checklist">
           <div className="production-check ok"><b>Secure login</b><span>You are signed in through Supabase Auth.</span></div>
-          <div className={`production-check ${checking ? '' : error ? 'warn' : 'ok'}`}><b>Database migration</b><span>{checking ? 'Checking database…' : error ? 'Migration or connection needs attention.' : 'ScopeLogic production tables are available.'}</span></div>
-          <div className="production-check ok"><b>Local fallback</b><span>The existing browser copy will not be deleted by this import.</span></div>
-          <div className="production-check warn"><b>Document file bytes</b><span>Document metadata is imported now. Actual IndexedDB file bytes move to private Storage in the next phase.</span></div>
+          <div className={`production-check ${checking ? '' : error ? 'warn' : 'ok'}`}><b>Database foundation</b><span>{checking ? 'Checking database…' : error ? 'Migration or connection needs attention.' : 'ScopeLogic production tables are available.'}</span></div>
+          <div className={`production-check ${dataMode === 'cloud' && syncState !== 'error' ? 'ok' : 'warn'}`}><b>Live workspace</b><span>{dataMode === 'local-fallback' ? 'Local fallback is active. Cloud writes are paused until the connection is restored.' : syncState === 'saving' ? 'Saving current changes to Supabase…' : syncState === 'error' ? 'The latest cloud save failed; the browser fallback remains current.' : 'Projects, SLRs, customers, notes, settings, and logs are loading from and saving to Supabase.'}</span></div>
+          <div className="production-check ok"><b>Recovery copy</b><span>The browser workspace and IndexedDB files remain intact during RC3 verification.</span></div>
+          <div className={`production-check ${cutoverComplete ? 'ok' : 'warn'}`}><b>Private document storage</b><span>{cutoverComplete ? `${localStoredDocuments} document file${localStoredDocuments === 1 ? '' : 's'} are stored in the private project-files bucket.` : `${localStoredDocuments} of ${localCounts.documents} document files have a verified cloud storage path.`}</span></div>
         </div>
-        {error && <div className="auth-error production-error">{error}</div>}
+        {(error || syncError) && <div className="auth-error production-error">{error || syncError}{migrationNeeded ? <><br /><b>Apply the RC3 migration:</b> run <code>npx.cmd supabase@latest db push</code> from the clean repository folder, then refresh ScopeLogic.</> : null}</div>}
+        {(dataMode === 'local-fallback' || syncState === 'error') && <button className="secondary production-retry" onClick={retryCloudSync}>Retry Cloud Sync</button>}
       </section>
 
       <section className="panel production-import-panel">
-        <div className="section-title"><span>One-Time Migration</span><h2>Import existing browser data</h2></div>
+        <div className="section-title"><span>Database Import</span><h2>Browser record migration</h2></div>
         <div className="import-count-grid">
           {Object.entries(localCounts).map(([label, value]) => <div key={label}><b>{value}</b><span>{label.replace(/([A-Z])/g, ' $1')}</span></div>)}
         </div>
-        {priorImport?.status === 'completed' ? <div className="auth-success"><b>Import completed</b><br />{new Date(priorImport.imported_at).toLocaleString()}<br />The local browser data remains available as a fallback.</div> : <>
-          <label className="import-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>I understand this copies database records but does not delete the current browser data or upload document file bytes yet.</span></label>
+        {priorImport?.status === 'completed' ? <div className="auth-success"><b>Database import completed</b><br />{new Date(priorImport.imported_at).toLocaleString()}<br />The local browser records remain available as a fallback.</div> : <>
+          <label className="import-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>I understand this copies database records but does not delete the current browser data.</span></label>
           <button className="primary" disabled={checking || importing || Boolean(error)} onClick={runImport}>{importing ? 'Importing…' : 'Import Existing ScopeLogic Data'}</button>
         </>}
         {(report || priorImport?.status === 'completed') && <button className="secondary" onClick={downloadReport}>Download Import Report</button>}
       </section>
     </div>
+
+    <section className="panel production-next-panel cloud-cutover-panel">
+      <div className="section-title"><span>RC3 Cutover</span><h2>Private document storage migration</h2></div>
+      <div className="cloud-cutover-summary">
+        <div><b>{localCounts.documents}</b><span>Total metadata records</span></div>
+        <div><b>{localStoredDocuments}</b><span>Stored in Supabase</span></div>
+        <div><b>{pendingDocuments}</b><span>Pending browser files</span></div>
+        <div><b>{storageMigration.failed + storageMigration.missing}</b><span>Need attention</span></div>
+      </div>
+      {storageMigration.running && <div className="migration-progress"><div><span style={{ width: `${progress}%` }} /></div><p>{storageMigration.processed} of {storageMigration.total} reviewed · {storageMigration.uploaded} uploaded · {storageMigration.missing} missing · {storageMigration.failed} failed</p></div>}
+      {cutoverComplete ? <div className="auth-success"><b>Cloud cutover completed</b><br />{cloudStatus.cutoverCompletedAt ? new Date(cloudStatus.cutoverCompletedAt).toLocaleString() : ''}<br />New document uploads now save to both private cloud storage and the retained browser fallback.</div> : <p>Run this from the original browser profile that contains the existing IndexedDB document files. Each available file is uploaded under your authenticated user folder, its metadata is updated with the private storage path, and the browser copy is retained.</p>}
+      <div className="button-row cloud-cutover-actions">
+        <button className="primary" disabled={storageMigration.running || dataMode !== 'cloud' || Boolean(error) || migrationNeeded} onClick={migrateDocumentFiles}>{storageMigration.running ? 'Migrating Files…' : pendingDocuments ? 'Migrate Browser Files to Cloud' : 'Verify and Complete Cloud Cutover'}</button>
+        <button className="secondary" onClick={downloadCutoverReport}>Download Cutover Report</button>
+      </div>
+    </section>
+
     <section className="panel production-next-panel">
-      <div className="section-title"><span>Next Production Phase</span><h2>Document storage migration</h2></div>
-      <p>After the database import is verified, the next release will upload each browser-stored project file to the private <b>project-files</b> bucket, preserve revision history, and switch the Project Documents page from IndexedDB to Supabase Storage.</p>
+      <div className="section-title"><span>Acceptance Test</span><h2>Verify from a second browser</h2></div>
+      <p>After cutover is complete, sign in from a different browser or computer. Confirm customers, projects, SLRs, notes, calendar entries, and project documents load without relying on the original browser profile. Keep the original browser copy until that test passes.</p>
     </section>
   </>;
 }

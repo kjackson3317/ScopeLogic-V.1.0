@@ -1,117 +1,102 @@
-# ScopeLogic v1.0 RC2 — Production Deployment
+# ScopeLogic v1.0 RC3 — Production Deployment
 
 ## Before starting
 
-- Keep the browser and computer that currently contain your ScopeLogic data.
-- Do not clear browser history, site data, cookies, Local Storage, or IndexedDB.
-- Keep using the same permanent Vercel production domain. Browser data is tied to the exact website origin.
-- Confirm the Supabase administrator user was created with a password and is email-confirmed.
+- Keep the original computer and browser profile that contain the existing ScopeLogic IndexedDB document files.
+- Do not clear browser history, site data, Local Storage, cookies, or IndexedDB.
+- Keep using the permanent Vercel production domain.
+- Confirm the RC2 database import was previously verified.
 
-## Part 1 — Upload RC2 to GitHub
+## Part 1 — Replace the GitHub source tree
 
-1. Extract the RC2 ZIP.
-2. Open the GitHub repository connected to Vercel.
-3. Replace the repository contents with the extracted RC2 files.
-4. Confirm the repository includes:
-   - `proxy.ts`
-   - `lib/supabase/`
-   - `app/login/`
-   - `supabase/migrations/20260728000100_scopelogic_v1_foundation.sql`
-5. Commit the files to the branch connected to Vercel.
-6. Wait for Vercel to build and deploy.
-
-## Part 2 — Apply the database migration
-
-Use the migration file through the Supabase CLI so the schema remains version-controlled.
-
-### 2.1 Open a terminal in the extracted repository
-
-On Windows:
-
-1. Open the extracted RC2 folder in File Explorer.
-2. Click the address bar.
-3. Type `powershell` and press Enter.
-
-### 2.2 Sign in to the Supabase CLI
-
-```powershell
-npx supabase@latest login
-```
-
-A browser window will open. Approve the login.
-
-### 2.3 Find the Supabase project reference
-
-In Supabase:
-
-1. Open the ScopeLogic Production project.
-2. Open **Project Settings**.
-3. Open **General**.
-4. Copy the **Reference ID**.
-
-It resembles:
+1. Extract the RC3 ZIP.
+2. Open the `ScopeLogic-Rev14` repository through GitHub Desktop.
+3. Select **Repository → Show in Explorer**.
+4. Keep the hidden `.git` folder and delete every other repository file and folder.
+5. Copy every RC3 file and folder into the repository.
+6. Commit with:
 
 ```text
-abcdefghijklmnop
+Clean install ScopeLogic v1.0 RC3
 ```
 
-### 2.4 Link the repository
+7. Push to `main`.
+8. Wait for Vercel to report **Ready**.
+
+The build log should include:
+
+```text
+ScopeLogic source verification passed
+```
+
+## Part 2 — Apply the RC3 database migration
+
+Open PowerShell in the clean repository folder and run:
 
 ```powershell
-npx supabase@latest link --project-ref YOUR_PROJECT_REFERENCE
+npx.cmd supabase@latest db push --dry-run
 ```
 
-Replace `YOUR_PROJECT_REFERENCE` with the actual Reference ID.
+Confirm the pending migration is:
 
-The CLI may ask for the database password created when the Supabase project was created. If that password is unavailable, reset it under **Supabase → Project Settings → Database** and store the new password securely.
+```text
+20260729000100_scopelogic_rc3_cloud_cutover.sql
+```
 
-### 2.5 Push the migration
+Then run:
 
 ```powershell
-npx supabase@latest db push
+npx.cmd supabase@latest db push
 ```
 
-Review the migration name and approve the prompt.
+Approve the migration. Existing RC2 migrations will be skipped because they are already recorded in Supabase migration history.
 
-Successful output should indicate that the remote database is up to date.
+## Part 3 — Verify live cloud synchronization
 
-## Part 3 — Test authentication
+1. Open the permanent ScopeLogic production URL in the original browser profile.
+2. Sign in.
+3. Confirm the top bar shows **Cloud synced**.
+4. Open **Administration → Production Setup**.
+5. Confirm:
+   - Secure login is available.
+   - Database foundation is available.
+   - Live workspace reports Supabase reads and writes.
+   - The browser recovery copy remains enabled.
 
-1. Open the permanent ScopeLogic production URL in a private/incognito window.
-2. Confirm it redirects to `/login`.
-3. Sign in using the administrator email and password created in Supabase.
-4. Confirm the ScopeLogic workspace opens.
-5. Confirm the signed-in email and **Sign Out** button appear in the top bar.
-6. Sign out and confirm the dashboard is no longer accessible without signing in.
+When the page reports that RC3 columns are missing, confirm `db push` completed and refresh the browser.
 
-## Part 4 — Import the existing browser data
+## Part 4 — Migrate document files
 
-Perform this step in the original browser profile and computer where the ScopeLogic data currently exists.
+Perform this only in the original browser profile containing the IndexedDB files.
 
-1. Open ScopeLogic and sign in.
-2. Open **Administration → Production Setup**.
-3. Confirm the local record counts look reasonable.
-4. Confirm the database status says the production tables are available.
-5. Check the import acknowledgment.
-6. Select **Import Existing ScopeLogic Data**.
-7. Wait for the **Saved** confirmation.
-8. Download the import report.
-9. Do not delete the browser copy.
+1. Open **Administration → Production Setup**.
+2. Review Total metadata records, Stored in Supabase, Pending browser files, and Need attention.
+3. Select **Migrate Browser Files to Cloud**.
+4. Keep the browser tab open until the process finishes.
+5. Confirm the result says **Cloud cutover completed** or review any missing/failed files.
+6. Download **ScopeLogic RC3 Cloud Cutover Report**.
+7. Do not clear the browser fallback.
 
-The import includes customers, contacts, projects, systems, submitted SLRs, templates, contract details, internal notes, calendar entries, export history, email settings, and document metadata.
+Files that cannot be found in IndexedDB remain identified as pending. Re-upload those documents through Project Documents, then rerun the migration verification.
 
-The actual uploaded document file bytes remain in browser IndexedDB until the next storage-migration release.
+## Part 5 — Verify project documents
 
-## Part 5 — Verification in Supabase
+For at least one current document and one previous revision:
 
-In Supabase Table Editor, verify that records appear in:
+1. Open or preview the file.
+2. Download the file.
+3. Confirm the Project Documents row shows **Cloud**.
+4. Upload a new test document.
+5. Confirm it opens after refreshing the page.
+6. Delete the test document if it is not needed.
 
-- `projects`
-- `customers`
-- `contacts`
-- `slr_entries`
-- `slr_templates`
-- `project_documents`
-- `import_runs`
+## Part 6 — Second-browser acceptance test
 
-Do not edit production records directly in the Table Editor.
+1. Open ScopeLogic from a different browser profile or computer.
+2. Sign in using the administrator account.
+3. Confirm customers, projects, contacts, SLRs, templates, notes, calendar entries, contract information, and export history load.
+4. Open and download a cloud-stored project document.
+5. Make a small test edit, save it, refresh, and confirm it remains.
+6. Sign out and confirm the workspace is protected.
+
+Keep the original browser fallback until all checks in `RC3-ACCEPTANCE-CHECKLIST.md` pass.

@@ -31,5 +31,5 @@ export default async function HomePage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
-  return <Workspace userEmail={user.email || 'Signed-in user'} />;
+  return <Workspace userEmail={user.email || 'Signed-in user'} userId={user.id} />;
 }

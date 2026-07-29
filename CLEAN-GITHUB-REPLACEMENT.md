@@ -1,41 +1,22 @@
-# Clean GitHub Replacement — ScopeLogic v1.0 RC2.4
+# Clean GitHub Replacement — ScopeLogic v1.0 RC3
 
-This release must replace the repository contents as one complete source tree. Do not upload only the changed files. The previous Vercel error referenced legacy code that is not present in this package, which confirms that the GitHub repository contained a mixture of release versions.
+Use the RC3 ZIP as one complete repository source tree. Do not layer individual RC3 files over mixed older revisions.
 
-## Recommended method: GitHub Desktop
+## GitHub Desktop method
 
-1. Download and extract `ScopeLogic-v1.0-RC2.4-Clean-Production-Source.zip`.
-2. Open GitHub Desktop and select the `ScopeLogic-Rev14` repository.
+1. Extract `ScopeLogic-v1.0-RC3-Cloud-Storage-Database-Cutover.zip`.
+2. Open GitHub Desktop and select `ScopeLogic-Rev14`.
 3. Select **Repository → Show in Explorer**.
-4. In the repository folder, keep the hidden `.git` folder. Delete every other file and folder.
-5. Copy every file and folder from the extracted RC2.4 package into the repository folder.
-6. Return to GitHub Desktop. Confirm that the changes show deleted legacy files and added/replaced RC2.4 files.
-7. Commit with the message `Clean install ScopeLogic v1.0 RC2.4`.
-8. Select **Push origin**.
-9. Open Vercel and monitor the new production deployment.
+4. Keep the hidden `.git` folder. Delete every other file and folder.
+5. Copy all extracted RC3 files and folders into the repository folder.
+6. Commit with `Clean install ScopeLogic v1.0 RC3`.
+7. Push origin.
+8. Monitor the Vercel production deployment.
 
-Do not copy a `.env` or `.env.local` file into GitHub. Vercel environment variables remain configured in Vercel and are not stored in the repository.
+Do not copy `.env` or `.env.local` into GitHub. Vercel environment variables remain in Vercel.
 
-## Command-line alternative
-
-From the existing local repository folder:
-
-```bash
-git rm -r .
-# Copy the extracted RC2.4 files into this folder.
-git add .
-git commit -m "Clean install ScopeLogic v1.0 RC2.4"
-git push origin main
-```
-
-The `.git` folder is retained automatically and the Git history remains intact.
-
-## Expected Vercel verification
-
-Before `next build`, Vercel will now run:
+The Vercel build should report:
 
 ```text
 ScopeLogic source verification passed
 ```
-
-The source verifier rejects the legacy `new Blob([bytes])` implementation that caused the TypeScript failure.

@@ -51,6 +51,35 @@ if (!workspace.includes('pdfBytesToArrayBuffer')) {
   violations.push('app/workspace.tsx: the ArrayBuffer PDF compatibility helper is missing');
 }
 
+if (!workspace.includes('loadWorkspaceFromCloud')) {
+  violations.push('app/workspace.tsx: live Supabase workspace loading is missing');
+}
+if (!workspace.includes('saveWorkspaceToCloud')) {
+  violations.push('app/workspace.tsx: live Supabase workspace saving is missing');
+}
+if (!workspace.includes('migrateDocumentFiles')) {
+  violations.push('app/workspace.tsx: IndexedDB-to-Storage migration is missing');
+}
+
+const cloudWorkspacePath = join(root, 'lib', 'cloud-workspace.ts');
+const cloudWorkspace = await readFile(cloudWorkspacePath, 'utf8');
+if (!cloudWorkspace.includes("storage.from('project-files')")) {
+  violations.push('lib/cloud-workspace.ts: private project-files integration is missing');
+}
+if (!cloudWorkspace.includes('createSignedUrl')) {
+  violations.push('lib/cloud-workspace.ts: signed private file URLs are missing');
+}
+
+const rc3MigrationPath = join(root, 'supabase', 'migrations', '20260729000100_scopelogic_rc3_cloud_cutover.sql');
+try {
+  const rc3Migration = await readFile(rc3MigrationPath, 'utf8');
+  if (!rc3Migration.includes('cloud_cutover_completed_at')) {
+    violations.push('RC3 migration: cloud cutover tracking is missing');
+  }
+} catch {
+  violations.push('RC3 migration file is missing');
+}
+
 if (violations.length) {
   console.error('\nScopeLogic clean-source verification failed:\n');
   for (const violation of violations) console.error(`- ${violation}`);

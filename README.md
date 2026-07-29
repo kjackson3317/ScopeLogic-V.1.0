@@ -1,25 +1,20 @@
-# ScopeLogic v1.0 RC2
+# ScopeLogic v1.0 RC3
 
-ScopeLogic v1.0 RC2 is the first production-foundation release. It preserves the Revision 14.8 estimating and deliverable interface while adding Supabase authentication, protected routes, a version-controlled database schema, Row Level Security, email-route authentication, and a one-time browser-data import workflow.
+ScopeLogic v1.0 RC3 completes the first production data cutover. The Revision 14.8 consulting workflow remains intact, while the authenticated application now loads and saves live records through Supabase and stores project documents in the private `project-files` bucket.
 
 ## Included
 
-- Email/password login and logout
-- Forgot-password and set-password workflows
-- Supabase SSR cookie/session handling for Next.js 16
-- Protected application routes
-- Authenticated email API route
-- Initial PostgreSQL schema under `supabase/migrations`
-- Row Level Security for all application tables
-- Private `project-files` storage policies
-- Production Setup page
-- One-time import of existing browser records
-- Import report download
-- Existing browser data retained as a fallback
-
-## Important scope limitation
-
-RC2 imports database records and document metadata. It does **not** upload the actual document file bytes currently stored in browser IndexedDB. Continue using the same device, browser, and production domain until the document-storage migration is completed in the next release.
+- Supabase Auth login, logout, password reset, and protected routes
+- Live Supabase reads and debounced writes for projects, customers, contacts, SLRs, templates, contracts, internal notes, calendar entries, document metadata, export history, and email settings
+- Cloud synchronization status in the application header
+- Automatic local browser recovery copy retained during RC3 verification
+- One-time migration of existing IndexedDB project files to private Supabase Storage
+- Cloud-first document preview and download with signed private URLs
+- New document uploads saved to both Supabase Storage and the browser fallback
+- Official GC release packages archived in private cloud storage when downloaded
+- Row Level Security and authenticated storage policies
+- Downloadable browser-import and cloud-cutover reports
+- RC3 database migration under `supabase/migrations`
 
 ## Required environment variables
 
@@ -31,14 +26,22 @@ NEXT_PUBLIC_SITE_URL
 
 Existing Resend variables remain required for email delivery.
 
-## Deployment
+## Required RC3 migration
 
-Follow `PRODUCTION-DEPLOYMENT.md` in order. Do not select **Import Existing ScopeLogic Data** until the database migration has been applied successfully.
+After deploying this source tree, run:
 
+```powershell
+npx.cmd supabase@latest db push
+```
 
-## Clean repository deployment
+The CLI should apply:
 
-For this release, follow `CLEAN-GITHUB-REPLACEMENT.md` so legacy source files are removed before deployment.
+```text
+20260729000100_scopelogic_rc3_cloud_cutover.sql
+```
 
+## Deployment order
 
-See `RELEASE-NOTES-v1.0-RC2.4.md` for the latest build correction.
+Follow `PRODUCTION-DEPLOYMENT.md` exactly. Use the original browser profile for the document migration, and retain the local browser copy until the second-browser acceptance test passes.
+
+See `RELEASE-NOTES-v1.0-RC3.md` and `RC3-ACCEPTANCE-CHECKLIST.md`.
