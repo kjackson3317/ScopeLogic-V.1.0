@@ -39,3 +39,6 @@ Follow `PRODUCTION-DEPLOYMENT.md` in order. Do not select **Import Existing Scop
 ## Clean repository deployment
 
 For this release, follow `CLEAN-GITHUB-REPLACEMENT.md` so legacy source files are removed before deployment.
+
+
+See `RELEASE-NOTES-v1.0-RC2.4.md` for the latest build correction.

@@ -35,6 +35,16 @@ for (const filePath of sourceFiles) {
   }
 }
 
+
+const rootPagePath = join(root, 'app', 'page.tsx');
+const rootPage = await readFile(rootPagePath, 'utf8');
+if (!rootPage.includes("export const dynamic = 'force-dynamic'")) {
+  violations.push('app/page.tsx: protected root page must be force-dynamic to prevent build-time Supabase prerendering');
+}
+if (!rootPage.includes('isSupabaseConfigured()')) {
+  violations.push('app/page.tsx: safe Supabase configuration guard is missing');
+}
+
 const workspacePath = join(root, 'app', 'workspace.tsx');
 const workspace = await readFile(workspacePath, 'utf8');
 if (!workspace.includes('pdfBytesToArrayBuffer')) {
