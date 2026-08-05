@@ -6,6 +6,7 @@ import { importLocalScopeLogicData, inspectPriorImport, type LocalImportReport }
 import {
   completeCloudCutover,
   createProjectFileUrl,
+  inspectCloudSchema,
   loadWorkspaceFromCloud,
   removeProjectFile,
   saveOfficialRelease,
@@ -347,6 +348,23 @@ function readLocalWorkspace(): Partial<WorkspaceSnapshot> | null {
   return null;
 }
 
+function hasMeaningfulWorkspace(data: Partial<WorkspaceSnapshot> | null | undefined) {
+  if (!data) return false;
+  const projects = (data.projects || []) as Project[];
+  const defaultOnly = projects.length === 1
+    && projects[0]?.id === 'p1'
+    && projects[0]?.name === 'New ScopeLogic Project'
+    && !projects[0]?.client;
+  const hasProjectContent = projects.length > 1 || (projects.length === 1 && !defaultOnly);
+  const hasNestedContent = [data.issuesByProject, data.docsByProject, data.notesByProject, data.exportsByProject]
+    .some((record) => record && Object.values(record).some((value) => Array.isArray(value) ? value.length > 0 : Boolean(String(value || '').trim())));
+  return hasProjectContent
+    || Boolean(data.customers?.length)
+    || Boolean(data.templates?.length)
+    || Boolean(data.calendarEntries?.length)
+    || hasNestedContent;
+}
+
 export default function Workspace({ userEmail, userId }: { userEmail: string; userId: string }) {
   const [view, setView] = useState<View>('projects');
   const [projects, setProjects] = useState<Project[]>([blankProject('p1')]);
@@ -376,7 +394,7 @@ export default function Workspace({ userEmail, userId }: { userEmail: string; us
   const [dataMode, setDataMode] = useState<'cloud' | 'local-fallback' | 'loading'>('loading');
   const [syncState, setSyncState] = useState<'loading' | 'synced' | 'saving' | 'error'>('loading');
   const [syncError, setSyncError] = useState('');
-  const [cloudStatus, setCloudStatus] = useState<CloudWorkspaceStatus>({ source: 'empty', cutoverCompletedAt: null, cloudRevision: 0, documentCount: 0, storedDocumentCount: 0 });
+  const [cloudStatus, setCloudStatus] = useState<CloudWorkspaceStatus>({ source: 'empty', cutoverCompletedAt: null, cloudRevision: 0, lastCloudSyncAt: null, documentCount: 0, storedDocumentCount: 0, schema: { version: 'Unknown', healthy: false, missing: [], bucketReady: false, checkedAt: '' } });
   const [storageMigration, setStorageMigration] = useState({ running: false, total: 0, processed: 0, uploaded: 0, missing: 0, failed: 0 });
   const skipNextCloudSync = useRef(true);
 
@@ -457,7 +475,7 @@ export default function Workspace({ userEmail, userId }: { userEmail: string; us
       saveWorkspaceToCloud(cloudSnapshot).then(() => {
         writeLocalSyncMeta({ pendingCloudChanges: false, lastCloudSyncAt: new Date().toISOString() });
         setSyncState('synced');
-        setCloudStatus((current) => ({ ...current, source: 'cloud', cloudRevision: current.cloudRevision + 1, documentCount: Object.values(cloudSnapshot.docsByProject).reduce((sum, items) => sum + items.length, 0), storedDocumentCount: Object.values(cloudSnapshot.docsByProject).flat().filter((doc) => Boolean(doc.storagePath)).length }));
+        setCloudStatus((current) => ({ ...current, source: 'cloud', cloudRevision: current.cloudRevision + 1, lastCloudSyncAt: new Date().toISOString(), documentCount: Object.values(cloudSnapshot.docsByProject).reduce((sum, items) => sum + items.length, 0), storedDocumentCount: Object.values(cloudSnapshot.docsByProject).flat().filter((doc) => Boolean(doc.storagePath)).length }));
       }).catch((cause) => {
         writeLocalSyncMeta({ pendingCloudChanges: true, changedAt: new Date().toISOString(), lastCloudSyncAt: readLocalSyncMeta().lastCloudSyncAt });
         setSyncState('error');
@@ -562,18 +580,44 @@ export default function Workspace({ userEmail, userId }: { userEmail: string; us
     setSyncState('saving');
     setSyncError('');
     try {
-      await saveWorkspaceToCloud(cloudSnapshot);
+      await inspectCloudSchema(true);
+      const localMeta = readLocalSyncMeta();
+      const retainedLocal = readLocalWorkspace();
+      const cloudResult = await loadWorkspaceFromCloud(true);
+
+      if (localMeta.pendingCloudChanges && hasMeaningfulWorkspace(retainedLocal)) {
+        await saveWorkspaceToCloud(cloudSnapshot);
+        const refreshed = await loadWorkspaceFromCloud(true);
+        if (refreshed.snapshot) applySnapshot(refreshed.snapshot);
+        setCloudStatus(refreshed.status);
+        message('Cloud Connection Restored', 'The retained browser changes were validated, saved to Supabase, and loaded back from the production database.');
+      } else if (cloudResult.snapshot) {
+        applySnapshot(cloudResult.snapshot);
+        setCloudStatus(cloudResult.status);
+        skipNextCloudSync.current = true;
+        message('Cloud Connection Restored', 'The production database passed validation and the live cloud workspace was loaded.');
+      } else if (hasMeaningfulWorkspace(retainedLocal)) {
+        await saveWorkspaceToCloud(cloudSnapshot);
+        const refreshed = await loadWorkspaceFromCloud(true);
+        if (refreshed.snapshot) applySnapshot(refreshed.snapshot);
+        setCloudStatus(refreshed.status);
+        message('Cloud Workspace Initialized', 'The validated browser workspace was saved to the empty production database.');
+      } else {
+        setCloudStatus(cloudResult.status);
+        skipNextCloudSync.current = true;
+        message('Cloud Connection Restored', 'The production database passed validation. No existing project data was found to overwrite.');
+      }
+
       writeLocalSyncMeta({ pendingCloudChanges: false, lastCloudSyncAt: new Date().toISOString() });
       setDataMode('cloud');
       setSyncState('synced');
-      message('Cloud Connection Restored', 'The current browser workspace was saved to Supabase and cloud synchronization is active.');
     } catch (cause) {
       writeLocalSyncMeta({ pendingCloudChanges: true, changedAt: new Date().toISOString(), lastCloudSyncAt: readLocalSyncMeta().lastCloudSyncAt });
       setDataMode('local-fallback');
       setSyncState('error');
-      const text = cause instanceof Error ? cause.message : 'Cloud synchronization could not be restored.';
-      setSyncError(text);
-      message('Cloud Connection Failed', `${text} The local browser fallback remains available.`);
+      const errorText = cause instanceof Error ? cause.message : 'Cloud synchronization could not be restored.';
+      setSyncError(errorText);
+      message('Cloud Connection Failed', `${errorText} The local browser fallback remains available and no cloud overwrite was attempted.`);
     }
   };
 
@@ -613,7 +657,7 @@ export default function Workspace({ userEmail, userId }: { userEmail: string; us
       if (storedDocuments === totalDocuments && failed === 0 && missing === 0) {
         cutoverCompletedAt = await completeCloudCutover({ documents: totalDocuments, uploaded });
       }
-      setCloudStatus((current) => ({ ...current, source: 'cloud', cutoverCompletedAt, documentCount: totalDocuments, storedDocumentCount: storedDocuments }));
+      setCloudStatus((current) => ({ ...current, source: 'cloud', cutoverCompletedAt, lastCloudSyncAt: new Date().toISOString(), documentCount: totalDocuments, storedDocumentCount: storedDocuments }));
       setDataMode('cloud');
       setSyncState('synced');
       if (failed || missing) {
@@ -1193,13 +1237,13 @@ function ProductionSetup({ projects, issuesByProject, docsByProject, templates, 
   const localStoredDocuments = useMemo(() => Object.values(docsByProject).flat().filter((doc) => Boolean(doc.storagePath)).length, [docsByProject]);
   const pendingDocuments = Math.max(0, localCounts.documents - localStoredDocuments);
   const cutoverComplete = Boolean(cloudStatus.cutoverCompletedAt) && pendingDocuments === 0;
-  const migrationNeeded = /cloud_revision|selected_project_legacy_id|data_mode|last_cloud_sync_at|cloud_cutover_completed_at|column .* does not exist/i.test(syncError);
+  const migrationNeeded = /RC3\.1|scopelogic_schema_health|projects\.customer_id|cloud schema is incomplete|cloud_revision|selected_project_legacy_id|data_mode|last_cloud_sync_at|cloud_cutover_completed_at|column .* does not exist/i.test(syncError);
 
   useEffect(() => {
     inspectPriorImport().then((data) => setPriorImport(data)).catch((cause) => {
       const text = cause instanceof Error ? cause.message : 'Database status could not be checked.';
       setError(/relation .*import_runs.*does not exist|could not find the table/i.test(text)
-        ? 'The ScopeLogic database foundation migration has not been applied. Run npx.cmd supabase@latest db push from the repository folder.'
+        ? 'The ScopeLogic database foundation migration has not been applied. Run npx supabase@latest db push from the Codespaces terminal.'
         : text);
     }).finally(() => setChecking(false));
   }, []);
@@ -1241,7 +1285,7 @@ function ProductionSetup({ projects, issuesByProject, docsByProject, templates, 
     }, null, 2);
     const url = URL.createObjectURL(new Blob([content], { type: 'application/json' }));
     const link = document.createElement('a');
-    link.href = url; link.download = 'ScopeLogic_RC3_Cloud_Cutover_Report.json'; link.click();
+    link.href = url; link.download = 'ScopeLogic_RC3.1_Cloud_Cutover_Report.json'; link.click();
     URL.revokeObjectURL(url);
   };
 
@@ -1254,12 +1298,12 @@ function ProductionSetup({ projects, issuesByProject, docsByProject, templates, 
         <div className="section-title"><span>Foundation Status</span><h2>Authentication and live data</h2></div>
         <div className="production-checklist">
           <div className="production-check ok"><b>Secure login</b><span>You are signed in through Supabase Auth.</span></div>
-          <div className={`production-check ${checking ? '' : error ? 'warn' : 'ok'}`}><b>Database foundation</b><span>{checking ? 'Checking database…' : error ? 'Migration or connection needs attention.' : 'ScopeLogic production tables are available.'}</span></div>
-          <div className={`production-check ${dataMode === 'cloud' && syncState !== 'error' ? 'ok' : 'warn'}`}><b>Live workspace</b><span>{dataMode === 'local-fallback' ? 'Local fallback is active. Cloud writes are paused until the connection is restored.' : syncState === 'saving' ? 'Saving current changes to Supabase…' : syncState === 'error' ? 'The latest cloud save failed; the browser fallback remains current.' : 'Projects, SLRs, customers, notes, settings, and logs are loading from and saving to Supabase.'}</span></div>
+          <div className={`production-check ${checking ? '' : error || !cloudStatus.schema.healthy ? 'warn' : 'ok'}`}><b>Database foundation</b><span>{checking ? 'Checking database…' : error ? 'Migration or connection needs attention.' : cloudStatus.schema.healthy ? `ScopeLogic ${cloudStatus.schema.version} production schema is verified.` : 'The RC3.1 schema diagnostic has not passed.'}</span></div>
+          <div className={`production-check ${dataMode === 'cloud' && syncState !== 'error' ? 'ok' : 'warn'}`}><b>Live workspace</b><span>{dataMode === 'local-fallback' ? 'Local fallback is active. Cloud writes are paused until the connection is restored.' : syncState === 'saving' ? 'Saving current changes to Supabase…' : syncState === 'error' ? 'The latest cloud save failed; the browser fallback remains current.' : `Projects, SLRs, customers, notes, settings, and logs are loading from and saving to Supabase.${cloudStatus.lastCloudSyncAt ? ` Last verified save: ${new Date(cloudStatus.lastCloudSyncAt).toLocaleString()}.` : ''}`}</span></div>
           <div className="production-check ok"><b>Recovery copy</b><span>The browser workspace and IndexedDB files remain intact during RC3 verification.</span></div>
           <div className={`production-check ${cutoverComplete ? 'ok' : 'warn'}`}><b>Private document storage</b><span>{cutoverComplete ? `${localStoredDocuments} document file${localStoredDocuments === 1 ? '' : 's'} are stored in the private project-files bucket.` : `${localStoredDocuments} of ${localCounts.documents} document files have a verified cloud storage path.`}</span></div>
         </div>
-        {(error || syncError) && <div className="auth-error production-error">{error || syncError}{migrationNeeded ? <><br /><b>Apply the RC3 migration:</b> run <code>npx.cmd supabase@latest db push</code> from the clean repository folder, then refresh ScopeLogic.</> : null}</div>}
+        {(error || syncError || cloudStatus.schema.missing.length > 0) && <div className="auth-error production-error">{error || syncError || `Missing database objects: ${cloudStatus.schema.missing.join(', ')}`}{migrationNeeded ? <><br /><b>Apply the RC3.1 repair migration:</b> run <code>npx supabase@latest db push</code> from the Codespaces terminal, wait 30 seconds, then select Retry Cloud Sync.</> : null}</div>}
         {(dataMode === 'local-fallback' || syncState === 'error') && <button className="secondary production-retry" onClick={retryCloudSync}>Retry Cloud Sync</button>}
       </section>
 
@@ -1277,7 +1321,7 @@ function ProductionSetup({ projects, issuesByProject, docsByProject, templates, 
     </div>
 
     <section className="panel production-next-panel cloud-cutover-panel">
-      <div className="section-title"><span>RC3 Cutover</span><h2>Private document storage migration</h2></div>
+      <div className="section-title"><span>RC3.1 Cutover</span><h2>Private document storage migration</h2></div>
       <div className="cloud-cutover-summary">
         <div><b>{localCounts.documents}</b><span>Total metadata records</span></div>
         <div><b>{localStoredDocuments}</b><span>Stored in Supabase</span></div>

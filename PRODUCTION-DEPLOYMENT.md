@@ -1,102 +1,172 @@
-# ScopeLogic v1.0 RC3 — Production Deployment
+# ScopeLogic v1.0 RC3.1 — Browser-Only Production Deployment
+
+This procedure uses GitHub Codespaces, Vercel, Supabase, and the ScopeLogic production website. No GitHub Desktop, PowerShell, or local software installation is required.
 
 ## Before starting
 
-- Keep the original computer and browser profile that contain the existing ScopeLogic IndexedDB document files.
-- Do not clear browser history, site data, Local Storage, cookies, or IndexedDB.
-- Keep using the permanent Vercel production domain.
-- Confirm the RC2 database import was previously verified.
+- Keep the original browser profile containing the ScopeLogic Local Storage and IndexedDB files.
+- Do not clear browser history, cookies, Local Storage, site data, or IndexedDB.
+- Confirm the rollback tag `v1.0-rc3-before-closeout` exists in GitHub.
+- Keep the current production website open in a separate tab.
 
-## Part 1 — Replace the GitHub source tree
+## Part 1 — Upload and install RC3.1 in Codespaces
 
-1. Extract the RC3 ZIP.
-2. Open the `ScopeLogic-Rev14` repository through GitHub Desktop.
-3. Select **Repository → Show in Explorer**.
-4. Keep the hidden `.git` folder and delete every other repository file and folder.
-5. Copy every RC3 file and folder into the repository.
-6. Commit with:
+1. Download `ScopeLogic-v1.0-RC3.1-Cloud-Stabilization.zip`.
+2. Open the existing ScopeLogic Codespace.
+3. Upload the ZIP to the repository root through the Explorer panel.
+4. In the Codespaces terminal, confirm the ZIP name:
 
-```text
-Clean install ScopeLogic v1.0 RC3
+```bash
+ls -1 *.zip
 ```
 
-7. Push to `main`.
-8. Wait for Vercel to report **Ready**.
+5. Extract the ZIP to a temporary folder:
 
-The build log should include:
+```bash
+rm -rf /tmp/scopelogic-rc31
+mkdir -p /tmp/scopelogic-rc31
+unzip -q "ScopeLogic-v1.0-RC3.1-Cloud-Stabilization.zip" -d /tmp/scopelogic-rc31
+```
+
+6. Confirm the extracted package contains `app`, `lib`, `public`, `supabase`, and `package.json`:
+
+```bash
+ls -la /tmp/scopelogic-rc31
+```
+
+7. Delete the old source while preserving `.git`:
+
+```bash
+find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+```
+
+8. Copy RC3.1 into the repository:
+
+```bash
+cp -a /tmp/scopelogic-rc31/. .
+```
+
+9. Verify the source package:
+
+```bash
+node scripts/verify-clean-source.mjs
+```
+
+Expected:
 
 ```text
 ScopeLogic source verification passed
 ```
 
-## Part 2 — Apply the RC3 database migration
+10. Install dependencies and run the production build:
 
-Open PowerShell in the clean repository folder and run:
-
-```powershell
-npx.cmd supabase@latest db push --dry-run
+```bash
+npm install
+npm run build
 ```
 
-Confirm the pending migration is:
+11. Commit and push:
+
+```bash
+git add -A
+git commit -m "Install ScopeLogic v1.0 RC3.1"
+git push origin main
+```
+
+## Part 2 — Confirm Vercel
+
+1. Open Vercel and select the ScopeLogic project.
+2. Open **Deployments**.
+3. Open the deployment with commit message `Install ScopeLogic v1.0 RC3.1`.
+4. Wait for **Ready**.
+5. Under **Settings → Environment Variables**, confirm these are assigned to Production:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+   - `NEXT_PUBLIC_SITE_URL`
+6. If a variable is changed, redeploy before continuing.
+
+## Part 3 — Apply the Supabase repair migration
+
+In the Codespaces terminal:
+
+```bash
+npx supabase@latest login
+```
+
+Then link the same Supabase project referenced by `NEXT_PUBLIC_SUPABASE_URL`:
+
+```bash
+npx supabase@latest link --project-ref YOUR_PROJECT_REFERENCE
+```
+
+Review migration history:
+
+```bash
+npx supabase@latest migration list
+```
+
+Preview the pending migration:
+
+```bash
+npx supabase@latest db push --dry-run
+```
+
+The expected pending migration is:
 
 ```text
-20260729000100_scopelogic_rc3_cloud_cutover.sql
+20260805000100_scopelogic_rc31_schema_repair.sql
 ```
 
-Then run:
+Apply it:
 
-```powershell
-npx.cmd supabase@latest db push
+```bash
+npx supabase@latest db push
 ```
 
-Approve the migration. Existing RC2 migrations will be skipped because they are already recorded in Supabase migration history.
+Wait 30 seconds after the migration completes.
 
-## Part 3 — Verify live cloud synchronization
+## Part 4 — Restore cloud synchronization
 
-1. Open the permanent ScopeLogic production URL in the original browser profile.
-2. Sign in.
-3. Confirm the top bar shows **Cloud synced**.
+1. Open the permanent production ScopeLogic URL in the original browser profile.
+2. Press `Ctrl+F5`.
+3. Sign in.
 4. Open **Administration → Production Setup**.
-5. Confirm:
-   - Secure login is available.
-   - Database foundation is available.
-   - Live workspace reports Supabase reads and writes.
-   - The browser recovery copy remains enabled.
+5. Select **Retry Cloud Sync**.
+6. Confirm:
+   - Database foundation says `ScopeLogic RC3.1 production schema is verified.`
+   - Live workspace is active.
+   - The header says `Cloud synced`.
+   - No missing database objects are listed.
 
-When the page reports that RC3 columns are missing, confirm `db push` completed and refresh the browser.
+## Part 5 — Verify a database edit
 
-## Part 4 — Migrate document files
+1. Open a real project.
+2. Open **Internal Notes**.
+3. Add `RC3.1 cloud synchronization test`.
+4. Save and wait for `Cloud synced`.
+5. Refresh with `Ctrl+F5`.
+6. Confirm the note remains.
 
-Perform this only in the original browser profile containing the IndexedDB files.
+Do not migrate document files unless this test passes.
 
-1. Open **Administration → Production Setup**.
-2. Review Total metadata records, Stored in Supabase, Pending browser files, and Need attention.
-3. Select **Migrate Browser Files to Cloud**.
-4. Keep the browser tab open until the process finishes.
-5. Confirm the result says **Cloud cutover completed** or review any missing/failed files.
-6. Download **ScopeLogic RC3 Cloud Cutover Report**.
-7. Do not clear the browser fallback.
+## Part 6 — Migrate browser files
 
-Files that cannot be found in IndexedDB remain identified as pending. Re-upload those documents through Project Documents, then rerun the migration verification.
+1. Use the original browser profile containing the files.
+2. Open **Administration → Production Setup**.
+3. Confirm the `project-files` bucket is private in Supabase Storage.
+4. Select **Migrate Browser Files to Cloud**.
+5. Keep the tab open until complete.
+6. Download the RC3.1 cutover report.
+7. Resolve all required files marked Failed or Missing.
 
-## Part 5 — Verify project documents
+## Part 7 — Second-browser acceptance test
 
-For at least one current document and one previous revision:
+1. Open ScopeLogic in a different browser.
+2. Sign in with the same administrator account.
+3. Confirm projects, customers, SLRs, notes, contract data, calendar entries, and documents appear.
+4. Open and download one current document and one previous revision.
+5. Add `Second-browser cloud synchronization test` to Internal Notes.
+6. Save, refresh, and confirm the note remains.
+7. Refresh the original browser and confirm the same note appears.
 
-1. Open or preview the file.
-2. Download the file.
-3. Confirm the Project Documents row shows **Cloud**.
-4. Upload a new test document.
-5. Confirm it opens after refreshing the page.
-6. Delete the test document if it is not needed.
-
-## Part 6 — Second-browser acceptance test
-
-1. Open ScopeLogic from a different browser profile or computer.
-2. Sign in using the administrator account.
-3. Confirm customers, projects, contacts, SLRs, templates, notes, calendar entries, contract information, and export history load.
-4. Open and download a cloud-stored project document.
-5. Make a small test edit, save it, refresh, and confirm it remains.
-6. Sign out and confirm the workspace is protected.
-
-Keep the original browser fallback until all checks in `RC3-ACCEPTANCE-CHECKLIST.md` pass.
+Keep the browser recovery copy until all items in `RC3.1-ACCEPTANCE-CHECKLIST.md` pass.

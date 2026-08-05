@@ -122,12 +122,22 @@ export type WorkspaceSnapshot = {
   customers: Customer[];
 };
 
+export type CloudSchemaHealth = {
+  version: string;
+  healthy: boolean;
+  missing: string[];
+  bucketReady: boolean;
+  checkedAt: string;
+};
+
 export type CloudWorkspaceStatus = {
   source: 'cloud' | 'empty';
   cutoverCompletedAt: string | null;
   cloudRevision: number;
+  lastCloudSyncAt: string | null;
   documentCount: number;
   storedDocumentCount: number;
+  schema: CloudSchemaHealth;
 };
 
 type AnyRecord = Record<string, any>;
@@ -153,8 +163,12 @@ const isoTimestamp = (value: unknown) => {
   return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
 };
 const legacy = (row: AnyRecord, fallback: string) => text(row.legacy_id || fallback);
+const formatSupabaseError = (error: any) => {
+  if (!error) return 'Unknown Supabase error';
+  return [error.message, error.details, error.hint, error.code ? `Code ${error.code}` : ''].filter(Boolean).join(' · ');
+};
 const requireResult = <T extends { error: any }>(result: T, label: string) => {
-  if (result.error) throw new Error(`${label}: ${result.error.message || String(result.error)}`);
+  if (result.error) throw new Error(`${label}: ${formatSupabaseError(result.error)}`);
   return result;
 };
 const chunk = <T,>(items: T[], size = 200) => {
@@ -171,7 +185,39 @@ async function currentUser(supabase: BrowserClient) {
   return result.data.user;
 }
 
-export async function loadWorkspaceFromCloud(): Promise<{ snapshot: WorkspaceSnapshot | null; status: CloudWorkspaceStatus }> {
+
+let schemaHealthCache: { value: CloudSchemaHealth; checkedAt: number } | null = null;
+
+export async function inspectCloudSchema(force = false): Promise<CloudSchemaHealth> {
+  const now = Date.now();
+  if (!force && schemaHealthCache && now - schemaHealthCache.checkedAt < 5 * 60 * 1000) return schemaHealthCache.value;
+
+  const supabase = createClient();
+  await currentUser(supabase);
+  const result = await supabase.rpc('scopelogic_schema_health');
+  if (result.error) {
+    const message = formatSupabaseError(result.error);
+    const missingFunction = /scopelogic_schema_health|function .* does not exist|PGRST202/i.test(message);
+    throw new Error(missingFunction
+      ? 'RC3.1 database repair has not been applied or Supabase has not refreshed its schema cache. Apply migration 20260805000100_scopelogic_rc31_schema_repair.sql, wait 30 seconds, and retry.'
+      : `Cloud schema diagnostic failed: ${message}`);
+  }
+
+  const raw = (result.data || {}) as AnyRecord;
+  const health: CloudSchemaHealth = {
+    version: text(raw.version) || 'Unknown',
+    healthy: Boolean(raw.healthy),
+    missing: Array.isArray(raw.missing) ? raw.missing.map(text) : [],
+    bucketReady: Boolean(raw.bucketReady ?? raw.bucket_ready),
+    checkedAt: text(raw.checkedAt ?? raw.checked_at) || new Date().toISOString(),
+  };
+  schemaHealthCache = { value: health, checkedAt: now };
+  if (!health.healthy) throw new Error(`Cloud schema is incomplete. Missing: ${health.missing.join(', ') || 'unknown required objects'}.`);
+  return health;
+}
+
+export async function loadWorkspaceFromCloud(forceSchemaCheck = false): Promise<{ snapshot: WorkspaceSnapshot | null; status: CloudWorkspaceStatus }> {
+  const schema = await inspectCloudSchema(forceSchemaCheck);
   const supabase = createClient();
   const user = await currentUser(supabase);
   const ownerId = user.id;
@@ -207,8 +253,10 @@ export async function loadWorkspaceFromCloud(): Promise<{ snapshot: WorkspaceSna
         source: 'empty',
         cutoverCompletedAt: settings.cloud_cutover_completed_at || null,
         cloudRevision: Number(settings.cloud_revision || 0),
+        lastCloudSyncAt: settings.last_cloud_sync_at || null,
         documentCount: 0,
         storedDocumentCount: 0,
+        schema,
       },
     };
   }
@@ -388,8 +436,10 @@ export async function loadWorkspaceFromCloud(): Promise<{ snapshot: WorkspaceSna
       source: 'cloud',
       cutoverCompletedAt: settings.cloud_cutover_completed_at || null,
       cloudRevision: Number(settings.cloud_revision || 0),
+      lastCloudSyncAt: settings.last_cloud_sync_at || null,
       documentCount: documents.length,
       storedDocumentCount: documents.filter((row) => Boolean(row.storage_path)).length,
+      schema,
     },
   };
 }
@@ -415,6 +465,7 @@ export function saveWorkspaceToCloud(snapshot: WorkspaceSnapshot): Promise<void>
 }
 
 async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
+  await inspectCloudSchema();
   const supabase = createClient();
   const user = await currentUser(supabase);
   const ownerId = user.id;

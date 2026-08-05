@@ -1,22 +1,19 @@
-# ScopeLogic v1.0 RC3
+# ScopeLogic v1.0 RC3.1
 
-ScopeLogic v1.0 RC3 completes the first production data cutover. The Revision 14.8 consulting workflow remains intact, while the authenticated application now loads and saves live records through Supabase and stores project documents in the private `project-files` bucket.
+RC3.1 is the cloud-stabilization release for the ScopeLogic production closeout. It repairs production schema drift, verifies the database before any cloud write, preserves the browser recovery copy, and provides clearer diagnostics for Supabase and private document storage.
 
-## Included
+## Primary corrections
 
-- Supabase Auth login, logout, password reset, and protected routes
-- Live Supabase reads and debounced writes for projects, customers, contacts, SLRs, templates, contracts, internal notes, calendar entries, document metadata, export history, and email settings
-- Cloud synchronization status in the application header
-- Automatic local browser recovery copy retained during RC3 verification
-- One-time migration of existing IndexedDB project files to private Supabase Storage
-- Cloud-first document preview and download with signed private URLs
-- New document uploads saved to both Supabase Storage and the browser fallback
-- Official GC release packages archived in private cloud storage when downloaded
-- Row Level Security and authenticated storage policies
-- Downloadable browser-import and cloud-cutover reports
-- RC3 database migration under `supabase/migrations`
+- Repairs the missing `projects.customer_id` relationship and related RLS policy
+- Reconciles all columns required by the RC3 cloud cutover
+- Adds a `scopelogic_schema_health()` diagnostic RPC
+- Verifies the RC3.1 schema before loading or saving the workspace
+- Prevents Retry Cloud Sync from blindly overwriting cloud data
+- Shows the verified schema version and last successful cloud save
+- Preserves the private `project-files` bucket and authenticated storage policies
+- Retains Local Storage and IndexedDB as recovery copies during verification
 
-## Required environment variables
+## Required Vercel variables
 
 ```text
 NEXT_PUBLIC_SUPABASE_URL
@@ -24,24 +21,10 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 NEXT_PUBLIC_SITE_URL
 ```
 
-Existing Resend variables remain required for email delivery.
-
-## Required RC3 migration
-
-After deploying this source tree, run:
-
-```powershell
-npx.cmd supabase@latest db push
-```
-
-The CLI should apply:
+## Required migration
 
 ```text
-20260729000100_scopelogic_rc3_cloud_cutover.sql
+supabase/migrations/20260805000100_scopelogic_rc31_schema_repair.sql
 ```
 
-## Deployment order
-
-Follow `PRODUCTION-DEPLOYMENT.md` exactly. Use the original browser profile for the document migration, and retain the local browser copy until the second-browser acceptance test passes.
-
-See `RELEASE-NOTES-v1.0-RC3.md` and `RC3-ACCEPTANCE-CHECKLIST.md`.
+Use the browser-only Codespaces procedure in `PRODUCTION-DEPLOYMENT.md`. Do not clear browser data or start the document migration until ScopeLogic reports **Cloud synced**.

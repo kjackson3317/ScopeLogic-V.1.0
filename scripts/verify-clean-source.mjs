@@ -80,6 +80,24 @@ try {
   violations.push('RC3 migration file is missing');
 }
 
+
+const rc31MigrationPath = join(root, 'supabase', 'migrations', '20260805000100_scopelogic_rc31_schema_repair.sql');
+try {
+  const rc31Migration = await readFile(rc31MigrationPath, 'utf8');
+  for (const requiredText of ['customer_id', 'scopelogic_schema_health', "notify pgrst, 'reload schema'", 'project-files']) {
+    if (!rc31Migration.includes(requiredText)) violations.push(`RC3.1 migration: missing ${requiredText}`);
+  }
+} catch {
+  violations.push('RC3.1 schema-repair migration file is missing');
+}
+
+if (!cloudWorkspace.includes('inspectCloudSchema')) {
+  violations.push('lib/cloud-workspace.ts: RC3.1 schema preflight is missing');
+}
+if (!workspace.includes('no cloud overwrite was attempted')) {
+  violations.push('app/workspace.tsx: safe retry protection is missing');
+}
+
 if (violations.length) {
   console.error('\nScopeLogic clean-source verification failed:\n');
   for (const violation of violations) console.error(`- ${violation}`);
