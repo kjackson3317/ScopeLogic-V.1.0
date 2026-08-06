@@ -1,20 +1,23 @@
-# ScopeLogic v1.0 RC4.1
+# ScopeLogic v1.0
 
-RC4.1 is a focused refinement to the verified RC4 release. It preserves the RC3.1/RC4 Supabase and private-storage architecture while correcting how multi-system SLRs are presented in the matrices and how contractor-checklist scope is entered.
+ScopeLogic v1.0 is the production closeout release of the browser-based Division 27/28 scope consulting workspace.
 
-## RC4.1 changes
+## Production capabilities
 
-- A multi-system SLR appears only once in the Recommended SOW Matrix.
-- The SLR row lists all affected systems.
-- The Recommended Bid Basis cell contains a separate labeled section for every selected system.
-- The Clarification Matrix continues to show one SLR row with all systems and system-specific recommendations inside the same cell.
-- Every selected system has its own Contractor Checklist Scope Item field in the Internal Matrix.
-- A blank system-specific checklist field excludes the SLR from that system section of the checklist.
-- The Contractor Response Checklist remains one editable PDF divided into system sections.
-- Existing RC4 shared checklist text is copied into every selected system during migration so prior scope is preserved.
-- All other RC4 workflow, contract, document-renaming, navigation, dashboard, email-removal, and Formal RFI behavior remains unchanged.
+- Supabase authentication, row-level security, and cloud database source of truth
+- Private cloud storage for project documents and official release PDFs
+- Multi-system SLR records with one-row matrix presentation
+- Per-system Recommended Bid Basis and Contractor Checklist Scope Item fields
+- Editable Contractor Response Checklist PDF
+- Formal RFI PDF without an external Answer field
+- Numbered Official Releases (`Release 001`, `Release 002`, and so on)
+- Immutable official-release metadata, captured project snapshot, and SHA-256 content hash
+- Current and Superseded release status
+- Project backup ZIP export including cloud document bytes
+- Controlled restore as a new project
+- Final production System Status screen
 
-## Required Vercel variables
+## Required environment variables
 
 ```text
 NEXT_PUBLIC_SUPABASE_URL
@@ -22,10 +25,24 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 NEXT_PUBLIC_SITE_URL
 ```
 
-## Required migration
+`NEXT_PUBLIC_SITE_URL` must be the final HTTPS custom domain.
+
+## Required Supabase migration
+
+Apply all migrations through:
 
 ```text
-supabase/migrations/20260806000200_scopelogic_rc41_matrix_checklist_refinement.sql
+supabase/migrations/20260806000300_scopelogic_v1_production_closeout.sql
 ```
 
-Use `PRODUCTION-DEPLOYMENT.md` for the browser-only Codespaces deployment sequence.
+The final System Status schema version is `1.0`.
+
+## Verification
+
+```bash
+node scripts/verify-clean-source.mjs
+npm install
+npm run build
+```
+
+After deployment and migration, complete `V1.0-ACCEPTANCE-CHECKLIST.md` before tagging `v1.0.0`.

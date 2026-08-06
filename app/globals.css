@@ -143,3 +143,18 @@
   .submitted-slr-list>button{grid-template-columns:1fr}.submitted-slr-list>button>span:nth-child(3){grid-column:auto}.submitted-slr-list>button>span{border-top:1px solid #eef1ed!important}.submitted-slr-list>button>span:first-child{border-top:0!important}
 }
 .contract-information{display:grid;gap:16px}
+
+/* ScopeLogic v1.0 — production closeout */
+.release-history-panel{margin-top:16px;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.release-history-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:17px 19px;border-bottom:1px solid var(--line);background:#f7f9f5}
+.release-history-head span{display:block;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--green2)}
+.release-history-head h2{margin:4px 0 0;font-size:18px}.release-history-head>b{font-size:11px;color:var(--muted)}
+.release-history-list{display:grid}
+.release-history-card{display:grid;grid-template-columns:170px minmax(0,1fr) auto;gap:18px;align-items:center;padding:17px 19px;border-top:1px solid var(--line);border-left:5px solid #7c8b76}
+.release-history-card:first-child{border-top:0}.release-history-card.current{border-left-color:#3f7843;background:#fbfdf9}.release-history-card.superseded{background:#fafafa}
+.release-number span,.release-number b,.release-number i{display:block}.release-number span{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}.release-number b{margin:5px 0;font-size:16px}.release-number i{width:max-content;padding:3px 7px;border-radius:999px;background:#e7efe3;color:#2f6837;font-size:9px;font-style:normal;font-weight:800;text-transform:uppercase}.release-history-card.superseded .release-number i{background:#eceeeb;color:#667063}
+.release-details{min-width:0}.release-details>b,.release-details>span,.release-details>p,.release-details>small,.release-details>code{display:block;overflow-wrap:anywhere}.release-details>b{font-size:13px}.release-details>span{margin-top:4px;font-size:10px;color:var(--muted)}.release-details>p{margin:7px 0 0;font-size:11px;line-height:1.45}.release-details>small{margin-top:6px;color:var(--muted);line-height:1.4}.release-details>code{margin-top:8px;font-size:9px;color:#53604f}
+.release-actions{display:flex;gap:8px;align-items:center}.release-actions button{white-space:nowrap}
+.release-summary-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:1000px){.release-history-card{grid-template-columns:145px minmax(0,1fr)}.release-actions{grid-column:1/-1;justify-content:flex-end}.release-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.release-history-head,.release-history-card{display:block}.release-history-head>b{display:block;margin-top:8px}.release-details{margin-top:12px}.release-actions{margin-top:14px;display:grid}.release-actions button{width:100%}.release-summary-grid{grid-template-columns:1fr}}

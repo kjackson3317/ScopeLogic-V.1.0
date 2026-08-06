@@ -1,27 +1,31 @@
-# Clean Codespaces Replacement — ScopeLogic v1.0 RC4.1
+# Clean Codespaces Replacement — ScopeLogic v1.0
 
-Use this procedure when installing the complete RC4.1 ZIP through GitHub Codespaces.
+1. Upload the complete v1.0 ZIP to the repository root in GitHub Codespaces.
+2. Extract it outside the repository.
+3. Preserve only `.git` in the repository root.
+4. Copy the extracted v1.0 source into the repository.
+5. Run source verification, install, and production build.
+6. Commit and push to `main`.
+7. Wait for Vercel to show `Ready`.
+8. Apply migration `20260806000300_scopelogic_v1_production_closeout.sql`.
+9. Complete the final acceptance checklist.
 
-1. Upload `ScopeLogic-v1.0-RC4.1-Matrix-Checklist-Refinement.zip` to the repository root.
-2. Extract and verify the package in `/tmp/scopelogic-rc41`.
-3. Preserve `.git` and remove every other repository file.
-4. Copy the complete extracted package into the repository.
-5. Run source verification, dependency installation, and the production build.
-6. Commit and push only after the build succeeds.
+Example commands:
 
 ```bash
-rm -rf /tmp/scopelogic-rc41
-mkdir -p /tmp/scopelogic-rc41
-unzip -q "ScopeLogic-v1.0-RC4.1-Matrix-Checklist-Refinement.zip" -d /tmp/scopelogic-rc41
-ls -la /tmp/scopelogic-rc41
+ZIP=$(ls -1t ScopeLogic-v1.0-Production-Final*.zip | head -1)
+rm -rf /tmp/scopelogic-v1
+mkdir -p /tmp/scopelogic-v1
+unzip -q "$ZIP" -d /tmp/scopelogic-v1
 find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
-cp -a /tmp/scopelogic-rc41/. .
+cp -a /tmp/scopelogic-v1/. .
 node scripts/verify-clean-source.mjs
 npm install
 npm run build
+rm -rf supabase/.temp
 git add -A
-git commit -m "Install ScopeLogic v1.0 RC4.1"
+git commit -m "Release ScopeLogic v1.0"
 git push origin main
 ```
 
-Do not open the updated production application until migration `20260806000200_scopelogic_rc41_matrix_checklist_refinement.sql` is applied.
+Never run `supabase db reset --linked` against production.

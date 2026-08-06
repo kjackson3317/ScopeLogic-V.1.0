@@ -128,6 +128,21 @@ export type ExportEntry = {
   projectRevision: string;
 };
 
+export type OfficialRelease = {
+  id: string;
+  releaseNumber: number;
+  revision: string;
+  versionDate: string;
+  lifecycleStatus: 'Current' | 'Superseded';
+  notes: string;
+  fileName: string;
+  storagePath: string;
+  releasedAt: string;
+  supersededAt: string;
+  contentSha256: string;
+  deliverables: string[];
+};
+
 export type WorkspaceSnapshot = {
   projects: Project[];
   projectId: string;
@@ -214,7 +229,7 @@ export async function inspectCloudSchema(force = false): Promise<CloudSchemaHeal
     const message = formatSupabaseError(result.error);
     const missingFunction = /scopelogic_schema_health|function .* does not exist|PGRST202/i.test(message);
     throw new Error(missingFunction
-      ? 'The ScopeLogic database health function is unavailable. Confirm migrations through 20260806000200_scopelogic_rc41_matrix_checklist_refinement.sql are applied, wait 30 seconds, and retry.'
+      ? 'The ScopeLogic database health function is unavailable. Confirm migrations through 20260806000300_scopelogic_v1_production_closeout.sql are applied, wait 30 seconds, and retry.'
       : `Cloud schema diagnostic failed: ${message}`);
   }
 
@@ -227,8 +242,8 @@ export async function inspectCloudSchema(force = false): Promise<CloudSchemaHeal
     checkedAt: text(raw.checkedAt ?? raw.checked_at) || new Date().toISOString(),
   };
   schemaHealthCache = { value: health, checkedAt: now };
-  if (health.version !== 'RC4.1') {
-    throw new Error('ScopeLogic RC4.1 requires migration 20260806000200_scopelogic_rc41_matrix_checklist_refinement.sql. The browser recovery copy remains available and no RC4.1 cloud write was attempted.');
+  if (health.version !== '1.0') {
+    throw new Error('ScopeLogic v1.0 requires migration 20260806000300_scopelogic_v1_production_closeout.sql. The browser recovery copy remains available and no v1.0 cloud write was attempted.');
   }
   if (!health.healthy) throw new Error(`Cloud schema is incomplete. Missing: ${health.missing.join(', ') || 'unknown required objects'}.`);
   return health;
@@ -730,26 +745,78 @@ export async function renameProjectFile(storagePath: string, newFileName: string
   return destination;
 }
 
-export async function saveOfficialRelease(projectLegacyId: string, projectRevision: string, versionDate: string, filename: string, notes: string, kinds: string[], pdf: Blob) {
+export async function getNextOfficialReleaseNumber(projectLegacyId: string): Promise<number> {
+  const releases = await listOfficialReleases(projectLegacyId);
+  return releases.reduce((highest, release) => Math.max(highest, release.releaseNumber), 0) + 1;
+}
+
+export async function listOfficialReleases(projectLegacyId: string): Promise<OfficialRelease[]> {
   const supabase = createClient();
   const user = await currentUser(supabase);
-  const projectResult = requireResult(await supabase.from('projects').select('id').eq('owner_id', user.id).eq('legacy_id', projectLegacyId).single(), 'Find project for official release');
-  if (!projectResult.data?.id) throw new Error('The project could not be resolved for the official release archive.');
+  const projectResult = requireResult(await supabase.from('projects').select('id').eq('owner_id', user.id).eq('legacy_id', projectLegacyId).single(), 'Find project releases');
+  if (!projectResult.data?.id) return [];
+
+  const releaseResult = requireResult(await supabase.from('release_packages')
+    .select('id, revision, version_date, lifecycle_status, release_notes, filename, storage_path, released_at, superseded_at, release_number, content_sha256')
+    .eq('owner_id', user.id)
+    .eq('project_id', projectResult.data.id)
+    .order('release_number', { ascending: false }), 'Read official releases');
+
+  const releaseIds = (releaseResult.data || []).map((row: AnyRecord) => row.id);
+  const deliverableResult = releaseIds.length
+    ? requireResult(await supabase.from('release_deliverables').select('release_package_id, deliverable_type, sort_order').in('release_package_id', releaseIds).order('sort_order'), 'Read release deliverables')
+    : { data: [] as AnyRecord[], error: null };
+  const deliverablesByRelease = new Map<string, string[]>();
+  for (const row of (deliverableResult.data || []) as AnyRecord[]) {
+    deliverablesByRelease.set(row.release_package_id, [...(deliverablesByRelease.get(row.release_package_id) || []), text(row.deliverable_type)]);
+  }
+
+  return (releaseResult.data || []).map((row: AnyRecord) => ({
+    id: text(row.id),
+    releaseNumber: Number(row.release_number || 0),
+    revision: text(row.revision),
+    versionDate: dateText(row.version_date),
+    lifecycleStatus: row.lifecycle_status === 'Superseded' ? 'Superseded' : 'Current',
+    notes: text(row.release_notes),
+    fileName: text(row.filename),
+    storagePath: text(row.storage_path),
+    releasedAt: text(row.released_at),
+    supersededAt: text(row.superseded_at),
+    contentSha256: text(row.content_sha256),
+    deliverables: deliverablesByRelease.get(row.id) || [],
+  }));
+}
+
+export async function createOfficialReleaseUrl(storagePath: string, download = false) {
+  return createProjectFileUrl(storagePath, download);
+}
+
+export async function saveOfficialRelease(projectLegacyId: string, projectRevision: string, versionDate: string, filename: string, notes: string, kinds: string[], pdf: Blob, snapshotData: unknown) {
+  const supabase = createClient();
+  const user = await currentUser(supabase);
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const safeName = filename.replace(/[^a-zA-Z0-9._-]+/g, '_');
   const storagePath = `${user.id}/${projectLegacyId}/releases/${timestamp}_${safeName}`;
   requireResult(await supabase.storage.from('project-files').upload(storagePath, pdf, { upsert: false, contentType: 'application/pdf', cacheControl: '3600' }), 'Store official release');
-  const releaseResult = requireResult(await supabase.from('release_packages').insert({
-    owner_id: user.id,
-    project_id: projectResult.data.id,
-    revision: projectRevision || 'Rev 0',
-    version_date: versionDate || null,
-    status: 'Official Release',
-    release_notes: notes || '',
-    filename,
-    storage_path: storagePath,
-  }).select('id').single(), 'Record official release');
-  if (!releaseResult.data?.id) throw new Error('The official release record could not be created.');
-  await insertChunks(supabase, 'release_deliverables', kinds.map((kind, index) => ({ owner_id: user.id, release_package_id: releaseResult.data.id, deliverable_type: kind, sort_order: index })));
-  return storagePath;
+
+  try {
+    const digest = await crypto.subtle.digest('SHA-256', await pdf.arrayBuffer());
+    const sha256 = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    const result = requireResult(await supabase.rpc('create_scopelogic_official_release', {
+      p_project_legacy_id: projectLegacyId,
+      p_revision: projectRevision || 'Rev 0',
+      p_version_date: versionDate || null,
+      p_release_notes: notes || '',
+      p_filename: filename,
+      p_storage_path: storagePath,
+      p_snapshot_data: snapshotData || {},
+      p_content_sha256: sha256,
+      p_deliverables: kinds,
+    }), 'Record official release');
+    const record = Array.isArray(result.data) ? result.data[0] : result.data;
+    return { storagePath, releaseNumber: Number(record?.release_number || 0), releaseId: text(record?.release_id), sha256 };
+  } catch (error) {
+    await supabase.storage.from('project-files').remove([storagePath]);
+    throw error;
+  }
 }

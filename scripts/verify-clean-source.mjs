@@ -29,6 +29,9 @@ for (const filePath of sourceFiles) {
   }
 }
 
+const layout = await readFile(join(root, 'app', 'layout.tsx'), 'utf8');
+if (!layout.includes("title: 'ScopeLogic v1.0'")) violations.push('app/layout.tsx: production title must be ScopeLogic v1.0');
+
 const rootPage = await readFile(join(root, 'app', 'page.tsx'), 'utf8');
 if (!rootPage.includes("export const dynamic = 'force-dynamic'")) violations.push('app/page.tsx: protected root page must be force-dynamic');
 if (!rootPage.includes('isSupabaseConfigured()')) violations.push('app/page.tsx: safe Supabase configuration guard is missing');
@@ -45,6 +48,8 @@ for (const requiredText of [
   'Retry Cloud Upload',
   'renameProjectFile',
   'System Status',
+  'Export Current Project Backup',
+  'Release History',
 ]) {
   if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing ${requiredText}`);
 }
@@ -60,8 +65,13 @@ if (!workspace.includes('checklistItems: Record<string, string>')) {
   violations.push('app/workspace.tsx: system-specific checklist data model is missing');
 }
 
+const zipSupport = await readFile(join(root, 'lib', 'zip.ts'), 'utf8');
+for (const requiredText of ['createZip', 'readZip', '0x04034b50']) {
+  if (!zipSupport.includes(requiredText)) violations.push(`lib/zip.ts: missing ${requiredText}`);
+}
+
 const cloudWorkspace = await readFile(join(root, 'lib', 'cloud-workspace.ts'), 'utf8');
-for (const requiredText of ["storage.from('project-files')", 'createSignedUrl', 'inspectCloudSchema', 'renameProjectFile', "health.version !== 'RC4.1'", 'checklist_scope_items_by_system']) {
+for (const requiredText of ["storage.from('project-files')", 'createSignedUrl', 'inspectCloudSchema', 'renameProjectFile', "health.version !== '1.0'", 'checklist_scope_items_by_system', 'create_scopelogic_official_release', 'listOfficialReleases']) {
   if (!cloudWorkspace.includes(requiredText)) violations.push(`lib/cloud-workspace.ts: missing ${requiredText}`);
 }
 
@@ -82,14 +92,14 @@ if (/title: 'Formal RFI'[\s\S]{0,220}headers:\s*\[[^\]]*Answer/.test(pdfGenerato
 }
 
 const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-if (packageJson.version !== '1.0.0-rc.4.1') violations.push('package.json: version must be 1.0.0-rc.4.1');
+if (packageJson.version !== '1.0.0') violations.push('package.json: version must be 1.0.0');
 if (packageJson.dependencies?.resend || packageJson.devDependencies?.resend) violations.push('package.json: Resend dependency must be removed');
 
 try {
   await access(join(root, 'app', 'api', 'email'));
   violations.push('app/api/email: obsolete email API route still exists');
 } catch {
-  // Expected in RC4.
+  // Expected in v1.0.
 }
 
 const envExample = await readFile(join(root, '.env.example'), 'utf8');
@@ -102,6 +112,7 @@ for (const [fileName, requiredTexts] of [
   ['20260805000100_scopelogic_rc31_schema_repair.sql', ['customer_id', 'scopelogic_schema_health', "notify pgrst, 'reload schema'", 'project-files']],
   ['20260806000100_scopelogic_rc4_product_simplification.sql', ['systems jsonb', 'recommended_bid_basis_by_system', 'agreement_number', "'version', 'RC4'", "notify pgrst, 'reload schema'"]],
   ['20260806000200_scopelogic_rc41_matrix_checklist_refinement.sql', ['checklist_scope_items_by_system', "'version', 'RC4.1'", "notify pgrst, 'reload schema'"]],
+  ['20260806000300_scopelogic_v1_production_closeout.sql', ['release_number', 'lifecycle_status', 'snapshot_data', 'content_sha256', 'protect_release_package_immutability', 'create_scopelogic_official_release', "'version', '1.0'", "notify pgrst, 'reload schema'"]],
 ]) {
   try {
     const migration = await readFile(join(root, 'supabase', 'migrations', fileName), 'utf8');

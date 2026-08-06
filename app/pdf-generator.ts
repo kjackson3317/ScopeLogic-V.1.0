@@ -468,7 +468,7 @@ export async function buildPdfBytes(kind: PdfKind, project: PdfProject, issues: 
   return document.save();
 }
 
-export async function buildReleasePackageBytes(project: PdfProject, issues: PdfIssue[], selectedKinds: PdfKind[] = ['sow', 'clarifications', 'rfi', 'checklist', 'snippets'], releaseNotes = '') {
+export async function buildReleasePackageBytes(project: PdfProject, issues: PdfIssue[], selectedKinds: PdfKind[] = ['sow', 'clarifications', 'rfi', 'checklist', 'snippets'], releaseNotes = '', releaseNumber = 1) {
   const output = await PDFDocument.create();
   const font = await output.embedFont(StandardFonts.Helvetica);
   const bold = await output.embedFont(StandardFonts.HelveticaBold);
@@ -496,10 +496,12 @@ export async function buildReleasePackageBytes(project: PdfProject, issues: PdfI
   page.drawText(clientFit.text, { x: 48, y: height - 433, size: clientFit.size, font, color: muted });
 
   page.drawRectangle({ x: 48, y: height - 545, width: width - 96, height: 82, color: lightGreen, borderColor: mediumGreen, borderWidth: 0.6 });
-  page.drawText('DOCUMENT REVISION', { x: 64, y: height - 490, size: 7, font: bold, color: muted });
-  page.drawText(project.revision || 'Rev 0', { x: 64, y: height - 520, size: 18, font: bold, color: black });
-  page.drawText('VERSION DATE', { x: 310, y: height - 490, size: 7, font: bold, color: muted });
-  page.drawText(project.versionDate || 'Not set', { x: 310, y: height - 520, size: 13, font: bold, color: black });
+  page.drawText('RELEASE NUMBER', { x: 64, y: height - 490, size: 7, font: bold, color: muted });
+  page.drawText(`Release ${String(Math.max(1, releaseNumber)).padStart(3, '0')}`, { x: 64, y: height - 520, size: 16, font: bold, color: black });
+  page.drawText('DOCUMENT REVISION', { x: 245, y: height - 490, size: 7, font: bold, color: muted });
+  page.drawText(project.revision || 'Rev 0', { x: 245, y: height - 520, size: 15, font: bold, color: black });
+  page.drawText('VERSION DATE', { x: 410, y: height - 490, size: 7, font: bold, color: muted });
+  page.drawText(project.versionDate || 'Not set', { x: 410, y: height - 520, size: 11, font: bold, color: black });
 
   page.drawText('Included Deliverables', { x: 48, y: height - 585, size: 12, font: bold, color: black });
   const titles = selectedKinds.map((kind) => configFor(kind).title);

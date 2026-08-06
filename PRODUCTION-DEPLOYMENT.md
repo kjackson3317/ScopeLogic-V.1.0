@@ -1,72 +1,49 @@
-# ScopeLogic v1.0 RC4.1 — Browser-Only Deployment
+# ScopeLogic v1.0 — Production Deployment
 
-This release is deployed through GitHub Codespaces, Vercel, Supabase, and the ScopeLogic production website. No GitHub Desktop or local software is required.
+## 1. Source deployment
 
-## Before starting
+Install the complete v1.0 source through GitHub Codespaces using `CLEAN-GITHUB-REPLACEMENT.md`. The production build must complete before commit and push.
 
-- Confirm RC4 is Cloud synced.
-- Keep the rollback tag `v1.0-rc3.1-verified`.
-- Create a rollback tag for the working RC4 commit: `v1.0-rc4-before-matrix-refinement`.
-- Do not clear the original browser recovery copy.
+## 2. Vercel
 
-## 1 — Install RC4.1 in Codespaces
+Wait for the deployment associated with `Release ScopeLogic v1.0` to show `Ready`.
 
-Upload `ScopeLogic-v1.0-RC4.1-Matrix-Checklist-Refinement.zip` to the repository root, extract it to `/tmp/scopelogic-rc41`, verify it, then replace the repository while preserving `.git`.
-
-```bash
-rm -rf /tmp/scopelogic-rc41
-mkdir -p /tmp/scopelogic-rc41
-unzip -q "ScopeLogic-v1.0-RC4.1-Matrix-Checklist-Refinement.zip" -d /tmp/scopelogic-rc41
-ls -la /tmp/scopelogic-rc41
-ls -1 /tmp/scopelogic-rc41/supabase/migrations
-find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
-cp -a /tmp/scopelogic-rc41/. .
-node scripts/verify-clean-source.mjs
-npm install
-npm run build
-```
-
-Commit and push:
-
-```bash
-git add -A
-git commit -m "Install ScopeLogic v1.0 RC4.1"
-git push origin main
-```
-
-## 2 — Confirm Vercel
-
-Wait for the deployment associated with `Install ScopeLogic v1.0 RC4.1` to show **Ready**. Confirm the three required Production variables remain visible.
-
-Do not use the updated ScopeLogic application until the RC4.1 migration is applied. RC4.1 refuses cloud writes against the RC4 schema.
-
-## 3 — Apply the RC4.1 migration
-
-Relink the repository if the clean replacement removed `supabase/.temp`.
-
-```bash
-npx supabase@latest link --project-ref YOUR_PROJECT_REFERENCE
-npx supabase@latest migration list
-npx supabase@latest db push --dry-run
-```
-
-Only this migration should be pending:
+Confirm these Production variables remain present:
 
 ```text
-20260806000200_scopelogic_rc41_matrix_checklist_refinement.sql
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+NEXT_PUBLIC_SITE_URL
 ```
 
-Apply it:
+`NEXT_PUBLIC_SITE_URL` must use the final custom HTTPS domain.
+
+## 3. Supabase migration
+
+Relink the Codespace if required, then run:
 
 ```bash
+npx supabase@latest migration list
+npx supabase@latest db push --dry-run
 npx supabase@latest db push
+npx supabase@latest migration list
 ```
 
-## 4 — Verify ScopeLogic
+Only this migration should be pending before the push:
 
-1. Open the permanent production URL in the original browser.
-2. Press `Ctrl+F5`.
-3. Open **Administration → System Status**.
-4. Select **Retry Cloud Sync**.
-5. Confirm `Cloud synced` and schema version `RC4.1`.
-6. Complete `RC4.1-ACCEPTANCE-CHECKLIST.md`.
+```text
+20260806000300_scopelogic_v1_production_closeout.sql
+```
+
+Do not use the v1.0 application before the migration is applied. The application refuses cloud writes unless System Status reports schema version `1.0`.
+
+## 4. Production acceptance
+
+Open the permanent custom domain, force refresh, sign in, and complete `V1.0-ACCEPTANCE-CHECKLIST.md`.
+
+After acceptance:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```

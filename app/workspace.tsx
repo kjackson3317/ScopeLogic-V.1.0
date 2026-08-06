@@ -1,10 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
+import { bytesToText, createZip, readZip, textToBytes } from '../lib/zip';
 import { buildPdfBytes, buildReleasePackageBytes, type PdfKind } from './pdf-generator';
 import {
+  createOfficialReleaseUrl,
   createProjectFileUrl,
+  getNextOfficialReleaseNumber,
   inspectCloudSchema,
+  listOfficialReleases,
   loadWorkspaceFromCloud,
   removeProjectFile,
   renameProjectFile,
@@ -12,6 +16,7 @@ import {
   saveWorkspaceToCloud,
   uploadProjectFile,
   type CloudWorkspaceStatus,
+  type OfficialRelease,
   type WorkspaceSnapshot,
 } from '../lib/cloud-workspace';
 
@@ -157,6 +162,21 @@ type DialogState =
   | { kind: 'input'; title: string; message: string; initialValue: string; placeholder?: string; confirmLabel?: string; onConfirm: (value: string) => void | Promise<void> };
 
 type PreviewState = { title: string; url: string; mode?: 'pdf' | 'image' } | null;
+
+type ProjectBackupManifest = {
+  format: 'ScopeLogicProjectBackup';
+  version: '1.0';
+  exportedAt: string;
+  project: Project;
+  issues: Issue[];
+  documents: Doc[];
+  internalNotes: string;
+  exports: ExportEntry[];
+  customer: Customer | null;
+  files: { documentId: string; archivePath: string; fileName: string; fileType: string }[];
+};
+
+const safeArchiveName = (value: string, fallback: string) => value.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^\.+/, '') || fallback;
 
 const SYSTEM_OPTIONS = ['Structured Cabling', 'Network Electronics', 'CCTV', 'Access Control', 'Intrusion Detection', 'Fire Alarm', 'Video Intercom', 'Audio Visual', 'Paging / Intercom', 'Other'];
 const PROJECT_STATUS_OPTIONS = ['Planning', 'Document Review', 'Bidding', 'Under Review', 'Award Support', 'Construction', 'Complete', 'On Hold', 'Archived'];
@@ -378,6 +398,9 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
   const [calendarEntries, setCalendarEntries] = useState<CalendarEntry[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [releaseSelection, setReleaseSelection] = useState<ReleaseSelection | null>(null);
+  const [officialReleases, setOfficialReleases] = useState<OfficialRelease[]>([]);
+  const [releaseLoading, setReleaseLoading] = useState(false);
+  const backupInputRef = useRef<HTMLInputElement>(null);
   const [hydrated, setHydrated] = useState(false);
   const [dataMode, setDataMode] = useState<'cloud' | 'local-fallback' | 'loading'>('loading');
   const [syncState, setSyncState] = useState<'loading' | 'synced' | 'saving' | 'error'>('loading');
@@ -438,6 +461,20 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
     }).finally(() => { if (active) setHydrated(true); });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (!hydrated || dataMode !== 'cloud') {
+      setOfficialReleases([]);
+      return () => { active = false; };
+    }
+    setReleaseLoading(true);
+    listOfficialReleases(projectId)
+      .then((items) => { if (active) setOfficialReleases(items); })
+      .catch(() => { if (active) setOfficialReleases([]); })
+      .finally(() => { if (active) setReleaseLoading(false); });
+    return () => { active = false; };
+  }, [hydrated, dataMode, projectId]);
 
   const cloudSnapshot = useMemo<WorkspaceSnapshot>(() => ({
     projects, projectId, issuesByProject, docsByProject, templates, notesByProject, exportsByProject, calendarEntries, customers,
@@ -634,23 +671,39 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
     setExportsByProject((current) => ({ ...current, [projectId]: [entry, ...(current[projectId] || [])] }));
   };
 
-  const releaseFileName = () => `${project.name.replace(/[^a-z0-9]+/gi, '_') || 'ScopeLogic'}_${project.revision.replace(/[^a-z0-9]+/gi, '_')}_Official_Release.pdf`;
-
-  const downloadReleasePackage = async (kinds: PdfKind[] = ALL_RELEASE_KINDS, notes = '') => {
+  const exportProjectBackup = async () => {
     try {
-      if (!kinds.length) return message('Select Deliverables', 'Choose at least one deliverable for the official release.');
-      const bytes = await buildReleasePackageBytes(project, issues, kinds, notes);
-      const blob = pdfBytesToBlob(bytes);
-      const fileName = releaseFileName();
-      let archived = false;
-      if (dataMode === 'cloud') {
-        try {
-          await saveOfficialRelease(projectId, project.revision, project.versionDate, fileName, notes, kinds, blob);
-          archived = true;
-        } catch {
-          archived = false;
-        }
+      if (dataMode !== 'cloud' || syncState !== 'synced') {
+        return message('Cloud Sync Required', 'Wait until ScopeLogic shows Cloud synced before exporting a complete project backup.');
       }
+      const archive: Record<string, Uint8Array> = {};
+      const fileIndex: ProjectBackupManifest['files'] = [];
+      for (const doc of docs) {
+        if (!doc.storagePath) continue;
+        const fileName = safeArchiveName(doc.fileName || doc.name, 'document');
+        const archivePath = `documents/${safeArchiveName(doc.id, 'document')}/${fileName}`;
+        const signedUrl = await createProjectFileUrl(doc.storagePath);
+        const response = await fetch(signedUrl);
+        if (!response.ok) throw new Error(`Could not retrieve ${doc.fileName || doc.name} for the backup.`);
+        archive[archivePath] = new Uint8Array(await response.arrayBuffer());
+        fileIndex.push({ documentId: doc.id, archivePath, fileName, fileType: doc.fileType || 'application/octet-stream' });
+      }
+      const manifest: ProjectBackupManifest = {
+        format: 'ScopeLogicProjectBackup',
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        project: JSON.parse(JSON.stringify(project)),
+        issues: JSON.parse(JSON.stringify(issues)),
+        documents: docs.map((doc) => ({ ...doc, storagePath: undefined })),
+        internalNotes,
+        exports: JSON.parse(JSON.stringify(exportEntries)),
+        customer: customers.find((item) => item.id === project.customerId) || null,
+        files: fileIndex,
+      };
+      archive['manifest.json'] = textToBytes(JSON.stringify(manifest, null, 2));
+      const bytes = createZip(archive);
+      const blob = new Blob([pdfBytesToArrayBuffer(bytes)], { type: 'application/zip' });
+      const fileName = `${safeArchiveName(project.name, 'ScopeLogic_Project')}_${new Date().toISOString().slice(0, 10)}_Backup.zip`;
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
@@ -658,11 +711,146 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
-      recordDownload(fileName, 'Official GC Release Package');
+      recordDownload(fileName, 'Project Backup ZIP');
       setTimeout(() => URL.revokeObjectURL(url), 3000);
-      message('Saved', archived ? 'The selected official GC release package was generated, archived in private cloud storage, and downloaded.' : 'The selected official GC release package was generated and downloaded. Cloud archival was not completed; the download remains available.');
+      message('Project Backup Created', `The backup contains the project record, ${issues.length} SLR entries, and ${fileIndex.length} cloud document file${fileIndex.length === 1 ? '' : 's'}.`);
+    } catch (error) {
+      message('Project Backup Failed', error instanceof Error ? error.message : 'The project backup could not be created.');
+    }
+  };
+
+  const restoreProjectBackup = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const archive = readZip(new Uint8Array(await file.arrayBuffer()));
+      const manifestBytes = archive['manifest.json'];
+      if (!manifestBytes) throw new Error('The selected ZIP does not contain a ScopeLogic manifest.');
+      const manifest = JSON.parse(bytesToText(manifestBytes)) as ProjectBackupManifest;
+      if (manifest.format !== 'ScopeLogicProjectBackup' || manifest.version !== '1.0' || !manifest.project?.name) {
+        throw new Error('The selected ZIP is not a supported ScopeLogic v1.0 project backup.');
+      }
+      confirmAction(
+        'Restore Project Backup',
+        `Restore “${manifest.project.name}” as a new project? Existing projects and official releases will not be changed.`,
+        async () => {
+          try {
+            if (dataMode !== 'cloud') throw new Error('Cloud connection is required to restore a project backup.');
+            const restoredProjectId = crypto.randomUUID();
+            let restoredCustomerId = manifest.project.customerId || '';
+            const contactIdMap = new Map<string, string>();
+            if (manifest.customer && !customers.some((item) => item.id === manifest.customer!.id)) {
+              const restoredCustomer = JSON.parse(JSON.stringify(manifest.customer)) as Customer;
+              restoredCustomer.id = crypto.randomUUID();
+              restoredCustomer.contacts = restoredCustomer.contacts.map((contact) => {
+                const nextId = crypto.randomUUID();
+                contactIdMap.set(contact.id, nextId);
+                return { ...contact, id: nextId };
+              });
+              restoredCustomerId = restoredCustomer.id;
+              setCustomers((items) => [...items, restoredCustomer]);
+            }
+            const restoredProject: Project = normalizeProject({
+              ...manifest.project,
+              id: restoredProjectId,
+              customerId: restoredCustomerId,
+              contactIds: (manifest.project.contactIds || []).map((id) => contactIdMap.get(id) || id),
+              contract: {
+                ...manifest.project.contract,
+                primaryContactId: contactIdMap.get(manifest.project.contract?.primaryContactId || '') || manifest.project.contract?.primaryContactId || '',
+              },
+              name: `${manifest.project.name} — Restored`,
+              modified: `Restored ${new Date().toLocaleString()}`,
+            });
+            const restoredIssues = normalizeIssues((manifest.issues || []).map((issue) => normalizeIssue({ ...issue, uid: crypto.randomUUID(), id: issue.id || 'SLR-001' })));
+            const fileByDocument = new Map((manifest.files || []).map((item) => [item.documentId, item]));
+            const restoredDocuments: Doc[] = [];
+            for (const sourceDoc of manifest.documents || []) {
+              const restoredDocumentId = crypto.randomUUID();
+              const sourceFile = fileByDocument.get(sourceDoc.id);
+              let storagePath: string | undefined;
+              if (sourceFile && archive[sourceFile.archivePath]) {
+                const fileBytes = archive[sourceFile.archivePath];
+                const data = fileBytes.buffer.slice(fileBytes.byteOffset, fileBytes.byteOffset + fileBytes.byteLength) as ArrayBuffer;
+                storagePath = await uploadProjectFile(restoredProjectId, restoredDocumentId, new Blob([data], { type: sourceFile.fileType }), sourceFile.fileName, sourceFile.fileType);
+              }
+              restoredDocuments.push({ ...sourceDoc, id: restoredDocumentId, storagePath });
+            }
+            setProjects((items) => [...items, restoredProject]);
+            setIssuesByProject((current) => ({ ...current, [restoredProjectId]: restoredIssues }));
+            setDocsByProject((current) => ({ ...current, [restoredProjectId]: restoredDocuments }));
+            setNotesByProject((current) => ({ ...current, [restoredProjectId]: manifest.internalNotes || '' }));
+            setExportsByProject((current) => ({ ...current, [restoredProjectId]: (manifest.exports || []).map((entry) => ({ ...entry, id: crypto.randomUUID() })) }));
+            setProjectId(restoredProjectId);
+            setSelectedUid('');
+            setDraft(null);
+            setView('dashboard');
+            message('Project Restored', `“${restoredProject.name}” was restored as a new project with ${restoredIssues.length} SLR entries and ${restoredDocuments.length} document records.`);
+          } catch (error) {
+            message('Project Restore Failed', error instanceof Error ? error.message : 'The project backup could not be restored.');
+          }
+        },
+        'Restore as New Project',
+      );
+    } catch (error) {
+      message('Invalid Backup', error instanceof Error ? error.message : 'The selected backup could not be read.');
+    }
+  };
+
+  const releaseFileName = (releaseNumber: number) => `${project.name.replace(/[^a-z0-9]+/gi, '_') || 'ScopeLogic'}_Release_${String(releaseNumber).padStart(3, '0')}_${project.revision.replace(/[^a-z0-9]+/gi, '_')}.pdf`;
+
+  const downloadReleasePackage = async (kinds: PdfKind[] = ALL_RELEASE_KINDS, notes = '') => {
+    try {
+      if (!kinds.length) return message('Select Deliverables', 'Choose at least one deliverable for the official release.');
+      if (dataMode !== 'cloud' || syncState !== 'synced') return message('Cloud Sync Required', 'Official releases can only be created while the production workspace is Cloud synced.');
+      const plannedReleaseNumber = await getNextOfficialReleaseNumber(projectId);
+      const bytes = await buildReleasePackageBytes(project, issues, kinds, notes, plannedReleaseNumber);
+      const blob = pdfBytesToBlob(bytes);
+      const fileName = releaseFileName(plannedReleaseNumber);
+      const releaseSnapshot = {
+        applicationVersion: '1.0.0',
+        releaseNumber: plannedReleaseNumber,
+        createdAt: new Date().toISOString(),
+        project: JSON.parse(JSON.stringify(project)),
+        issues: JSON.parse(JSON.stringify(issues)),
+        documents: docs.map((doc) => ({ id: doc.id, type: doc.type, name: doc.name, revision: doc.revision, date: doc.date, current: doc.current, fileName: doc.fileName })),
+        internalNotes,
+        deliverables: kinds,
+      };
+      const archived = await saveOfficialRelease(projectId, project.revision, project.versionDate, fileName, notes, kinds, blob, releaseSnapshot);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      recordDownload(fileName, `Official GC Release ${String(archived.releaseNumber).padStart(3, '0')}`);
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+      setOfficialReleases(await listOfficialReleases(projectId));
+      message('Official Release Created', `Release ${String(archived.releaseNumber).padStart(3, '0')} was archived as an immutable cloud record and downloaded.`);
     } catch (error) {
       message('Official Release Failed', error instanceof Error ? error.message : 'The combined PDF package could not be generated.');
+    }
+  };
+
+  const openOfficialRelease = async (release: OfficialRelease, download = false) => {
+    try {
+      const url = await createOfficialReleaseUrl(release.storagePath, download);
+      if (download) {
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = release.fileName;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        recordDownload(release.fileName, `Archived Official Release ${String(release.releaseNumber).padStart(3, '0')}`);
+      } else {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    } catch (error) {
+      message('Release Open Failed', error instanceof Error ? error.message : 'The archived release could not be opened.');
     }
   };
 
@@ -683,7 +871,7 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
   return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileNav ? 'show' : ''}`}>
-        <div className="brand"><div className="brand-mark"><img src="/brand/scopelogic-logo-mark.png" alt="ScopeLogic" /></div><div><div className="brand-name-box"><img className="brand-wordmark" src="/brand/scopelogic-wordmark.png" alt="ScopeLogic" /></div><span>v1.0 RC4.1</span></div></div>
+        <div className="brand"><div className="brand-mark"><img src="/brand/scopelogic-logo-mark.png" alt="ScopeLogic" /></div><div><div className="brand-name-box"><img className="brand-wordmark" src="/brand/scopelogic-wordmark.png" alt="ScopeLogic" /></div><span>v1.0</span></div></div>
         <button className="project-switch" onClick={() => setView('projects')}><span>Current project</span><b>{project.name}</b><small>Switch projects</small></button>
         <Nav label="PROJECT" items={[["setup", "Project Setup"], ["dashboard", "Dashboard"], ["documents", "Project Documents"], ["notes", "Internal Notes"], ["internal", "ScopeLogic Internal Matrix"]]} view={view} setView={setView} />
         <Nav label="DELIVERABLES" items={navDeliverables} view={view} setView={setView} />
@@ -708,14 +896,15 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
           {view === 'rfi' && <Deliverable title="Formal RFI" eyebrow="A/E Deliverable" description="One RFI number is retained even when the issue affects multiple systems. The answer remains available for internal tracking but is omitted from the Formal RFI PDF." rows={rfiDeliverableRows(issues)} columns={['RFI No.', 'Systems', 'Question', 'Answer']} update={() => updatePdf('rfi', 'Formal RFI')} url={pdfUrls.rfi} onDownload={() => recordDownload('Formal_RFI.pdf', 'Formal RFI')} preview={(url) => setPreview({ title: 'Formal RFI', url, mode: 'pdf' })} />}
           {view === 'checklist' && <Deliverable title="Contractor Response Checklist" eyebrow="Editable PDF" description="The PDF contains one continuous document divided into system sections. Each selected system uses its own checklist scope item, and additional pages are created only when content requires them." rows={checklistDeliverableRows(issues)} columns={['SLR', 'Systems', 'Checklist Scope Item by System', 'Response', 'Reason']} update={() => updatePdf('checklist', 'Contractor Response Checklist')} url={pdfUrls.checklist} onDownload={() => recordDownload('Contractor_Response_Checklist.pdf', 'Contractor Response Checklist')} preview={(url) => setPreview({ title: 'Contractor Response Checklist', url, mode: 'pdf' })} />}
           {view === 'snippets' && <Deliverable title="Snippet Register" eyebrow="Supporting Reference Document" description="Snippet numbers remain tied to one SLR while all applicable systems are shown." rows={snippetDeliverableRows(issues)} columns={['Snippet No.', 'SLR', 'Systems', 'Document Reference', 'Caption']} update={() => updatePdf('snippets', 'Snippet Register')} url={pdfUrls.snippets} onDownload={() => recordDownload('Snippet_Register.pdf', 'Snippet Register')} preview={(url) => setPreview({ title: 'Snippet Register', url, mode: 'pdf' })} />}
-          {view === 'releases' && <OfficialReleases project={project} generate={() => setReleaseSelection({ kinds: [...ALL_RELEASE_KINDS], notes: '' })} />}
+          {view === 'releases' && <OfficialReleases project={project} releases={officialReleases} loading={releaseLoading} generate={() => setReleaseSelection({ kinds: [...ALL_RELEASE_KINDS], notes: '' })} openRelease={openOfficialRelease} />}
           {view === 'exports' && <ExportLog entries={exportEntries} />}
           {view === 'contract' && <ContractInformation project={project} customers={customers} save={(contract) => { setProjects((items) => items.map((item) => item.id === projectId ? { ...item, contract, modified: 'Now' } : item)); message('Saved', 'Contract Information was saved.'); }} />}
           {view === 'customers' && <CustomerDatabase customers={customers} save={setCustomers} message={message} />}
           {view === 'standards' && <OfficialLogoStandard />}
-          {view === 'production' && <SystemStatus dataMode={dataMode} syncState={syncState} syncError={syncError} cloudStatus={cloudStatus} retryCloudSync={retryCloudSync} docsByProject={docsByProject} />}
+          {view === 'production' && <SystemStatus dataMode={dataMode} syncState={syncState} syncError={syncError} cloudStatus={cloudStatus} retryCloudSync={retryCloudSync} docsByProject={docsByProject} exportBackup={exportProjectBackup} chooseBackup={() => backupInputRef.current?.click()} />}
         </div>
       </main>
+      <input ref={backupInputRef} type="file" accept=".zip,application/zip" hidden onChange={restoreProjectBackup} />
       {preview && <PreviewModal preview={preview} close={() => setPreview(null)} />}
       {dialog && <AppDialog dialog={dialog} close={() => setDialog(null)} />}
       {releaseSelection && <ReleaseSelectionDialog selection={releaseSelection} change={setReleaseSelection} close={() => setReleaseSelection(null)} confirm={async (selection) => { setReleaseSelection(null); await downloadReleasePackage(selection.kinds, selection.notes); }} />}
@@ -1097,17 +1286,19 @@ function ReleaseSelectionDialog({ selection, change, close, confirm }: { selecti
   return <div className="dialog-backdrop release-backdrop" role="presentation"><div className="release-dialog" role="dialog" aria-modal="true"><div className="dialog-title"><b>Generate Official GC Release</b><button onClick={close}>Close</button></div><p>Select the deliverables to include. ScopeLogic will create one combined PDF with a release cover page.</p><div className="release-options">{RELEASE_OPTIONS.map((item) => <label key={item.kind}><input type="checkbox" checked={selection.kinds.includes(item.kind)} onChange={() => toggle(item.kind)} /><span>{item.label}</span></label>)}</div><label className="field"><span>Release Notes / Cover Note</span><textarea value={selection.notes} onChange={(event) => change({ ...selection, notes: event.target.value })} placeholder="Optional note for this official release..." /></label><div className="dialog-actions"><button className="secondary" onClick={close}>Cancel</button><button className="primary" disabled={!selection.kinds.length} onClick={() => confirm(selection)}>Generate Release</button></div></div></div>;
 }
 
-function SystemStatus({ dataMode, syncState, syncError, cloudStatus, retryCloudSync, docsByProject }: { dataMode: 'cloud' | 'local-fallback' | 'loading'; syncState: 'loading' | 'synced' | 'saving' | 'error'; syncError: string; cloudStatus: CloudWorkspaceStatus; retryCloudSync: () => void | Promise<void>; docsByProject: Record<string, Doc[]> }) {
+function SystemStatus({ dataMode, syncState, syncError, cloudStatus, retryCloudSync, docsByProject, exportBackup, chooseBackup }: { dataMode: 'cloud' | 'local-fallback' | 'loading'; syncState: 'loading' | 'synced' | 'saving' | 'error'; syncError: string; cloudStatus: CloudWorkspaceStatus; retryCloudSync: () => void | Promise<void>; docsByProject: Record<string, Doc[]>; exportBackup: () => void | Promise<void>; chooseBackup: () => void }) {
   const documents = Object.values(docsByProject).flat();
   const cloudDocuments = documents.filter((doc) => Boolean(doc.storagePath));
   const statusOk = dataMode === 'cloud' && syncState === 'synced' && cloudStatus.schema.healthy;
   return <>
-    <PageHead eyebrow="Administration" title="System Status" description="Production database, private document storage, and browser recovery status." action={<button className="primary" onClick={() => void retryCloudSync()}>Retry Cloud Sync</button>} />
+    <PageHead eyebrow="Administration" title="System Status" description="Final v1.0 production status, private storage, browser recovery, and controlled backup tools." action={<div className="button-row"><button className="secondary" onClick={() => void exportBackup()}>Export Current Project Backup</button><button className="secondary" onClick={chooseBackup}>Restore Project Backup</button><button className="primary" onClick={() => void retryCloudSync()}>Retry Cloud Sync</button></div>} />
     <div className="system-status-grid">
-      <section className={`system-status-card ${statusOk ? 'ok' : 'warn'}`}><span>Workspace</span><b>{dataMode === 'cloud' ? (syncState === 'saving' ? 'Saving to cloud' : syncState === 'error' ? 'Cloud save error' : 'Cloud synced') : 'Local fallback'}</b><p>{syncError || 'Supabase is the active source of truth. The retained browser copy remains available for recovery.'}</p></section>
-      <section className={`system-status-card ${cloudStatus.schema.healthy ? 'ok' : 'warn'}`}><span>Database schema</span><b>{cloudStatus.schema.version}</b><p>{cloudStatus.schema.healthy ? 'All required production tables and RC4.1 columns are available.' : `Missing: ${cloudStatus.schema.missing.join(', ') || 'Unknown schema items'}`}</p></section>
+      <section className={`system-status-card ${statusOk ? 'ok' : 'warn'}`}><span>Workspace</span><b>{dataMode === 'cloud' ? (syncState === 'saving' ? 'Saving to cloud' : syncState === 'error' ? 'Cloud save error' : 'Cloud synced') : 'Local fallback'}</b><p>{syncError || 'Supabase is the active source of truth. The retained browser copy remains available as a controlled recovery layer.'}</p></section>
+      <section className={`system-status-card ${cloudStatus.schema.healthy ? 'ok' : 'warn'}`}><span>Database schema</span><b>{cloudStatus.schema.version}</b><p>{cloudStatus.schema.healthy ? 'All required ScopeLogic v1.0 production columns and controls are available.' : `Missing: ${cloudStatus.schema.missing.join(', ') || 'Unknown schema items'}`}</p></section>
       <section className={`system-status-card ${cloudStatus.schema.bucketReady ? 'ok' : 'warn'}`}><span>Private storage</span><b>{cloudDocuments.length} of {documents.length} files in cloud</b><p>{cloudStatus.schema.bucketReady ? 'The project-files bucket is private and available.' : 'The private storage bucket requires attention.'}</p></section>
+      <section className="system-status-card ok"><span>Application release</span><b>ScopeLogic v1.0</b><p>Official releases are numbered, cloud archived, content-hashed, and protected from alteration or deletion.</p></section>
       <section className="system-status-card"><span>Last cloud save</span><b>{cloudStatus.lastCloudSyncAt ? new Date(cloudStatus.lastCloudSyncAt).toLocaleString() : 'Not recorded'}</b><p>Cloud revision {cloudStatus.cloudRevision}. Browser recovery data has not been deleted.</p></section>
+      <section className="system-status-card"><span>Project backup</span><b>ZIP export and restore</b><p>Backups contain the current project record, SLR data, project documents, internal notes, and export history. Restore always creates a new project.</p></section>
     </div>
   </>;
 }
@@ -1200,9 +1391,19 @@ function ProjectLibrary({ projects, active, entries, open, add, addEntry, delete
   </>;
 }
 
-function OfficialReleases({ project, generate }: { project: Project; generate: () => void }) {
-  return <><PageHead eyebrow="Project Control" title="Official Releases" description="Generate the formal GC release package after reviewing the current submitted SLRs and individual PDFs." action={<button className="primary" onClick={generate}>Generate Official Release</button>} /><div className="panel release-workspace"><span>Current release basis</span><h2>{project.name}</h2><div className="release-summary-grid"><div><b>{project.revision}</b><span>Project revision</span></div><div><b>{project.versionDate || 'Not set'}</b><span>Version date</span></div><div><b>Private cloud archive</b><span>Release storage</span></div></div><p>RC4.1 continues the existing official-release archive. Immutable release numbering and superseded/current controls are scheduled for the final v1.0 closeout release.</p></div></>;
+function OfficialReleases({ project, releases, loading, generate, openRelease }: { project: Project; releases: OfficialRelease[]; loading: boolean; generate: () => void; openRelease: (release: OfficialRelease, download?: boolean) => void | Promise<void> }) {
+  const current = releases.find((release) => release.lifecycleStatus === 'Current');
+  const labels: Record<string, string> = { sow: 'Recommended SOW', clarifications: 'Clarification Matrix', rfi: 'Formal RFI', checklist: 'Contractor Checklist', snippets: 'Snippet Register' };
+  return <>
+    <PageHead eyebrow="Project Control" title="Official Releases" description="Numbered, immutable GC release packages retained in private cloud storage." action={<button className="primary" onClick={generate}>Generate Official Release</button>} />
+    <div className="panel release-workspace"><span>Current release basis</span><h2>{project.name}</h2><div className="release-summary-grid"><div><b>{current ? `Release ${String(current.releaseNumber).padStart(3, '0')}` : 'No release issued'}</b><span>Current official release</span></div><div><b>{project.revision}</b><span>Project revision</span></div><div><b>{project.versionDate || 'Not set'}</b><span>Version date</span></div><div><b>{releases.length}</b><span>Archived release records</span></div></div><p>Creating a new release automatically supersedes the prior current release. Archived PDFs and their captured project snapshots cannot be edited or deleted.</p></div>
+    <section className="release-history-panel">
+      <div className="release-history-head"><div><span>Archive</span><h2>Release History</h2></div><b>{loading ? 'Loading…' : `${releases.length} release${releases.length === 1 ? '' : 's'}`}</b></div>
+      {loading ? <div className="empty-state"><b>Loading release history…</b></div> : releases.length ? <div className="release-history-list">{releases.map((release) => <article className={`release-history-card ${release.lifecycleStatus.toLowerCase()}`} key={release.id}><div className="release-number"><span>Official</span><b>Release {String(release.releaseNumber).padStart(3, '0')}</b><i>{release.lifecycleStatus}</i></div><div className="release-details"><b>{release.fileName}</b><span>{release.revision} · Version {release.versionDate || 'not set'} · Issued {release.releasedAt ? new Date(release.releasedAt).toLocaleString() : 'date unavailable'}</span><p>{release.deliverables.map((kind) => labels[kind] || kind).join(' · ') || 'No deliverables listed'}</p>{release.notes && <small>{release.notes}</small>}<code title={release.contentSha256}>SHA-256 {release.contentSha256 ? release.contentSha256.slice(0, 16) + '…' : 'not recorded'}</code></div><div className="release-actions"><button className="secondary" onClick={() => void openRelease(release)}>Preview</button><button className="primary" onClick={() => void openRelease(release, true)}>Download</button></div></article>)}</div> : <div className="empty-state"><b>No official releases issued.</b><p>Generate the first official release after reviewing the submitted SLRs and selected deliverables.</p></div>}
+    </section>
+  </>;
 }
+
 
 const moneyNumber = (value: string) => Number(String(value || '').replace(/[^0-9.-]/g, '')) || 0;
 const moneyDisplay = (value: number) => value.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
