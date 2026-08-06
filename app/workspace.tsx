@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { bytesToText, createZip, readZip, textToBytes } from '../lib/zip';
 import { buildPdfBytes, buildReleasePackageBytes, type PdfKind } from './pdf-generator';
 import {
@@ -113,6 +113,15 @@ type ReleaseSelection = {
   notes: string;
 };
 
+type AiAssistance = {
+  provider: 'OpenAI';
+  model: string;
+  generatedAt: string;
+  appliedAt: string;
+  appliedFields: string[];
+  reviewedByUser: boolean;
+};
+
 type Issue = {
   uid: string;
   id: string;
@@ -138,9 +147,10 @@ type Issue = {
   checklistItems: Record<string, string>;
   response: string;
   responseReason: string;
+  aiAssistance: AiAssistance | null;
 };
 
-type Template = { uid: string; name: string; issue: Omit<Issue, 'uid' | 'id' | 'rfi' | 'snippet'> };
+type Template = { uid: string; name: string; issue: Omit<Issue, 'uid' | 'id' | 'rfi' | 'snippet' | 'aiAssistance'> };
 type Doc = {
   id: string;
   type: string;
@@ -162,6 +172,8 @@ type DialogState =
   | { kind: 'input'; title: string; message: string; initialValue: string; placeholder?: string; confirmLabel?: string; onConfirm: (value: string) => void | Promise<void> };
 
 type PreviewState = { title: string; url: string; mode?: 'pdf' | 'image' } | null;
+type AiDraftResult = { title: string; concern: string; rfiQuestion: string; recommendations: Record<string, string>; checklistItems: Record<string, string>; suggestedAdditionalSystems: string[] };
+type AiDraftEnvelope = { draft: AiDraftResult; model: string; generatedAt: string };
 
 type ProjectBackupManifest = {
   format: 'ScopeLogicProjectBackup';
@@ -198,7 +210,7 @@ const blankContract = (): ContractDetails => ({
 const blankProject = (id: string): Project => ({ id, name: 'New ScopeLogic Project', client: '', customerId: '', contactIds: [], versionDate: new Date().toISOString().slice(0, 10), status: 'Planning', systems: [], revision: 'Rev 0', modified: 'Now', contract: blankContract() });
 const blankCustomer = (): Customer => ({ id: crypto.randomUUID(), name: '', address1: '', address2: '', city: '', state: '', zip: '', website: '', notes: '', contacts: [] });
 const blankCustomerContact = (): CustomerContact => ({ id: crypto.randomUUID(), name: '', title: '', email: '', phone: '' });
-const blankIssue = (number: number): Issue => ({ uid: crypto.randomUUID(), id: `SLR-${String(number).padStart(3, '0')}`, system: 'Structured Cabling', customSystem: '', systems: ['Structured Cabling'], recommendations: { 'Structured Cabling': '' }, title: '', status: 'Open', concern: '', rfiQuestion: '', basis: '', reason: '', reference: '', rfi: '', resolution: '', snippet: '', sow: true, clarification: true, formalRfi: false, checklist: false, checklistItem: '', checklistItems: { 'Structured Cabling': '' }, response: 'Included', responseReason: '' });
+const blankIssue = (number: number): Issue => ({ uid: crypto.randomUUID(), id: `SLR-${String(number).padStart(3, '0')}`, system: 'Structured Cabling', customSystem: '', systems: ['Structured Cabling'], recommendations: { 'Structured Cabling': '' }, title: '', status: 'Open', concern: '', rfiQuestion: '', basis: '', reason: '', reference: '', rfi: '', resolution: '', snippet: '', sow: true, clarification: true, formalRfi: false, checklist: false, checklistItem: '', checklistItems: { 'Structured Cabling': '' }, response: 'Included', responseReason: '', aiAssistance: null });
 const cloneIssue = (issue: Issue): Issue => JSON.parse(JSON.stringify(issue));
 const displaySystem = (issue: Issue, system: string) => system === 'Other' ? issue.customSystem || 'Other' : system;
 const issueSystemKeys = (issue: Issue) => issue.systems?.length ? issue.systems : [issue.system || 'Structured Cabling'];
@@ -255,6 +267,7 @@ const normalizeIssue = (issue: Partial<Issue> & Pick<Issue, 'uid' | 'id'>): Issu
     system: systems[0], systems, recommendations, checklistItems,
     rfiQuestion: issue.rfiQuestion ?? (issue.formalRfi ? issue.concern || '' : ''),
     checklistItem: firstChecklistItem, checklist: Boolean(firstChecklistItem.trim()),
+    aiAssistance: issue.aiAssistance && typeof issue.aiAssistance === 'object' ? issue.aiAssistance as AiAssistance : null,
   };
 };
 
@@ -376,7 +389,7 @@ function hasMeaningfulWorkspace(data: Partial<WorkspaceSnapshot> | null | undefi
     || hasNestedContent;
 }
 
-export default function Workspace({ userEmail }: { userEmail: string; userId: string }) {
+export default function Workspace({ userEmail, aiEnabled, aiConfigured }: { userEmail: string; userId: string; aiEnabled: boolean; aiConfigured: boolean }) {
   const [view, setView] = useState<View>('projects');
   const [projects, setProjects] = useState<Project[]>([blankProject('p1')]);
   const [projectId, setProjectId] = useState('p1');
@@ -390,6 +403,7 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
   const [statusFilter, setStatusFilter] = useState('All');
   const [tab, setTab] = useState<'details' | 'snippets' | 'deliverables' | 'history'>('details');
   const [mobileNav, setMobileNav] = useState(false);
+  const [mobileActions, setMobileActions] = useState(false);
   const [pdfUrls, setPdfUrls] = useState<Partial<Record<PdfKind, string>>>({});
   const [preview, setPreview] = useState<PreviewState>(null);
   const [dialog, setDialog] = useState<DialogState | null>(null);
@@ -407,6 +421,67 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
   const [syncError, setSyncError] = useState('');
   const [cloudStatus, setCloudStatus] = useState<CloudWorkspaceStatus>({ source: 'empty', cutoverCompletedAt: null, cloudRevision: 0, lastCloudSyncAt: null, documentCount: 0, storedDocumentCount: 0, schema: { version: 'Unknown', healthy: false, missing: [], bucketReady: false, checkedAt: '' } });
   const skipNextCloudSync = useRef(true);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const mobileNavHistoryPushed = useRef(false);
+
+  const openMobileNav = useCallback(() => {
+    if (mobileNav) return;
+    if (typeof window !== 'undefined') {
+      window.history.pushState({ ...(window.history.state || {}), scopeLogicMobileNav: true }, '');
+      mobileNavHistoryPushed.current = true;
+    }
+    setMobileActions(false);
+    setMobileNav(true);
+  }, [mobileNav]);
+
+  const closeMobileNav = useCallback(() => {
+    setMobileNav(false);
+    if (typeof window !== 'undefined' && mobileNavHistoryPushed.current && window.history.state?.scopeLogicMobileNav) {
+      mobileNavHistoryPushed.current = false;
+      window.history.back();
+    }
+  }, []);
+
+  const navigateTo = useCallback((nextView: View) => {
+    setView(nextView);
+    setMobileActions(false);
+    closeMobileNav();
+  }, [closeMobileNav]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      mobileNavHistoryPushed.current = false;
+      setMobileNav(false);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
+    if (!mobileNav) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.body.classList.add('mobile-nav-open');
+    const panel = sidebarRef.current;
+    const focusable = () => Array.from(panel?.querySelectorAll<HTMLElement>('button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled])') || []);
+    window.setTimeout(() => focusable()[0]?.focus(), 0);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); closeMobileNav(); return; }
+      if (event.key !== 'Tab') return;
+      const items = focusable();
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.classList.remove('mobile-nav-open');
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [mobileNav, closeMobileNav]);
 
   const applySnapshot = (data: Partial<WorkspaceSnapshot> | null) => {
     const restoredProjects = ((data?.projects as Project[] | undefined) || [blankProject('p1')]).map((item) => normalizeProject(item));
@@ -531,7 +606,7 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
     const issue = blankIssue(issues.length + 1);
     if (template) {
       const templateIssue = normalizeIssue({ ...JSON.parse(JSON.stringify(template.issue)), uid: issue.uid, id: issue.id });
-      Object.assign(issue, templateIssue, { uid: issue.uid, id: issue.id, rfi: '', snippet: '' });
+      Object.assign(issue, templateIssue, { uid: issue.uid, id: issue.id, rfi: '', snippet: '', aiAssistance: null });
     }
     setDraft(issue);
     setSelectedUid('');
@@ -582,7 +657,7 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
     requestInput('Save SLR Template', 'Enter a reusable template name. This template will be available in every project.', draft.title || 'Saved SLR Template', (value) => {
       const name = value.trim();
       if (!name) return message('Template Name Required', 'Enter a name before saving the template.');
-      const { uid, id, rfi, snippet, ...issue } = draft;
+      const { uid, id, rfi, snippet, aiAssistance, ...issue } = draft;
       setTemplates((items) => [...items, { uid: crypto.randomUUID(), name, issue }]);
       message('Saved', `The global SLR template "${name}" was saved.`);
     }, 'Save Template');
@@ -870,19 +945,23 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
 
   return (
     <div className="app-shell">
-      <aside className={`sidebar ${mobileNav ? 'show' : ''}`}>
-        <div className="brand"><div className="brand-mark"><img src="/brand/scopelogic-logo-mark.png" alt="ScopeLogic" /></div><div><div className="brand-name-box"><img className="brand-wordmark" src="/brand/scopelogic-wordmark.png" alt="ScopeLogic" /></div><span>v1.0</span></div></div>
-        <button className="project-switch" onClick={() => setView('projects')}><span>Current project</span><b>{project.name}</b><small>Switch projects</small></button>
-        <Nav label="PROJECT" items={[["setup", "Project Setup"], ["dashboard", "Dashboard"], ["documents", "Project Documents"], ["notes", "Internal Notes"], ["internal", "ScopeLogic Internal Matrix"]]} view={view} setView={setView} />
-        <Nav label="DELIVERABLES" items={navDeliverables} view={view} setView={setView} />
-        <Nav label="PROJECT CONTROL" items={[["releases", "Official Releases"], ["exports", "Export Log"], ["contract", "Contract Information"]]} view={view} setView={setView} />
-        <Nav label="ADMINISTRATION" items={[["customers", "Customer Database"], ["standards", "ScopeLogic Standards"], ["production", "System Status"]]} view={view} setView={setView} />
+      {mobileNav && <button className="sidebar-backdrop" aria-label="Close navigation menu" onClick={closeMobileNav} />}
+      <aside id="scopelogic-sidebar" ref={sidebarRef} className={`sidebar ${mobileNav ? 'show' : ''}`} aria-label="ScopeLogic navigation" aria-modal={mobileNav ? 'true' : undefined} role={mobileNav ? 'dialog' : undefined}>
+        <div className="sidebar-mobile-head"><span>Navigation</span><button className="sidebar-close" onClick={closeMobileNav} aria-label="Close navigation menu">Close ×</button></div>
+        <div className="brand"><div className="brand-mark"><img src="/brand/scopelogic-logo-mark.png" alt="ScopeLogic" /></div><div><div className="brand-name-box"><img className="brand-wordmark" src="/brand/scopelogic-wordmark.png" alt="ScopeLogic" /></div><span>v1.0 RC5</span></div></div>
+        <button className="project-switch" onClick={() => navigateTo('projects')}><span>Current project</span><b>{project.name}</b><small>Switch projects</small></button>
+        <Nav label="PROJECT" items={[["setup", "Project Setup"], ["dashboard", "Dashboard"], ["documents", "Project Documents"], ["notes", "Internal Notes"], ["internal", "ScopeLogic Internal Matrix"]]} view={view} setView={navigateTo} />
+        <Nav label="DELIVERABLES" items={navDeliverables} view={view} setView={navigateTo} />
+        <Nav label="PROJECT CONTROL" items={[["releases", "Official Releases"], ["exports", "Export Log"], ["contract", "Contract Information"]]} view={view} setView={navigateTo} />
+        <Nav label="ADMINISTRATION" items={[["customers", "Customer Database"], ["standards", "ScopeLogic Standards"], ["production", "System Status"]]} view={view} setView={navigateTo} />
       </aside>
       <main className="main">
         <header className="topbar">
-          <button className="mobile-menu" onClick={() => setMobileNav(!mobileNav)}>Menu</button>
-          <div><span>{project.client || 'ScopeLogic project'}</span><b>{project.name}</b></div>
-          <div className="top-actions"><span className={`cloud-sync-badge ${dataMode === 'local-fallback' || syncState === 'error' ? 'warn' : syncState === 'saving' ? 'saving' : 'ok'}`} title={syncError || syncLabel}>{syncLabel}</span><span className="signed-in-user">{userEmail}</span><button className="secondary" onClick={() => setReleaseSelection({ kinds: [...ALL_RELEASE_KINDS], notes: '' })}>Generate Official Release</button><button className="secondary" onClick={() => setView('documents')}>Documents</button><form action="/auth/signout" method="post"><button className="secondary" type="submit">Sign Out</button></form></div>
+          <button className="mobile-menu" onClick={mobileNav ? closeMobileNav : openMobileNav} aria-expanded={mobileNav} aria-controls="scopelogic-sidebar">Menu</button>
+          <div className="topbar-project"><span>{project.client || 'ScopeLogic project'}</span><b>{project.name}</b></div>
+          <span className={`cloud-sync-badge mobile-sync ${dataMode === 'local-fallback' || syncState === 'error' ? 'warn' : syncState === 'saving' ? 'saving' : 'ok'}`} title={syncError || syncLabel}>{syncLabel}</span>
+          <div className="top-actions desktop-actions"><span className={`cloud-sync-badge ${dataMode === 'local-fallback' || syncState === 'error' ? 'warn' : syncState === 'saving' ? 'saving' : 'ok'}`} title={syncError || syncLabel}>{syncLabel}</span><span className="signed-in-user">{userEmail}</span><button className="secondary" onClick={() => setReleaseSelection({ kinds: [...ALL_RELEASE_KINDS], notes: '' })}>Generate Official Release</button><button className="secondary" onClick={() => navigateTo('documents')}>Documents</button><form action="/auth/signout" method="post"><button className="secondary" type="submit">Sign Out</button></form></div>
+          <div className="mobile-actions-wrap"><button className="mobile-actions-button" onClick={() => setMobileActions((open) => !open)} aria-expanded={mobileActions}>Actions</button>{mobileActions && <div className="mobile-actions-menu"><button onClick={() => { setMobileActions(false); setReleaseSelection({ kinds: [...ALL_RELEASE_KINDS], notes: '' }); }}>Generate Official Release</button><button onClick={() => navigateTo('documents')}>Project Documents</button><form action="/auth/signout" method="post"><button type="submit">Sign Out</button></form></div>}</div>
         </header>
         <div className="page">
           {view === 'projects' && <ProjectLibrary projects={projects} active={projectId} entries={calendarEntries} open={(id) => { setProjectId(id); setSelectedUid(''); setDraft(null); setView('dashboard'); }} add={addProject} addEntry={(entry) => setCalendarEntries((items) => [...items, entry])} deleteEntry={(id) => setCalendarEntries((items) => items.filter((item) => item.id !== id))} message={message} />}
@@ -890,7 +969,7 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
           {view === 'dashboard' && <Dashboard project={project} issues={issues} docs={docs} customers={customers} go={setView} generateAll={() => setReleaseSelection({ kinds: [...ALL_RELEASE_KINDS], notes: '' })} />}
           {view === 'documents' && <Documents projectId={projectId} docs={docs} setDocs={setDocs} openPreview={setPreview} confirmAction={confirmAction} requestInput={requestInput} message={message} cloudEnabled={dataMode === 'cloud'} />}
           {view === 'notes' && <InternalNotes value={internalNotes} save={(value) => { setNotesByProject((current) => ({ ...current, [projectId]: value })); message('Saved', 'Internal notes were saved.'); }} />}
-          {view === 'internal' && <InternalMatrix issues={filtered} allCount={issues.length} draft={draft} selectedUid={selectedUid} edit={editIssue} setDraft={setDraft} submit={submit} remove={deleteEntry} newDraft={newDraft} saveTemplate={saveTemplate} templates={templates} deleteTemplate={requestDeleteTemplate} search={search} setSearch={setSearch} systems={systems} systemFilter={systemFilter} setSystemFilter={setSystemFilter} statusFilter={statusFilter} setStatusFilter={setStatusFilter} tab={tab} setTab={setTab} confirmAction={confirmAction} />}
+          {view === 'internal' && <InternalMatrix issues={filtered} allCount={issues.length} draft={draft} selectedUid={selectedUid} edit={editIssue} setDraft={setDraft} submit={submit} remove={deleteEntry} newDraft={newDraft} saveTemplate={saveTemplate} templates={templates} deleteTemplate={requestDeleteTemplate} search={search} setSearch={setSearch} systems={systems} systemFilter={systemFilter} setSystemFilter={setSystemFilter} statusFilter={statusFilter} setStatusFilter={setStatusFilter} tab={tab} setTab={setTab} confirmAction={confirmAction} aiEnabled={aiEnabled} />}
           {view === 'sow' && <Deliverable title="Recommended SOW Matrix" eyebrow="Primary Flagship Deliverable" description="Each SLR appears once. All affected systems and their separate Recommended Bid Basis sections remain inside the same matrix row." rows={sowDeliverableRows(issues)} columns={['SLR', 'Systems', 'Scope Item', 'Scope Concern', 'Recommended Bid Basis by System', 'Document Reference']} update={() => updatePdf('sow', 'Recommended SOW Matrix')} url={pdfUrls.sow} onDownload={() => recordDownload('Recommended_SOW_Matrix.pdf', 'Recommended SOW Matrix')} preview={(url) => setPreview({ title: 'Recommended SOW Matrix', url, mode: 'pdf' })} />}
           {view === 'clarifications' && <Deliverable title="Clarification Matrix" eyebrow="GC Working Document" description="Each SLR remains one record while all selected systems and system-specific recommendations are shown together." rows={clarificationDeliverableRows(issues)} columns={['SLR / RFI', 'Systems', 'Question / Issue', 'Recommended Bid Basis by System', 'Resolution', 'Status', 'Document Reference']} update={() => updatePdf('clarifications', 'Clarification Matrix')} url={pdfUrls.clarifications} onDownload={() => recordDownload('Clarification_Matrix.pdf', 'Clarification Matrix')} preview={(url) => setPreview({ title: 'Clarification Matrix', url, mode: 'pdf' })} />}
           {view === 'rfi' && <Deliverable title="Formal RFI" eyebrow="A/E Deliverable" description="One RFI number is retained even when the issue affects multiple systems. The answer remains available for internal tracking but is omitted from the Formal RFI PDF." rows={rfiDeliverableRows(issues)} columns={['RFI No.', 'Systems', 'Question', 'Answer']} update={() => updatePdf('rfi', 'Formal RFI')} url={pdfUrls.rfi} onDownload={() => recordDownload('Formal_RFI.pdf', 'Formal RFI')} preview={(url) => setPreview({ title: 'Formal RFI', url, mode: 'pdf' })} />}
@@ -901,7 +980,7 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
           {view === 'contract' && <ContractInformation project={project} customers={customers} save={(contract) => { setProjects((items) => items.map((item) => item.id === projectId ? { ...item, contract, modified: 'Now' } : item)); message('Saved', 'Contract Information was saved.'); }} />}
           {view === 'customers' && <CustomerDatabase customers={customers} save={setCustomers} message={message} />}
           {view === 'standards' && <OfficialLogoStandard />}
-          {view === 'production' && <SystemStatus dataMode={dataMode} syncState={syncState} syncError={syncError} cloudStatus={cloudStatus} retryCloudSync={retryCloudSync} docsByProject={docsByProject} exportBackup={exportProjectBackup} chooseBackup={() => backupInputRef.current?.click()} />}
+          {view === 'production' && <SystemStatus dataMode={dataMode} syncState={syncState} syncError={syncError} cloudStatus={cloudStatus} retryCloudSync={retryCloudSync} docsByProject={docsByProject} exportBackup={exportProjectBackup} chooseBackup={() => backupInputRef.current?.click()} aiEnabled={aiEnabled} aiConfigured={aiConfigured} />}
         </div>
       </main>
       <input ref={backupInputRef} type="file" accept=".zip,application/zip" hidden onChange={restoreProjectBackup} />
@@ -915,6 +994,7 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
 function InternalMatrix(props: any) {
   const draft: Issue | null = props.draft;
   const [selectedTemplate, setSelectedTemplate] = useState('');
+  const [aiOpen, setAiOpen] = useState(false);
   const patch = (key: keyof Issue, value: unknown) => props.setDraft((current: Issue | null) => current ? { ...current, [key]: value } : current);
   const chosenTemplate: Template | undefined = props.templates.find((template: Template) => template.uid === selectedTemplate);
 
@@ -941,9 +1021,22 @@ function InternalMatrix(props: any) {
   };
   const patchRecommendation = (system: string, value: string) => props.setDraft((current: Issue | null) => current ? { ...current, recommendations: { ...current.recommendations, [system]: value } } : current);
   const patchChecklistItem = (system: string, value: string) => props.setDraft((current: Issue | null) => current ? { ...current, checklistItems: { ...current.checklistItems, [system]: value } } : current);
+  const applyAiDraft = (result: AiDraftEnvelope, appliedFields: string[]) => props.setDraft((current: Issue | null) => {
+    if (!current) return current;
+    const next: Issue = { ...current, recommendations: { ...current.recommendations }, checklistItems: { ...current.checklistItems } };
+    if (appliedFields.includes('title')) next.title = result.draft.title;
+    if (appliedFields.includes('concern')) next.concern = result.draft.concern;
+    if (appliedFields.includes('rfiQuestion')) next.rfiQuestion = result.draft.rfiQuestion;
+    current.systems.forEach((system) => {
+      if (appliedFields.includes(`recommendation:${system}`)) next.recommendations[system] = result.draft.recommendations?.[system] || '';
+      if (appliedFields.includes(`checklist:${system}`)) next.checklistItems[system] = result.draft.checklistItems?.[system] || '';
+    });
+    next.aiAssistance = { provider: 'OpenAI', model: result.model, generatedAt: result.generatedAt, appliedAt: new Date().toISOString(), appliedFields, reviewedByUser: true };
+    return next;
+  });
 
   return <>
-    <PageHead eyebrow="Primary Workspace" title="ScopeLogic Internal Matrix" description="Create one SLR for a scope issue, select every affected system, and enter a separate Recommended Bid Basis for each system." action={<div className="button-row"><button className="secondary" onClick={props.remove}>{draft && !props.selectedUid ? 'Discard Draft' : 'Delete'}</button><button className="primary" onClick={() => props.newDraft()}>+ New Issue</button></div>} />
+    <PageHead eyebrow="Primary Workspace" title="ScopeLogic Internal Matrix" description="Create one SLR for a scope issue, select every affected system, and enter a separate Recommended Bid Basis for each system." action={<div className="button-row"><button className="secondary ai-draft-button" disabled={!draft || !props.aiEnabled} title={!props.aiEnabled ? 'AI drafting remains disabled until production acceptance is complete.' : !draft ? 'Create or select an SLR draft first.' : 'Draft selected SLR fields with AI.'} onClick={() => setAiOpen(true)}>{props.aiEnabled ? 'AI Draft Assistant' : 'AI Draft Assistant — Disabled'}</button><button className="secondary" onClick={props.remove}>{draft && !props.selectedUid ? 'Discard Draft' : 'Delete'}</button><button className="primary" onClick={() => props.newDraft()}>+ New Issue</button></div>} />
     <div className="template-bar template-library">
       <div><b>SLR Template Library</b><span>Global templates remain available across every project.</span></div>
       <select value={selectedTemplate} onChange={(event) => setSelectedTemplate(event.target.value)}><option value="">{props.templates.length ? 'Select a saved SLR template...' : 'No saved templates yet'}</option>{props.templates.map((template: Template) => <option key={template.uid} value={template.uid}>{template.name}</option>)}</select>
@@ -953,7 +1046,7 @@ function InternalMatrix(props: any) {
 
     <section className="issue-editor matrix-editor-full">
       {!draft ? <div className="empty-state large"><b>Select a submitted SLR below or create a new issue.</b><p>Only submitted entries feed deliverables and PDFs.</p></div> : <>
-        <div className="draft-banner"><b>{props.selectedUid ? 'Editing submitted entry' : 'Unsubmitted draft'}</b><span>{draft.id} remains provisional until Submit Entry is selected.</span></div>
+        <div className="draft-banner"><b>{props.selectedUid ? 'Editing submitted entry' : 'Unsubmitted draft'}</b><span>{draft.id} remains provisional until Submit Entry is selected.</span>{draft.aiAssistance && <small>AI-assisted draft · {draft.aiAssistance.model} · reviewed by user</small>}</div>
         <div className="issue-title"><div><span>{draft.id}</span><input placeholder="Scope Item / Short Description" value={draft.title} onChange={(event) => patch('title', event.target.value)} /></div><select value={draft.status} onChange={(event) => patch('status', event.target.value)}>{ISSUE_STATUS_OPTIONS.map((status) => <option key={status}>{status}</option>)}</select></div>
 
         <div className="system-selector-block"><span>Affected Systems</span><div className="system-chip-grid">{SYSTEM_OPTIONS.map((system) => <label key={system} className={draft.systems.includes(system) ? 'selected' : ''}><input type="checkbox" checked={draft.systems.includes(system)} onChange={() => toggleSystem(system)} /><b>{system}</b></label>)}</div>{draft.systems.includes('Other') && <Field label="Define Other System" value={draft.customSystem} onChange={(value) => patch('customSystem', value)} />}</div>
@@ -981,7 +1074,79 @@ function InternalMatrix(props: any) {
 
     <div className="matrix-toolbar matrix-toolbar-bottom"><input placeholder="Search submitted SLRs..." value={props.search} onChange={(event) => props.setSearch(event.target.value)} /><select value={props.systemFilter} onChange={(event) => props.setSystemFilter(event.target.value)}>{props.systems.map((system: string) => <option key={system}>{system}</option>)}</select><select value={props.statusFilter} onChange={(event) => props.setStatusFilter(event.target.value)}><option>All</option>{ISSUE_STATUS_OPTIONS.map((status) => <option key={status}>{status}</option>)}</select><span>{props.allCount} submitted</span></div>
     <section className="submitted-slr-list"><div className="submitted-slr-head"><span>SLR / RFI</span><span>Systems</span><span>Scope Item</span><span>Status</span></div>{props.issues.length ? props.issues.map((issue: Issue) => <button key={issue.uid} className={props.selectedUid === issue.uid ? 'selected' : ''} onClick={() => props.edit(issue.uid)}><span><b>{issue.id}</b>{issue.rfi && <small>{issue.rfi}</small>}</span><span>{systemName(issue)}</span><span><b>{issue.title}</b><small>{issue.reference || 'No document reference'}</small></span><span><em className={`status-dot ${issue.status.toLowerCase().replaceAll(' ', '-')}`}>{issue.status}</em></span></button>) : <div className="empty-list"><b>No submitted entries</b><p>Create an SLR and select Submit Entry.</p></div>}</section>
+    {aiOpen && draft && <AiDraftAssistant issue={draft} close={() => setAiOpen(false)} apply={applyAiDraft} />}
   </>;
+}
+
+function AiDraftAssistant({ issue, close, apply }: { issue: Issue; close: () => void; apply: (result: AiDraftEnvelope, fields: string[]) => void }) {
+  const [prompt, setPrompt] = useState('');
+  const [result, setResult] = useState<AiDraftEnvelope | null>(null);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const rows = result ? [
+    { id: 'title', label: 'Scope Item / Short Description', current: issue.title, proposed: result.draft.title },
+    { id: 'concern', label: 'Scope Concern', current: issue.concern, proposed: result.draft.concern },
+    { id: 'rfiQuestion', label: 'Formal RFI Question', current: issue.rfiQuestion, proposed: result.draft.rfiQuestion },
+    ...issue.systems.map((system) => ({ id: `recommendation:${system}`, label: `Recommended Bid Basis — ${displaySystem(issue, system)}`, current: issue.recommendations?.[system] || '', proposed: result.draft.recommendations?.[system] || '' })),
+    ...issue.systems.map((system) => ({ id: `checklist:${system}`, label: `Contractor Checklist Scope Item — ${displaySystem(issue, system)}`, current: issue.checklistItems?.[system] || '', proposed: result.draft.checklistItems?.[system] || '' })),
+  ] : [];
+
+  const generate = async () => {
+    if (prompt.trim().length < 10 || !issue.systems.length) return;
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch('/api/ai/slr-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: prompt.trim(),
+          systems: issue.systems.map((system) => ({ key: system, label: displaySystem(issue, system) })),
+          existing: { title: issue.title, concern: issue.concern, rfiQuestion: issue.rfiQuestion, reference: issue.reference, recommendations: issue.recommendations, checklistItems: issue.checklistItems },
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(payload.error || 'The AI draft could not be generated.'));
+      const envelope = payload as AiDraftEnvelope;
+      setResult(envelope);
+      const proposedRows = [
+        { id: 'title', current: issue.title, proposed: envelope.draft.title },
+        { id: 'concern', current: issue.concern, proposed: envelope.draft.concern },
+        { id: 'rfiQuestion', current: issue.rfiQuestion, proposed: envelope.draft.rfiQuestion },
+        ...issue.systems.map((system) => ({ id: `recommendation:${system}`, current: issue.recommendations?.[system] || '', proposed: envelope.draft.recommendations?.[system] || '' })),
+        ...issue.systems.map((system) => ({ id: `checklist:${system}`, current: issue.checklistItems?.[system] || '', proposed: envelope.draft.checklistItems?.[system] || '' })),
+      ];
+      setSelected(Object.fromEntries(proposedRows.map((row) => [row.id, !row.current.trim() && Boolean(row.proposed.trim())])));
+    } catch (generationError) {
+      setError(generationError instanceof Error ? generationError.message : 'The AI draft could not be generated.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const selectedFields = Object.entries(selected).filter(([, value]) => value).map(([key]) => key);
+  return <div className="dialog-backdrop ai-draft-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+    <section className="ai-draft-dialog" role="dialog" aria-modal="true" aria-labelledby="ai-draft-title">
+      <div className="dialog-title"><div><span>ScopeLogic Drafting Assistant</span><b id="ai-draft-title">AI Draft Assistant</b></div><button onClick={close}>Close</button></div>
+      {!result ? <>
+        <p>Describe the scope issue, what is unclear, and what you believe should be included. The assistant will draft fields for review without submitting the SLR.</p>
+        <label className="field"><span>Drafting Prompt</span><textarea autoFocus maxLength={4000} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Example: Door 104 is shown with card access, but the documents do not clearly assign the data cable from the IDF to the access-control panel. Draft a reasonable bid basis for Structured Cabling and Access Control." /></label>
+        <div className="ai-context-summary"><b>Context included</b><span>{issueSystemNames(issue).join(' · ')}</span><span>{issue.reference ? `Document Reference: ${issue.reference}` : 'No Document Reference entered. AI will not create one.'}</span></div>
+        {error && <div className="auth-error" role="alert">{error}</div>}
+        <div className="ai-disclaimer">AI-generated draft. Verify all language against the contract documents before submission.</div>
+        <div className="dialog-actions"><button className="secondary" onClick={close}>Cancel</button><button className="primary" disabled={loading || prompt.trim().length < 10 || !issue.systems.length} onClick={() => void generate()}>{loading ? 'Generating…' : 'Generate Draft'}</button></div>
+      </> : <>
+        <p>Select the fields to apply. Existing populated fields are not selected by default.</p>
+        {result.draft.suggestedAdditionalSystems?.length > 0 && <div className="ai-system-suggestions"><b>Possible additional systems</b><span>{result.draft.suggestedAdditionalSystems.join(' · ')}</span><small>Suggestions are informational and are not added automatically.</small></div>}
+        <div className="ai-review-list">{rows.map((row) => <article className="ai-review-row" key={row.id}><label><input type="checkbox" checked={Boolean(selected[row.id])} onChange={(event) => setSelected((current) => ({ ...current, [row.id]: event.target.checked }))} /><b>{row.label}</b></label><div className="ai-comparison"><div><span>Current value</span><p>{row.current || 'Blank'}</p></div><div><span>AI draft</span><p>{row.proposed || 'Blank'}</p></div></div></article>)}</div>
+        {error && <div className="auth-error" role="alert">{error}</div>}
+        <div className="ai-disclaimer">AI-generated draft. Verify all language against the contract documents before submission.</div>
+        <div className="dialog-actions ai-review-actions"><button className="secondary" onClick={() => { setResult(null); setSelected({}); setError(''); }}>Edit Prompt</button><button className="secondary" disabled={loading} onClick={() => void generate()}>{loading ? 'Regenerating…' : 'Regenerate Draft'}</button><button className="primary" disabled={!selectedFields.length} onClick={() => { apply(result, selectedFields); close(); }}>Apply Selected Fields</button></div>
+      </>}
+    </section>
+  </div>;
 }
 
 function Documents({ projectId, docs, setDocs, openPreview, confirmAction, requestInput, message, cloudEnabled }: { projectId: string; docs: Doc[]; setDocs: (change: (items: Doc[]) => Doc[]) => void; openPreview: (preview: PreviewState) => void; confirmAction: (title: string, body: string, onConfirm: () => void | Promise<void>, confirmLabel?: string, danger?: boolean) => void; requestInput: (title: string, body: string, initialValue: string, onConfirm: (value: string) => void | Promise<void>, confirmLabel?: string) => void; message: (title: string, body: string) => void; cloudEnabled: boolean }) {
@@ -1286,17 +1451,17 @@ function ReleaseSelectionDialog({ selection, change, close, confirm }: { selecti
   return <div className="dialog-backdrop release-backdrop" role="presentation"><div className="release-dialog" role="dialog" aria-modal="true"><div className="dialog-title"><b>Generate Official GC Release</b><button onClick={close}>Close</button></div><p>Select the deliverables to include. ScopeLogic will create one combined PDF with a release cover page.</p><div className="release-options">{RELEASE_OPTIONS.map((item) => <label key={item.kind}><input type="checkbox" checked={selection.kinds.includes(item.kind)} onChange={() => toggle(item.kind)} /><span>{item.label}</span></label>)}</div><label className="field"><span>Release Notes / Cover Note</span><textarea value={selection.notes} onChange={(event) => change({ ...selection, notes: event.target.value })} placeholder="Optional note for this official release..." /></label><div className="dialog-actions"><button className="secondary" onClick={close}>Cancel</button><button className="primary" disabled={!selection.kinds.length} onClick={() => confirm(selection)}>Generate Release</button></div></div></div>;
 }
 
-function SystemStatus({ dataMode, syncState, syncError, cloudStatus, retryCloudSync, docsByProject, exportBackup, chooseBackup }: { dataMode: 'cloud' | 'local-fallback' | 'loading'; syncState: 'loading' | 'synced' | 'saving' | 'error'; syncError: string; cloudStatus: CloudWorkspaceStatus; retryCloudSync: () => void | Promise<void>; docsByProject: Record<string, Doc[]>; exportBackup: () => void | Promise<void>; chooseBackup: () => void }) {
+function SystemStatus({ dataMode, syncState, syncError, cloudStatus, retryCloudSync, docsByProject, exportBackup, chooseBackup, aiEnabled, aiConfigured }: { dataMode: 'cloud' | 'local-fallback' | 'loading'; syncState: 'loading' | 'synced' | 'saving' | 'error'; syncError: string; cloudStatus: CloudWorkspaceStatus; retryCloudSync: () => void | Promise<void>; docsByProject: Record<string, Doc[]>; exportBackup: () => void | Promise<void>; chooseBackup: () => void; aiEnabled: boolean; aiConfigured: boolean }) {
   const documents = Object.values(docsByProject).flat();
   const cloudDocuments = documents.filter((doc) => Boolean(doc.storagePath));
   const statusOk = dataMode === 'cloud' && syncState === 'synced' && cloudStatus.schema.healthy;
   return <>
-    <PageHead eyebrow="Administration" title="System Status" description="Final v1.0 production status, private storage, browser recovery, and controlled backup tools." action={<div className="button-row"><button className="secondary" onClick={() => void exportBackup()}>Export Current Project Backup</button><button className="secondary" onClick={chooseBackup}>Restore Project Backup</button><button className="primary" onClick={() => void retryCloudSync()}>Retry Cloud Sync</button></div>} />
+    <PageHead eyebrow="Administration" title="System Status" description="RC5 production status, private storage, browser recovery, controlled backup tools, and AI feature readiness." action={<div className="button-row"><button className="secondary" onClick={() => void exportBackup()}>Export Current Project Backup</button><button className="secondary" onClick={chooseBackup}>Restore Project Backup</button><button className="primary" onClick={() => void retryCloudSync()}>Retry Cloud Sync</button></div>} />
     <div className="system-status-grid">
       <section className={`system-status-card ${statusOk ? 'ok' : 'warn'}`}><span>Workspace</span><b>{dataMode === 'cloud' ? (syncState === 'saving' ? 'Saving to cloud' : syncState === 'error' ? 'Cloud save error' : 'Cloud synced') : 'Local fallback'}</b><p>{syncError || 'Supabase is the active source of truth. The retained browser copy remains available as a controlled recovery layer.'}</p></section>
       <section className={`system-status-card ${cloudStatus.schema.healthy ? 'ok' : 'warn'}`}><span>Database schema</span><b>{cloudStatus.schema.version}</b><p>{cloudStatus.schema.healthy ? 'All required ScopeLogic v1.0 production columns and controls are available.' : `Missing: ${cloudStatus.schema.missing.join(', ') || 'Unknown schema items'}`}</p></section>
       <section className={`system-status-card ${cloudStatus.schema.bucketReady ? 'ok' : 'warn'}`}><span>Private storage</span><b>{cloudDocuments.length} of {documents.length} files in cloud</b><p>{cloudStatus.schema.bucketReady ? 'The project-files bucket is private and available.' : 'The private storage bucket requires attention.'}</p></section>
-      <section className="system-status-card ok"><span>Application release</span><b>ScopeLogic v1.0</b><p>Official releases are numbered, cloud archived, content-hashed, and protected from alteration or deletion.</p></section>
+      <section className="system-status-card ok"><span>Application release</span><b>ScopeLogic v1.0 RC5</b><p>Official releases are numbered, cloud archived, content-hashed, and protected from alteration or deletion.</p></section><section className={`system-status-card ${aiEnabled ? 'ok' : aiConfigured ? 'warn' : 'warn'}`}><span>AI Draft Assistant</span><b>{aiEnabled ? 'Enabled' : aiConfigured ? 'Configured — disabled' : 'Not configured'}</b><p>{aiEnabled ? 'OpenAI drafting is available only to the authenticated administrator. Drafts require field-by-field review and never submit an SLR automatically.' : aiConfigured ? 'The API key is configured, but SCOPELOGIC_AI_ENABLED remains false until AI acceptance testing is complete.' : 'Add the server-only OPENAI_API_KEY before enabling AI drafting.'}</p></section>
       <section className="system-status-card"><span>Last cloud save</span><b>{cloudStatus.lastCloudSyncAt ? new Date(cloudStatus.lastCloudSyncAt).toLocaleString() : 'Not recorded'}</b><p>Cloud revision {cloudStatus.cloudRevision}. Browser recovery data has not been deleted.</p></section>
       <section className="system-status-card"><span>Project backup</span><b>ZIP export and restore</b><p>Backups contain the current project record, SLR data, project documents, internal notes, and export history. Restore always creates a new project.</p></section>
     </div>

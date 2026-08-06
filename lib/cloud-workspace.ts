@@ -77,6 +77,8 @@ export type Customer = {
   contacts: CustomerContact[];
 };
 
+export type AiAssistance = { provider: 'OpenAI'; model: string; generatedAt: string; appliedAt: string; appliedFields: string[]; reviewedByUser: boolean };
+
 export type Issue = {
   uid: string;
   id: string;
@@ -102,9 +104,10 @@ export type Issue = {
   checklistItems: Record<string, string>;
   response: string;
   responseReason: string;
+  aiAssistance: AiAssistance | null;
 };
 
-export type Template = { uid: string; name: string; issue: Omit<Issue, 'uid' | 'id' | 'rfi' | 'snippet'> };
+export type Template = { uid: string; name: string; issue: Omit<Issue, 'uid' | 'id' | 'rfi' | 'snippet' | 'aiAssistance'> };
 
 export type Doc = {
   id: string;
@@ -229,7 +232,7 @@ export async function inspectCloudSchema(force = false): Promise<CloudSchemaHeal
     const message = formatSupabaseError(result.error);
     const missingFunction = /scopelogic_schema_health|function .* does not exist|PGRST202/i.test(message);
     throw new Error(missingFunction
-      ? 'The ScopeLogic database health function is unavailable. Confirm migrations through 20260806000300_scopelogic_v1_production_closeout.sql are applied, wait 30 seconds, and retry.'
+      ? 'The ScopeLogic database health function is unavailable. Confirm migrations through 20260806000400_scopelogic_rc5_mobile_ai.sql are applied, wait 30 seconds, and retry.'
       : `Cloud schema diagnostic failed: ${message}`);
   }
 
@@ -242,8 +245,8 @@ export async function inspectCloudSchema(force = false): Promise<CloudSchemaHeal
     checkedAt: text(raw.checkedAt ?? raw.checked_at) || new Date().toISOString(),
   };
   schemaHealthCache = { value: health, checkedAt: now };
-  if (health.version !== '1.0') {
-    throw new Error('ScopeLogic v1.0 requires migration 20260806000300_scopelogic_v1_production_closeout.sql. The browser recovery copy remains available and no v1.0 cloud write was attempted.');
+  if (health.version !== '1.0-RC5') {
+    throw new Error('ScopeLogic v1.0 RC5 requires migrations 20260806000300_scopelogic_v1_production_closeout.sql and 20260806000400_scopelogic_rc5_mobile_ai.sql. The browser recovery copy remains available and no RC5 cloud write was attempted.');
   }
   if (!health.healthy) throw new Error(`Cloud schema is incomplete. Missing: ${health.missing.join(', ') || 'unknown required objects'}.`);
   return health;
@@ -420,6 +423,7 @@ export async function loadWorkspaceFromCloud(forceSchemaCheck = false): Promise<
       checklistItems,
       response: text(row.contractor_response) || 'Included',
       responseReason: text(row.contractor_response_reason),
+      aiAssistance: row.ai_assistance && typeof row.ai_assistance === 'object' && Object.keys(row.ai_assistance).length ? row.ai_assistance as AiAssistance : null,
     });
   }
 
@@ -611,6 +615,7 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
       checklist_scope_items_by_system: issue.checklistItems || Object.fromEntries((issue.systems?.length ? issue.systems : [issue.system || 'Structured Cabling']).map((system) => [system, issue.checklistItem || ''])),
       contractor_response: issue.response || 'Included',
       contractor_response_reason: issue.responseReason || '',
+      ai_assistance: issue.aiAssistance || {},
     }));
     (snapshot.docsByProject[project.id] || []).forEach((doc, index) => documentRows.push({
       owner_id: ownerId,

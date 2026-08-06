@@ -1,4 +1,4 @@
-# ScopeLogic v1.0 — Release Notes
+# ScopeLogic v1.0 — Production Closeout Base
 
 Released: 2026-08-06
 

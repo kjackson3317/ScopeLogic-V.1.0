@@ -31,5 +31,7 @@ export default async function HomePage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
-  return <Workspace userEmail={user.email || 'Signed-in user'} userId={user.id} />;
+  const aiConfigured = Boolean(process.env.OPENAI_API_KEY);
+  const aiEnabled = aiConfigured && String(process.env.SCOPELOGIC_AI_ENABLED || '').trim().toLowerCase() === 'true';
+  return <Workspace userEmail={user.email || 'Signed-in user'} userId={user.id} aiEnabled={aiEnabled} aiConfigured={aiConfigured} />;
 }

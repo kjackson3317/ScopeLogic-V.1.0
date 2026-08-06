@@ -50,6 +50,8 @@ for (const requiredText of [
   'System Status',
   'Export Current Project Backup',
   'Release History',
+  'AI Draft Assistant',
+  'sidebar-backdrop',
 ]) {
   if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing ${requiredText}`);
 }
@@ -71,7 +73,7 @@ for (const requiredText of ['createZip', 'readZip', '0x04034b50']) {
 }
 
 const cloudWorkspace = await readFile(join(root, 'lib', 'cloud-workspace.ts'), 'utf8');
-for (const requiredText of ["storage.from('project-files')", 'createSignedUrl', 'inspectCloudSchema', 'renameProjectFile', "health.version !== '1.0'", 'checklist_scope_items_by_system', 'create_scopelogic_official_release', 'listOfficialReleases']) {
+for (const requiredText of ["storage.from('project-files')", 'createSignedUrl', 'inspectCloudSchema', 'renameProjectFile', "health.version !== '1.0-RC5'", 'checklist_scope_items_by_system', 'create_scopelogic_official_release', 'listOfficialReleases']) {
   if (!cloudWorkspace.includes(requiredText)) violations.push(`lib/cloud-workspace.ts: missing ${requiredText}`);
 }
 
@@ -91,8 +93,13 @@ if (/title: 'Formal RFI'[\s\S]{0,220}headers:\s*\[[^\]]*Answer/.test(pdfGenerato
   violations.push('app/pdf-generator.ts: Formal RFI PDF must not export an Answer field');
 }
 
+const aiRoute = await readFile(join(root, 'app', 'api', 'ai', 'slr-draft', 'route.ts'), 'utf8');
+for (const requiredText of ['SCOPELOGIC_AI_ENABLED', 'OPENAI_API_KEY', 'store: false', 'json_schema', 'getUser()', 'MAX_REQUESTS']) {
+  if (!aiRoute.includes(requiredText)) violations.push(`app/api/ai/slr-draft/route.ts: missing ${requiredText}`);
+}
+
 const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-if (packageJson.version !== '1.0.0') violations.push('package.json: version must be 1.0.0');
+if (packageJson.version !== '1.0.0-rc.5') violations.push('package.json: version must be 1.0.0-rc.5');
 if (packageJson.dependencies?.resend || packageJson.devDependencies?.resend) violations.push('package.json: Resend dependency must be removed');
 
 try {
@@ -113,6 +120,7 @@ for (const [fileName, requiredTexts] of [
   ['20260806000100_scopelogic_rc4_product_simplification.sql', ['systems jsonb', 'recommended_bid_basis_by_system', 'agreement_number', "'version', 'RC4'", "notify pgrst, 'reload schema'"]],
   ['20260806000200_scopelogic_rc41_matrix_checklist_refinement.sql', ['checklist_scope_items_by_system', "'version', 'RC4.1'", "notify pgrst, 'reload schema'"]],
   ['20260806000300_scopelogic_v1_production_closeout.sql', ['release_number', 'lifecycle_status', 'snapshot_data', 'content_sha256', 'protect_release_package_immutability', 'create_scopelogic_official_release', "'version', '1.0'", "notify pgrst, 'reload schema'"]],
+  ['20260806000400_scopelogic_rc5_mobile_ai.sql', ['ai_assistance', "'version', '1.0-RC5'"]],
 ]) {
   try {
     const migration = await readFile(join(root, 'supabase', 'migrations', fileName), 'utf8');
