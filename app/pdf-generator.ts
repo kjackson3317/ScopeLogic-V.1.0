@@ -14,6 +14,8 @@ export type PdfIssue = {
   id: string;
   system: string;
   customSystem: string;
+  systems: string[];
+  recommendations: Record<string, string>;
   title: string;
   status: string;
   concern: string;
@@ -36,7 +38,7 @@ type PdfConfig = {
   title: string;
   headers: string[];
   ratios: number[];
-  values: (issue: PdfIssue) => string[];
+  values: (row: PdfRow) => string[];
 };
 
 type BrandAssets = {
@@ -78,8 +80,13 @@ async function embedBrand(document: PDFDocument, assets: BrandAssets): Promise<E
   };
 }
 
-const systemName = (issue: PdfIssue) =>
-  issue.system === 'Other' ? issue.customSystem || 'Other' : issue.system;
+const SYSTEM_ORDER = ['Structured Cabling', 'Network Electronics', 'CCTV', 'Access Control', 'Intrusion Detection', 'Fire Alarm', 'Video Intercom', 'Audio Visual', 'Paging / Intercom', 'Other'];
+type PdfRow = { issue: PdfIssue; system?: string; section?: string };
+const systemKeys = (issue: PdfIssue) => issue.systems?.length ? issue.systems : [issue.system || 'Structured Cabling'];
+const displaySystem = (issue: PdfIssue, system: string) => system === 'Other' ? issue.customSystem || 'Other' : system;
+const systemNames = (issue: PdfIssue) => systemKeys(issue).map((system) => displaySystem(issue, system)).join('; ');
+const recommendationFor = (issue: PdfIssue, system: string) => issue.recommendations?.[system] || (system === issue.system ? issue.basis : '') || '';
+const recommendationSummary = (issue: PdfIssue) => systemKeys(issue).map((system) => `${displaySystem(issue, system)}: ${recommendationFor(issue, system)}`).join('\n\n');
 
 const safe = (value: string) =>
   String(value || '')
@@ -90,52 +97,58 @@ const safe = (value: string) =>
     .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '');
 
 function configFor(kind: PdfKind): PdfConfig {
-  if (kind === 'sow') {
-    return {
-      title: 'Recommended SOW Matrix',
-      headers: ['SLR', 'System', 'Scope Item', 'Scope Concern', 'Recommended Bid Basis', 'Reference'],
-      ratios: [0.055, 0.09, 0.13, 0.245, 0.29, 0.19],
-      values: (i) => [i.id, systemName(i), i.title, i.concern, i.basis, i.reference],
-    };
-  }
-  if (kind === 'clarifications') {
-    return {
-      title: 'Clarification Matrix',
-      headers: ['SLR / RFI', 'System', 'Question / Issue', 'Recommended Bid Basis', 'Resolution', 'Status', 'Reference'],
-      ratios: [0.075, 0.085, 0.215, 0.22, 0.17, 0.08, 0.155],
-      values: (i) => [[i.id, i.rfi].filter(Boolean).join('\n'), systemName(i), i.concern, i.basis, i.resolution, i.status, i.reference],
-    };
-  }
-  if (kind === 'rfi') {
-    return {
-      title: 'Formal RFI',
-      headers: ['RFI No.', 'System', 'Question', 'Answer'],
-      ratios: [0.13, 0.18, 0.43, 0.26],
-      values: (i) => [i.rfi, systemName(i), i.rfiQuestion || i.concern, i.resolution],
-    };
-  }
-  if (kind === 'checklist') {
-    return {
-      title: 'Contractor Response Checklist',
-      headers: ['SLR', 'System', 'Scope Item', 'Response', 'Reason'],
-      ratios: [0.07, 0.11, 0.31, 0.19, 0.32],
-      values: (i) => [i.id, systemName(i), i.checklistItem, i.response || 'Included', i.responseReason || ''],
-    };
-  }
+  if (kind === 'sow') return {
+    title: 'Recommended SOW Matrix',
+    headers: ['SLR', 'System', 'Scope Item', 'Scope Concern', 'Recommended Bid Basis', 'Document Reference'],
+    ratios: [0.055, 0.105, 0.13, 0.235, 0.29, 0.185],
+    values: ({ issue, system }) => [issue.id, displaySystem(issue, system || systemKeys(issue)[0]), issue.title, issue.concern, recommendationFor(issue, system || systemKeys(issue)[0]), issue.reference],
+  };
+  if (kind === 'clarifications') return {
+    title: 'Clarification Matrix',
+    headers: ['SLR / RFI', 'Systems', 'Question / Issue', 'Recommended Bid Basis by System', 'Resolution', 'Status', 'Document Reference'],
+    ratios: [0.075, 0.105, 0.205, 0.225, 0.15, 0.075, 0.165],
+    values: ({ issue }) => [[issue.id, issue.rfi].filter(Boolean).join('\n'), systemNames(issue), issue.concern, recommendationSummary(issue), issue.resolution, issue.status, issue.reference],
+  };
+  if (kind === 'rfi') return {
+    title: 'Formal RFI',
+    headers: ['RFI No.', 'Systems', 'Question'],
+    ratios: [0.14, 0.23, 0.63],
+    values: ({ issue }) => [issue.rfi, systemNames(issue), issue.rfiQuestion || issue.concern],
+  };
+  if (kind === 'checklist') return {
+    title: 'Contractor Response Checklist',
+    headers: ['SLR', 'Checklist Scope Item', 'Response', 'Reason'],
+    ratios: [0.08, 0.39, 0.2, 0.33],
+    values: ({ issue }) => [issue.id, issue.checklistItem, '', ''],
+  };
   return {
     title: 'Snippet Register',
-    headers: ['Snippet No.', 'SLR', 'System', 'Reference', 'Caption'],
-    ratios: [0.09, 0.07, 0.13, 0.26, 0.45],
-    values: (i) => [i.snippet, i.id, systemName(i), i.reference, i.title],
+    headers: ['Snippet No.', 'SLR', 'Systems', 'Document Reference', 'Caption'],
+    ratios: [0.09, 0.07, 0.16, 0.26, 0.42],
+    values: ({ issue }) => [issue.snippet, issue.id, systemNames(issue), issue.reference, issue.title],
   };
 }
 
-function rowsFor(kind: PdfKind, issues: PdfIssue[]) {
-  if (kind === 'sow') return issues.filter((i) => i.sow);
-  if (kind === 'clarifications') return issues.filter((i) => i.clarification);
-  if (kind === 'rfi') return issues.filter((i) => i.formalRfi);
-  if (kind === 'checklist') return issues.filter((i) => Boolean(i.checklistItem?.trim()));
-  return issues.filter((i) => i.snippet);
+function rowsFor(kind: PdfKind, issues: PdfIssue[]): PdfRow[] {
+  if (kind === 'sow') {
+    const applicable = issues.filter((issue) => issue.sow);
+    const systems = Array.from(new Set(applicable.flatMap(systemKeys))).sort((a, b) => {
+      const ai = SYSTEM_ORDER.indexOf(a); const bi = SYSTEM_ORDER.indexOf(b);
+      return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi) || a.localeCompare(b);
+    });
+    return systems.flatMap((system) => applicable.filter((issue) => systemKeys(issue).includes(system)).map((issue) => ({ issue, system })));
+  }
+  if (kind === 'clarifications') return issues.filter((issue) => issue.clarification).map((issue) => ({ issue }));
+  if (kind === 'rfi') return issues.filter((issue) => issue.formalRfi).map((issue) => ({ issue }));
+  if (kind === 'checklist') {
+    const applicable = issues.filter((issue) => Boolean(issue.checklistItem?.trim()));
+    const systems = Array.from(new Set(applicable.flatMap(systemKeys))).sort((a, b) => {
+      const ai = SYSTEM_ORDER.indexOf(a); const bi = SYSTEM_ORDER.indexOf(b);
+      return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi) || a.localeCompare(b);
+    });
+    return systems.flatMap((system) => applicable.filter((issue) => systemKeys(issue).includes(system)).map((issue) => ({ issue, system, section: displaySystem(issue, system) })));
+  }
+  return issues.filter((issue) => issue.snippet).map((issue) => ({ issue }));
 }
 
 function exactWidths(ratios: number[], total: number) {
@@ -257,6 +270,7 @@ async function appendDeliverable(
   let page!: PDFPage;
   let y = 0;
   const createdPages: PDFPage[] = [];
+  let activeChecklistSection = '';
 
   const drawHeaderGrid = (target: PDFPage, topY: number) => {
     target.drawRectangle({ x: margin, y: topY - tableHeaderHeight, width: contentWidth, height: tableHeaderHeight, color: mediumGreen });
@@ -267,6 +281,17 @@ async function appendDeliverable(
       const fitted = fitText(header, bold, 6.5, widths[index] - 8, 5.25);
       target.drawText(fitted.text, { x: xPositions[index] + 4, y: topY - 14, size: fitted.size, font: bold, color: white });
     });
+  };
+
+  const drawChecklistSection = (section: string, continued = false) => {
+    const height = 22;
+    if (y - height < footerLimit) return false;
+    page.drawRectangle({ x: margin, y: y - height, width: contentWidth, height, color: darkGreen });
+    const label = `${section.toUpperCase()}${continued ? ' — CONTINUED' : ''}`;
+    const fitted = fitText(label, bold, 8, contentWidth - 12, 6);
+    page.drawText(fitted.text, { x: margin + 6, y: y - 15, size: fitted.size, font: bold, color: white });
+    y -= height;
+    return true;
   };
 
   const addPage = () => {
@@ -316,15 +341,17 @@ async function appendDeliverable(
 
     drawHeaderGrid(page, tableTop);
     y = tableTop - tableHeaderHeight;
+    if (kind === 'checklist' && activeChecklistSection) drawChecklistSection(activeChecklistSection, true);
   };
 
   const drawRowFragment = (
-    issue: PdfIssue,
+    row: PdfRow,
     rowIndex: number,
     linesByCell: string[][],
     rowHeight: number,
     firstFragment: boolean,
   ) => {
+    const issue = row.issue;
     const fill = rowIndex % 2 ? white : alternate;
     page.drawRectangle({ x: margin, y: y - rowHeight, width: contentWidth, height: rowHeight, color: fill });
     page.drawLine({ start: { x: margin, y }, end: { x: margin + contentWidth, y }, thickness: 0.45, color: border });
@@ -334,13 +361,14 @@ async function appendDeliverable(
     linesByCell.forEach((lines, columnIndex) => {
       const cellX = xPositions[columnIndex];
       const cellWidth = widths[columnIndex];
-      const isChecklistField = kind === 'checklist' && (columnIndex === 3 || columnIndex === 4);
+      const isChecklistField = kind === 'checklist' && (columnIndex === 2 || columnIndex === 3);
       if (isChecklistField && firstFragment && form) {
-        if (columnIndex === 3) {
-          const dropdown = form.createDropdown(`${formPrefix}_response_${rowIndex + 1}`);
-          const options = ['Included', 'Excluded', 'Included as Alternate', 'Clarification Required', 'Not Applicable'];
+        if (columnIndex === 2) {
+          const fieldKey = safe(row.section || row.system || 'row').replace(/[^a-zA-Z0-9]+/g, '_');
+          const dropdown = form.createDropdown(`${formPrefix}_${fieldKey}_response_${rowIndex + 1}`);
+          const options = ['Select response...', 'Included', 'Excluded', 'Included as Alternate', 'Clarification Required', 'Not Applicable'];
           dropdown.addOptions(options);
-          dropdown.select(options.includes(issue.response) ? issue.response : 'Included');
+          dropdown.select('Select response...');
           // addToPage generates the field's /DA entry. setFontSize must run
           // afterwards or pdf-lib throws: No /DA (default appearance) entry found.
           dropdown.addToPage(page, {
@@ -357,9 +385,9 @@ async function appendDeliverable(
           dropdown.setFontSize(6);
           dropdown.updateAppearances(font);
         } else {
-          const field = form.createTextField(`${formPrefix}_reason_${rowIndex + 1}`);
+          const fieldKey = safe(row.section || row.system || 'row').replace(/[^a-zA-Z0-9]+/g, '_');
+          const field = form.createTextField(`${formPrefix}_${fieldKey}_reason_${rowIndex + 1}`);
           field.enableMultiline();
-          if (issue.responseReason) field.setText(safe(issue.responseReason));
           // As with dropdowns, add the widget first so pdf-lib creates /DA.
           field.addToPage(page, {
             x: cellX + 5,
@@ -386,8 +414,17 @@ async function appendDeliverable(
 
   addPage();
 
-  rows.forEach((issue, rowIndex) => {
-    const values = config.values(issue);
+  rows.forEach((row, rowIndex) => {
+    if (kind === 'checklist' && row.section && row.section !== activeChecklistSection) {
+      const nextSection = row.section;
+      if (y - 56 < footerLimit) {
+        activeChecklistSection = '';
+        addPage();
+      }
+      activeChecklistSection = nextSection;
+      drawChecklistSection(activeChecklistSection);
+    }
+    const values = config.values(row);
     const allLines = values.map((value, columnIndex) => wrapText(value, widths[columnIndex] - 8, font, fontSize));
     const offsets = allLines.map(() => 0);
     let firstFragment = true;
@@ -403,7 +440,7 @@ async function appendDeliverable(
       const usedLineCount = Math.max(1, ...fragmentLines.map((lines) => lines.length));
       const rowHeight = Math.max(minimumRowHeight, usedLineCount * lineHeight + 8);
 
-      drawRowFragment(issue, rowIndex, fragmentLines, rowHeight, firstFragment);
+      drawRowFragment(row, rowIndex, fragmentLines, rowHeight, firstFragment);
       fragmentLines.forEach((lines, index) => {
         offsets[index] += lines.length;
       });

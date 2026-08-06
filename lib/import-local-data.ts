@@ -9,7 +9,6 @@ export type LocalImportSnapshot = {
   templates: AnyRecord[];
   notesByProject: Record<string, string>;
   exportsByProject: Record<string, AnyRecord[]>;
-  emailSettings: AnyRecord;
   calendarEntries: AnyRecord[];
   customers: AnyRecord[];
 };
@@ -276,12 +275,6 @@ export async function importLocalScopeLogicData(snapshot: LocalImportSnapshot): 
       event_type: String(entry.type || 'Other'),
     }));
     await insertInChunks(supabase, 'calendar_events', calendarRows);
-
-    requireResult(await supabase.from('user_settings').upsert({
-      user_id: ownerId,
-      owner_id: ownerId,
-      email_settings: snapshot.emailSettings || {},
-    }, { onConflict: 'user_id' }), 'Import user settings');
 
     const report: LocalImportReport = {
       importedAt: new Date().toISOString(),

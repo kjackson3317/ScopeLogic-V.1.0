@@ -6,10 +6,32 @@ export type ContractDetails = {
   tier: string;
   contractNumber: string;
   amount: string;
-  status: string;
   startDate: string;
   targetDate: string;
   notes: string;
+  primaryContactId: string;
+  agreementNumber: string;
+  purchaseOrderNumber: string;
+  contractDate: string;
+  noticeToProceedDate: string;
+  status: string;
+  originalContractAmount: string;
+  approvedAdditionalServices: string;
+  amountInvoiced: string;
+  amountPaid: string;
+  billingMethod: string;
+  billingNotes: string;
+  contractedService: string;
+  includedDeliverables: string;
+  includedReviewCycles: string;
+  projectPhase: string;
+  anticipatedCompletionDate: string;
+  nextClientAction: string;
+  agreementUploaded: boolean;
+  insuranceRequirements: string;
+  travelRequirements: string;
+  specialTerms: string;
+  internalNotes: string;
 };
 
 export type Project = {
@@ -60,6 +82,8 @@ export type Issue = {
   id: string;
   system: string;
   customSystem: string;
+  systems: string[];
+  recommendations: Record<string, string>;
   title: string;
   status: string;
   concern: string;
@@ -103,12 +127,6 @@ export type ExportEntry = {
   projectRevision: string;
 };
 
-export type EmailSettings = {
-  defaultFrom: string;
-  additionalFrom: string[];
-  replyTo: string;
-};
-
 export type WorkspaceSnapshot = {
   projects: Project[];
   projectId: string;
@@ -117,7 +135,6 @@ export type WorkspaceSnapshot = {
   templates: Template[];
   notesByProject: Record<string, string>;
   exportsByProject: Record<string, ExportEntry[]>;
-  emailSettings: EmailSettings;
   calendarEntries: CalendarEntry[];
   customers: Customer[];
 };
@@ -143,18 +160,15 @@ export type CloudWorkspaceStatus = {
 type AnyRecord = Record<string, any>;
 type BrowserClient = ReturnType<typeof createClient>;
 
-const DEFAULT_EMAIL_SETTINGS: EmailSettings = { defaultFrom: '', additionalFrom: [], replyTo: '' };
 const EMPTY_CONTRACT: ContractDetails = {
-  offering: 'Product 1 — Technology Scope & Risk Assessment',
-  engagement: 'Standalone',
-  tier: 'Range',
-  contractNumber: '',
-  amount: '',
-  status: 'Draft',
-  startDate: '',
-  targetDate: '',
-  notes: '',
-};
+  offering: 'Product 1 — Technology Scope & Risk Assessment', engagement: 'Standalone', tier: 'Range',
+  contractNumber: '', amount: '', startDate: '', targetDate: '', notes: '',
+  primaryContactId: '', agreementNumber: '', purchaseOrderNumber: '', contractDate: '', noticeToProceedDate: '',
+  status: 'Draft', originalContractAmount: '', approvedAdditionalServices: '', amountInvoiced: '', amountPaid: '',
+  billingMethod: '', billingNotes: '', contractedService: 'Technology Scope & Risk Assessment', includedDeliverables: '',
+  includedReviewCycles: '1', projectPhase: 'Planning', anticipatedCompletionDate: '', nextClientAction: '',
+  agreementUploaded: false, insuranceRequirements: '', travelRequirements: '', specialTerms: '', internalNotes: '',
+}
 
 const text = (value: unknown) => String(value ?? '');
 const dateText = (value: unknown) => text(value).slice(0, 10);
@@ -199,7 +213,7 @@ export async function inspectCloudSchema(force = false): Promise<CloudSchemaHeal
     const message = formatSupabaseError(result.error);
     const missingFunction = /scopelogic_schema_health|function .* does not exist|PGRST202/i.test(message);
     throw new Error(missingFunction
-      ? 'RC3.1 database repair has not been applied or Supabase has not refreshed its schema cache. Apply migration 20260805000100_scopelogic_rc31_schema_repair.sql, wait 30 seconds, and retry.'
+      ? 'The ScopeLogic database health function is unavailable. Confirm migrations through 20260806000100_scopelogic_rc4_product_simplification.sql are applied, wait 30 seconds, and retry.'
       : `Cloud schema diagnostic failed: ${message}`);
   }
 
@@ -212,6 +226,9 @@ export async function inspectCloudSchema(force = false): Promise<CloudSchemaHeal
     checkedAt: text(raw.checkedAt ?? raw.checked_at) || new Date().toISOString(),
   };
   schemaHealthCache = { value: health, checkedAt: now };
+  if (health.version !== 'RC4') {
+    throw new Error('ScopeLogic RC4 requires migration 20260806000100_scopelogic_rc4_product_simplification.sql. The browser recovery copy remains available and no RC4 cloud write was attempted.');
+  }
   if (!health.healthy) throw new Error(`Cloud schema is incomplete. Missing: ${health.missing.join(', ') || 'unknown required objects'}.`);
   return health;
 }
@@ -313,15 +330,24 @@ export async function loadWorkspaceFromCloud(forceSchemaCheck = false): Promise<
     const projectLegacyId = projectDbToLegacy.get(row.project_id);
     if (!projectLegacyId) continue;
     contractByProject.set(projectLegacyId, {
+      ...EMPTY_CONTRACT,
       offering: text(row.offering) || EMPTY_CONTRACT.offering,
       engagement: text(row.engagement_basis) || EMPTY_CONTRACT.engagement,
       tier: text(row.pricing_tier) || EMPTY_CONTRACT.tier,
-      contractNumber: text(row.contract_number),
-      amount: text(row.amount),
-      status: text(row.status) || 'Draft',
-      startDate: dateText(row.start_date),
-      targetDate: dateText(row.target_completion),
-      notes: text(row.notes),
+      contractNumber: text(row.contract_number), amount: text(row.amount),
+      startDate: dateText(row.start_date), targetDate: dateText(row.target_completion), notes: text(row.notes),
+      primaryContactId: text(row.primary_contact_legacy_id), agreementNumber: text(row.agreement_number || row.contract_number),
+      purchaseOrderNumber: text(row.purchase_order_number), contractDate: dateText(row.contract_date),
+      noticeToProceedDate: dateText(row.notice_to_proceed_date), status: text(row.status) || 'Draft',
+      originalContractAmount: text(row.original_contract_amount || row.amount),
+      approvedAdditionalServices: text(row.approved_additional_services), amountInvoiced: text(row.amount_invoiced),
+      amountPaid: text(row.amount_paid), billingMethod: text(row.billing_method), billingNotes: text(row.billing_notes),
+      contractedService: text(row.contracted_service || row.offering), includedDeliverables: text(row.included_deliverables),
+      includedReviewCycles: text(row.included_review_cycles), projectPhase: text(row.project_phase || row.status),
+      anticipatedCompletionDate: dateText(row.anticipated_completion_date || row.target_completion),
+      nextClientAction: text(row.next_client_action), agreementUploaded: Boolean(row.agreement_uploaded),
+      insuranceRequirements: text(row.insurance_requirements), travelRequirements: text(row.travel_requirements),
+      specialTerms: text(row.special_terms), internalNotes: text(row.internal_contract_notes || row.notes),
     });
   }
   const projects: Project[] = (projectRows as AnyRecord[]).map((row) => {
@@ -352,6 +378,10 @@ export async function loadWorkspaceFromCloud(forceSchemaCheck = false): Promise<
       id: text(row.display_number),
       system: text(row.system_name) || 'Structured Cabling',
       customSystem: text(row.custom_system),
+      systems: Array.isArray(row.systems) && row.systems.length ? row.systems.map(text) : [text(row.system_name) || 'Structured Cabling'],
+      recommendations: row.recommended_bid_basis_by_system && typeof row.recommended_bid_basis_by_system === 'object'
+        ? Object.fromEntries(Object.entries(row.recommended_bid_basis_by_system).map(([key, value]) => [key, text(value)]))
+        : { [text(row.system_name) || 'Structured Cabling']: text(row.recommended_bid_basis) },
       title: text(row.scope_item),
       status: text(row.status) || 'Open',
       concern: text(row.scope_concern),
@@ -425,13 +455,12 @@ export async function loadWorkspaceFromCloud(forceSchemaCheck = false): Promise<
     type: text(row.event_type) || 'Other',
     projectId: projectDbToLegacy.get(row.project_id) || '',
   }));
-  const emailSettings = { ...DEFAULT_EMAIL_SETTINGS, ...(settings.email_settings || {}) } as EmailSettings;
   const selectedProjectId = text(settings.selected_project_legacy_id);
   const projectId = projects.some((project) => project.id === selectedProjectId) ? selectedProjectId : projects[0]?.id || '';
   const documents = (documentResult.data || []) as AnyRecord[];
 
   return {
-    snapshot: { projects, projectId, issuesByProject, docsByProject, templates, notesByProject, exportsByProject, emailSettings, calendarEntries, customers },
+    snapshot: { projects, projectId, issuesByProject, docsByProject, templates, notesByProject, exportsByProject, calendarEntries, customers },
     status: {
       source: 'cloud',
       cutoverCompletedAt: settings.cloud_cutover_completed_at || null,
@@ -540,13 +569,15 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
       legacy_uid: issue.uid || `${project.id}-slr-${index + 1}`,
       sequence_number: index + 1,
       display_number: `SLR-${String(index + 1).padStart(3, '0')}`,
-      system_name: issue.system || 'Structured Cabling',
+      system_name: issue.systems?.[0] || issue.system || 'Structured Cabling',
       custom_system: issue.customSystem || '',
+      systems: issue.systems?.length ? issue.systems : [issue.system || 'Structured Cabling'],
+      recommended_bid_basis_by_system: issue.recommendations || { [issue.system || 'Structured Cabling']: issue.basis || '' },
       scope_item: issue.title || 'Untitled Scope Item',
       status: issue.status || 'Open',
       scope_concern: issue.concern || '',
       rfi_question: issue.rfiQuestion || '',
-      recommended_bid_basis: issue.basis || '',
+      recommended_bid_basis: issue.recommendations?.[issue.systems?.[0] || issue.system] || issue.basis || '',
       reason_basis: issue.reason || '',
       reference: issue.reference || '',
       rfi_number: issue.rfi || '',
@@ -578,15 +609,24 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
     contractRows.push({
       owner_id: ownerId,
       project_id: projectDbId,
-      offering: project.contract?.offering || '',
-      engagement_basis: project.contract?.engagement || '',
-      pricing_tier: project.contract?.tier || '',
-      contract_number: project.contract?.contractNumber || '',
-      amount: project.contract?.amount || '',
-      status: project.contract?.status || 'Draft',
-      start_date: project.contract?.startDate || null,
-      target_completion: project.contract?.targetDate || null,
-      notes: project.contract?.notes || '',
+      offering: project.contract?.offering || '', engagement_basis: project.contract?.engagement || '',
+      pricing_tier: project.contract?.tier || '', contract_number: project.contract?.agreementNumber || project.contract?.contractNumber || '',
+      amount: project.contract?.originalContractAmount || project.contract?.amount || '', status: project.contract?.status || 'Draft',
+      start_date: project.contract?.noticeToProceedDate || project.contract?.startDate || null,
+      target_completion: project.contract?.anticipatedCompletionDate || project.contract?.targetDate || null,
+      notes: project.contract?.internalNotes || project.contract?.notes || '',
+      primary_contact_legacy_id: project.contract?.primaryContactId || '', agreement_number: project.contract?.agreementNumber || '',
+      purchase_order_number: project.contract?.purchaseOrderNumber || '', contract_date: project.contract?.contractDate || null,
+      notice_to_proceed_date: project.contract?.noticeToProceedDate || null,
+      original_contract_amount: project.contract?.originalContractAmount || '',
+      approved_additional_services: project.contract?.approvedAdditionalServices || '', amount_invoiced: project.contract?.amountInvoiced || '',
+      amount_paid: project.contract?.amountPaid || '', billing_method: project.contract?.billingMethod || '',
+      billing_notes: project.contract?.billingNotes || '', contracted_service: project.contract?.contractedService || '',
+      included_deliverables: project.contract?.includedDeliverables || '', included_review_cycles: project.contract?.includedReviewCycles || '',
+      project_phase: project.contract?.projectPhase || '', anticipated_completion_date: project.contract?.anticipatedCompletionDate || null,
+      next_client_action: project.contract?.nextClientAction || '', agreement_uploaded: Boolean(project.contract?.agreementUploaded),
+      insurance_requirements: project.contract?.insuranceRequirements || '', travel_requirements: project.contract?.travelRequirements || '',
+      special_terms: project.contract?.specialTerms || '', internal_contract_notes: project.contract?.internalNotes || '',
     });
     noteRows.push({ owner_id: ownerId, project_id: projectDbId, notes: snapshot.notesByProject[project.id] || '' });
     (snapshot.exportsByProject[project.id] || []).forEach((entry, index) => exportRows.push({
@@ -632,7 +672,6 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
   requireResult(await supabase.from('user_settings').upsert({
     user_id: ownerId,
     owner_id: ownerId,
-    email_settings: snapshot.emailSettings || DEFAULT_EMAIL_SETTINGS,
     selected_project_legacy_id: snapshot.projectId || null,
     data_mode: 'cloud',
     cloud_revision: nextRevision,
@@ -671,19 +710,17 @@ export async function removeProjectFile(storagePath: string) {
   requireResult(result, 'Delete project file');
 }
 
-export async function completeCloudCutover(details: AnyRecord = {}) {
+export async function renameProjectFile(storagePath: string, newFileName: string) {
   const supabase = createClient();
-  const user = await currentUser(supabase);
-  const now = new Date().toISOString();
-  requireResult(await supabase.from('user_settings').upsert({
-    user_id: user.id,
-    owner_id: user.id,
-    data_mode: 'cloud',
-    cloud_cutover_completed_at: now,
-    last_cloud_sync_at: now,
-  }, { onConflict: 'user_id' }), 'Complete cloud cutover');
-  requireResult(await supabase.from('activity_log').insert({ owner_id: user.id, action: 'cloud_cutover_completed', details }), 'Record cloud cutover');
-  return now;
+  await currentUser(supabase);
+  const slash = storagePath.lastIndexOf('/');
+  if (slash < 0) throw new Error('The current cloud file path is invalid.');
+  const safeName = newFileName.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^\.+/, '') || 'document';
+  const destination = `${storagePath.slice(0, slash + 1)}${safeName}`;
+  if (destination === storagePath) return storagePath;
+  const result = await supabase.storage.from('project-files').move(storagePath, destination);
+  requireResult(result, `Rename ${newFileName}`);
+  return destination;
 }
 
 export async function saveOfficialRelease(projectLegacyId: string, projectRevision: string, versionDate: string, filename: string, notes: string, kinds: string[], pdf: Blob) {
