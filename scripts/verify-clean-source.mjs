@@ -40,6 +40,7 @@ for (const requiredText of [
   'saveWorkspaceToCloud',
   'Affected Systems',
   'Recommended Bid Basis by System',
+  'Contractor Checklist Scope Item by System',
   'Document Reference',
   'Retry Cloud Upload',
   'renameProjectFile',
@@ -47,25 +48,41 @@ for (const requiredText of [
 ]) {
   if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing ${requiredText}`);
 }
-for (const removedText of ['Email Settings', 'Email All PDFs', 'Bid Leveling Summary', 'migrateDocumentFiles']) {
+for (const removedText of ['Email Settings', 'Email All PDFs', 'Bid Leveling Summary', 'migrateDocumentFiles', '<AutoGrowTextArea label=\"Contractor Checklist Scope Item\"']) {
   if (workspace.includes(removedText)) violations.push(`app/workspace.tsx: obsolete RC4 feature remains: ${removedText}`);
 }
 
+
+if (!workspace.includes("const sowDeliverableRows = (issues: Issue[]): DeliverableRow[] => issues.filter((issue) => issue.sow).map")) {
+  violations.push('app/workspace.tsx: Recommended SOW must keep one row per SLR');
+}
+if (!workspace.includes('checklistItems: Record<string, string>')) {
+  violations.push('app/workspace.tsx: system-specific checklist data model is missing');
+}
+
 const cloudWorkspace = await readFile(join(root, 'lib', 'cloud-workspace.ts'), 'utf8');
-for (const requiredText of ["storage.from('project-files')", 'createSignedUrl', 'inspectCloudSchema', 'renameProjectFile', "health.version !== 'RC4'"]) {
+for (const requiredText of ["storage.from('project-files')", 'createSignedUrl', 'inspectCloudSchema', 'renameProjectFile', "health.version !== 'RC4.1'", 'checklist_scope_items_by_system']) {
   if (!cloudWorkspace.includes(requiredText)) violations.push(`lib/cloud-workspace.ts: missing ${requiredText}`);
 }
 
 const pdfGenerator = await readFile(join(root, 'app', 'pdf-generator.ts'), 'utf8');
-for (const requiredText of ['recommendationFor', 'drawChecklistSection', "columnIndex === 2", 'SYSTEM_ORDER', "headers: ['RFI No.', 'Systems', 'Question']"]) {
+for (const requiredText of ['recommendationSummary', 'checklistItemFor', 'drawChecklistSection', "columnIndex === 2", 'SYSTEM_ORDER', "headers: ['RFI No.', 'Systems', 'Question']", "headers: ['SLR', 'Systems', 'Scope Item', 'Scope Concern', 'Recommended Bid Basis by System', 'Document Reference']"]) {
   if (!pdfGenerator.includes(requiredText)) violations.push(`app/pdf-generator.ts: missing RC4 PDF behavior: ${requiredText}`);
 }
+
+if (!pdfGenerator.includes("if (kind === 'sow') return issues.filter((issue) => issue.sow).map")) {
+  violations.push('app/pdf-generator.ts: Recommended SOW PDF must keep one row per SLR');
+}
+if (/title: 'Recommended SOW Matrix'[\s\S]{0,260}headers:\s*\['SLR', 'System'/.test(pdfGenerator)) {
+  violations.push('app/pdf-generator.ts: Recommended SOW must use a combined Systems column');
+}
+
 if (/title: 'Formal RFI'[\s\S]{0,220}headers:\s*\[[^\]]*Answer/.test(pdfGenerator)) {
   violations.push('app/pdf-generator.ts: Formal RFI PDF must not export an Answer field');
 }
 
 const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-if (packageJson.version !== '1.0.0-rc.4') violations.push('package.json: version must be 1.0.0-rc.4');
+if (packageJson.version !== '1.0.0-rc.4.1') violations.push('package.json: version must be 1.0.0-rc.4.1');
 if (packageJson.dependencies?.resend || packageJson.devDependencies?.resend) violations.push('package.json: Resend dependency must be removed');
 
 try {
@@ -84,6 +101,7 @@ for (const [fileName, requiredTexts] of [
   ['20260729000100_scopelogic_rc3_cloud_cutover.sql', ['cloud_cutover_completed_at']],
   ['20260805000100_scopelogic_rc31_schema_repair.sql', ['customer_id', 'scopelogic_schema_health', "notify pgrst, 'reload schema'", 'project-files']],
   ['20260806000100_scopelogic_rc4_product_simplification.sql', ['systems jsonb', 'recommended_bid_basis_by_system', 'agreement_number', "'version', 'RC4'", "notify pgrst, 'reload schema'"]],
+  ['20260806000200_scopelogic_rc41_matrix_checklist_refinement.sql', ['checklist_scope_items_by_system', "'version', 'RC4.1'", "notify pgrst, 'reload schema'"]],
 ]) {
   try {
     const migration = await readFile(join(root, 'supabase', 'migrations', fileName), 'utf8');

@@ -62,7 +62,7 @@
 @media(max-width:900px){.cloud-cutover-summary{grid-template-columns:repeat(2,1fr)}.cloud-sync-badge{display:none}}
 @media(max-width:560px){.cloud-cutover-summary{grid-template-columns:1fr 1fr}.cloud-cutover-actions{display:grid}.cloud-cutover-actions button{width:100%}}
 
-/* ScopeLogic v1.0 RC4 — product simplification and final workflow */
+/* ScopeLogic v1.0 RC4.1 — product simplification and final workflow */
 .matrix-editor-full{width:100%;min-height:0;overflow:visible;background:#fff;border:1px solid var(--line);border-radius:12px;padding:24px;margin-bottom:14px}
 .matrix-editor-full .submit-bar{bottom:0;margin:18px -24px -24px;padding:14px 24px;border-radius:0 0 12px 12px;z-index:4}
 .system-selector-block{margin:4px 0 18px;padding:16px;border:1px solid var(--line);border-radius:10px;background:#f8faf7}

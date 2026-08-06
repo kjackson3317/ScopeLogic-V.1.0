@@ -99,6 +99,7 @@ export type Issue = {
   formalRfi: boolean;
   checklist: boolean;
   checklistItem: string;
+  checklistItems: Record<string, string>;
   response: string;
   responseReason: string;
 };
@@ -213,7 +214,7 @@ export async function inspectCloudSchema(force = false): Promise<CloudSchemaHeal
     const message = formatSupabaseError(result.error);
     const missingFunction = /scopelogic_schema_health|function .* does not exist|PGRST202/i.test(message);
     throw new Error(missingFunction
-      ? 'The ScopeLogic database health function is unavailable. Confirm migrations through 20260806000100_scopelogic_rc4_product_simplification.sql are applied, wait 30 seconds, and retry.'
+      ? 'The ScopeLogic database health function is unavailable. Confirm migrations through 20260806000200_scopelogic_rc41_matrix_checklist_refinement.sql are applied, wait 30 seconds, and retry.'
       : `Cloud schema diagnostic failed: ${message}`);
   }
 
@@ -226,8 +227,8 @@ export async function inspectCloudSchema(force = false): Promise<CloudSchemaHeal
     checkedAt: text(raw.checkedAt ?? raw.checked_at) || new Date().toISOString(),
   };
   schemaHealthCache = { value: health, checkedAt: now };
-  if (health.version !== 'RC4') {
-    throw new Error('ScopeLogic RC4 requires migration 20260806000100_scopelogic_rc4_product_simplification.sql. The browser recovery copy remains available and no RC4 cloud write was attempted.');
+  if (health.version !== 'RC4.1') {
+    throw new Error('ScopeLogic RC4.1 requires migration 20260806000200_scopelogic_rc41_matrix_checklist_refinement.sql. The browser recovery copy remains available and no RC4.1 cloud write was attempted.');
   }
   if (!health.healthy) throw new Error(`Cloud schema is incomplete. Missing: ${health.missing.join(', ') || 'unknown required objects'}.`);
   return health;
@@ -373,12 +374,16 @@ export async function loadWorkspaceFromCloud(forceSchemaCheck = false): Promise<
     const projectLegacyId = projectDbToLegacy.get(row.project_id);
     if (!projectLegacyId) continue;
     const checklistItem = text(row.checklist_scope_item);
+    const systems = Array.isArray(row.systems) && row.systems.length ? row.systems.map(text) : [text(row.system_name) || 'Structured Cabling'];
+    const checklistItems = row.checklist_scope_items_by_system && typeof row.checklist_scope_items_by_system === 'object'
+      ? Object.fromEntries(Object.entries(row.checklist_scope_items_by_system).map(([key, value]) => [key, text(value)]))
+      : Object.fromEntries(systems.map((system) => [system, checklistItem]));
     (issuesByProject[projectLegacyId] ||= []).push({
       uid: text(row.legacy_uid || row.id),
       id: text(row.display_number),
       system: text(row.system_name) || 'Structured Cabling',
       customSystem: text(row.custom_system),
-      systems: Array.isArray(row.systems) && row.systems.length ? row.systems.map(text) : [text(row.system_name) || 'Structured Cabling'],
+      systems,
       recommendations: row.recommended_bid_basis_by_system && typeof row.recommended_bid_basis_by_system === 'object'
         ? Object.fromEntries(Object.entries(row.recommended_bid_basis_by_system).map(([key, value]) => [key, text(value)]))
         : { [text(row.system_name) || 'Structured Cabling']: text(row.recommended_bid_basis) },
@@ -395,8 +400,9 @@ export async function loadWorkspaceFromCloud(forceSchemaCheck = false): Promise<
       sow: Boolean(row.include_sow),
       clarification: Boolean(row.include_clarification),
       formalRfi: Boolean(row.include_formal_rfi),
-      checklist: Boolean(checklistItem.trim()),
-      checklistItem,
+      checklist: Object.values(checklistItems).some((value) => value.trim()),
+      checklistItem: Object.values(checklistItems).find((value) => value.trim()) || '',
+      checklistItems,
       response: text(row.contractor_response) || 'Included',
       responseReason: text(row.contractor_response_reason),
     });
@@ -586,7 +592,8 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
       include_sow: Boolean(issue.sow),
       include_clarification: Boolean(issue.clarification),
       include_formal_rfi: Boolean(issue.formalRfi),
-      checklist_scope_item: issue.checklistItem || '',
+      checklist_scope_item: Object.values(issue.checklistItems || {}).find((value) => value.trim()) || issue.checklistItem || '',
+      checklist_scope_items_by_system: issue.checklistItems || Object.fromEntries((issue.systems?.length ? issue.systems : [issue.system || 'Structured Cabling']).map((system) => [system, issue.checklistItem || ''])),
       contractor_response: issue.response || 'Included',
       contractor_response_reason: issue.responseReason || '',
     }));

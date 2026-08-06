@@ -1,24 +1,18 @@
-# ScopeLogic v1.0 RC4
+# ScopeLogic v1.0 RC4.1
 
-RC4 is the product-simplification and final-workflow release. It retains the verified RC3.1 Supabase database and private document-storage architecture while reducing nonessential features and improving the production workflow.
+RC4.1 is a focused refinement to the verified RC4 release. It preserves the RC3.1/RC4 Supabase and private-storage architecture while correcting how multi-system SLRs are presented in the matrices and how contractor-checklist scope is entered.
 
-## RC4 changes
+## RC4.1 changes
 
-- One SLR may apply to multiple systems.
-- Each selected system receives a separate Recommended Bid Basis.
-- Recommended SOW rows are expanded and grouped by system.
-- The editable Contractor Response Checklist remains one PDF and is divided into system sections.
-- The Formal RFI PDF contains only the RFI number, affected systems, and question; answers remain internal.
-- The Internal Matrix uses a full-width entry form with the submitted-SLR list below it.
-- `Reason / Basis` and the internal `Contractor Response` fields are removed from the active interface.
-- `Contract Reference / Scope-Gap Basis` is renamed `Document Reference`.
-- Cloud documents can be renamed and fallback uploads can be retried from Project Documents.
-- Contract Information is reorganized for ScopeLogic consulting engagements.
-- Dashboard cards wrap long values and use available space more effectively.
-- Project Setup is above Dashboard and the Internal Matrix is under Project.
-- Bid Leveling Summary is removed because it had no production data source.
-- Integrated email delivery and Resend configuration are removed.
-- Production Setup is replaced by read-only System Status and Retry Cloud Sync.
+- A multi-system SLR appears only once in the Recommended SOW Matrix.
+- The SLR row lists all affected systems.
+- The Recommended Bid Basis cell contains a separate labeled section for every selected system.
+- The Clarification Matrix continues to show one SLR row with all systems and system-specific recommendations inside the same cell.
+- Every selected system has its own Contractor Checklist Scope Item field in the Internal Matrix.
+- A blank system-specific checklist field excludes the SLR from that system section of the checklist.
+- The Contractor Response Checklist remains one editable PDF divided into system sections.
+- Existing RC4 shared checklist text is copied into every selected system during migration so prior scope is preserved.
+- All other RC4 workflow, contract, document-renaming, navigation, dashboard, email-removal, and Formal RFI behavior remains unchanged.
 
 ## Required Vercel variables
 
@@ -31,7 +25,7 @@ NEXT_PUBLIC_SITE_URL
 ## Required migration
 
 ```text
-supabase/migrations/20260806000100_scopelogic_rc4_product_simplification.sql
+supabase/migrations/20260806000200_scopelogic_rc41_matrix_checklist_refinement.sql
 ```
 
 Use `PRODUCTION-DEPLOYMENT.md` for the browser-only Codespaces deployment sequence.

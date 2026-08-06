@@ -178,8 +178,12 @@ export async function importLocalScopeLogicData(snapshot: LocalImportSnapshot): 
           legacy_uid: String(issue.uid || `${legacyProjectId}-slr-${sequence}`),
           sequence_number: sequence,
           display_number: `SLR-${String(sequence).padStart(3, '0')}`,
-          system_name: String(issue.system || 'Structured Cabling'),
+          system_name: String((Array.isArray(issue.systems) && issue.systems[0]) || issue.system || 'Structured Cabling'),
           custom_system: String(issue.customSystem || ''),
+          systems: Array.isArray(issue.systems) && issue.systems.length ? issue.systems.map(String) : [String(issue.system || 'Structured Cabling')],
+          recommended_bid_basis_by_system: issue.recommendations && typeof issue.recommendations === 'object'
+            ? issue.recommendations
+            : { [String(issue.system || 'Structured Cabling')]: String(issue.basis || '') },
           scope_item: String(issue.title || 'Untitled Scope Item'),
           status: String(issue.status || 'Open'),
           scope_concern: String(issue.concern || ''),
@@ -193,7 +197,10 @@ export async function importLocalScopeLogicData(snapshot: LocalImportSnapshot): 
           include_sow: Boolean(issue.sow),
           include_clarification: Boolean(issue.clarification),
           include_formal_rfi: Boolean(issue.formalRfi),
-          checklist_scope_item: String(issue.checklistItem || ''),
+          checklist_scope_item: String(Object.values(issue.checklistItems || {}).find((value) => String(value).trim()) || issue.checklistItem || ''),
+          checklist_scope_items_by_system: issue.checklistItems && typeof issue.checklistItems === 'object'
+            ? issue.checklistItems
+            : Object.fromEntries((Array.isArray(issue.systems) && issue.systems.length ? issue.systems : [String(issue.system || 'Structured Cabling')]).map((system: string) => [system, String(issue.checklistItem || '')])),
           contractor_response: String(issue.response || 'Included'),
           contractor_response_reason: String(issue.responseReason || ''),
         });

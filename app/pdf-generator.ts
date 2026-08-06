@@ -30,6 +30,7 @@ export type PdfIssue = {
   formalRfi: boolean;
   checklist: boolean;
   checklistItem: string;
+  checklistItems: Record<string, string>;
   response: string;
   responseReason: string;
 };
@@ -86,7 +87,8 @@ const systemKeys = (issue: PdfIssue) => issue.systems?.length ? issue.systems : 
 const displaySystem = (issue: PdfIssue, system: string) => system === 'Other' ? issue.customSystem || 'Other' : system;
 const systemNames = (issue: PdfIssue) => systemKeys(issue).map((system) => displaySystem(issue, system)).join('; ');
 const recommendationFor = (issue: PdfIssue, system: string) => issue.recommendations?.[system] || (system === issue.system ? issue.basis : '') || '';
-const recommendationSummary = (issue: PdfIssue) => systemKeys(issue).map((system) => `${displaySystem(issue, system)}: ${recommendationFor(issue, system)}`).join('\n\n');
+const recommendationSummary = (issue: PdfIssue) => systemKeys(issue).map((system) => `${displaySystem(issue, system)}\n${recommendationFor(issue, system) || 'No recommendation entered'}`).join('\n\n');
+const checklistItemFor = (issue: PdfIssue, system: string) => issue.checklistItems?.[system] || '';
 
 const safe = (value: string) =>
   String(value || '')
@@ -99,9 +101,9 @@ const safe = (value: string) =>
 function configFor(kind: PdfKind): PdfConfig {
   if (kind === 'sow') return {
     title: 'Recommended SOW Matrix',
-    headers: ['SLR', 'System', 'Scope Item', 'Scope Concern', 'Recommended Bid Basis', 'Document Reference'],
-    ratios: [0.055, 0.105, 0.13, 0.235, 0.29, 0.185],
-    values: ({ issue, system }) => [issue.id, displaySystem(issue, system || systemKeys(issue)[0]), issue.title, issue.concern, recommendationFor(issue, system || systemKeys(issue)[0]), issue.reference],
+    headers: ['SLR', 'Systems', 'Scope Item', 'Scope Concern', 'Recommended Bid Basis by System', 'Document Reference'],
+    ratios: [0.055, 0.125, 0.13, 0.22, 0.285, 0.185],
+    values: ({ issue }) => [issue.id, systemNames(issue), issue.title, issue.concern, recommendationSummary(issue), issue.reference],
   };
   if (kind === 'clarifications') return {
     title: 'Clarification Matrix',
@@ -119,7 +121,7 @@ function configFor(kind: PdfKind): PdfConfig {
     title: 'Contractor Response Checklist',
     headers: ['SLR', 'Checklist Scope Item', 'Response', 'Reason'],
     ratios: [0.08, 0.39, 0.2, 0.33],
-    values: ({ issue }) => [issue.id, issue.checklistItem, '', ''],
+    values: ({ issue, system }) => [issue.id, checklistItemFor(issue, system || systemKeys(issue)[0]), '', ''],
   };
   return {
     title: 'Snippet Register',
@@ -130,23 +132,18 @@ function configFor(kind: PdfKind): PdfConfig {
 }
 
 function rowsFor(kind: PdfKind, issues: PdfIssue[]): PdfRow[] {
-  if (kind === 'sow') {
-    const applicable = issues.filter((issue) => issue.sow);
-    const systems = Array.from(new Set(applicable.flatMap(systemKeys))).sort((a, b) => {
-      const ai = SYSTEM_ORDER.indexOf(a); const bi = SYSTEM_ORDER.indexOf(b);
-      return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi) || a.localeCompare(b);
-    });
-    return systems.flatMap((system) => applicable.filter((issue) => systemKeys(issue).includes(system)).map((issue) => ({ issue, system })));
-  }
+  if (kind === 'sow') return issues.filter((issue) => issue.sow).map((issue) => ({ issue }));
   if (kind === 'clarifications') return issues.filter((issue) => issue.clarification).map((issue) => ({ issue }));
   if (kind === 'rfi') return issues.filter((issue) => issue.formalRfi).map((issue) => ({ issue }));
   if (kind === 'checklist') {
-    const applicable = issues.filter((issue) => Boolean(issue.checklistItem?.trim()));
+    const applicable = issues.filter((issue) => systemKeys(issue).some((system) => checklistItemFor(issue, system).trim()));
     const systems = Array.from(new Set(applicable.flatMap(systemKeys))).sort((a, b) => {
       const ai = SYSTEM_ORDER.indexOf(a); const bi = SYSTEM_ORDER.indexOf(b);
       return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi) || a.localeCompare(b);
     });
-    return systems.flatMap((system) => applicable.filter((issue) => systemKeys(issue).includes(system)).map((issue) => ({ issue, system, section: displaySystem(issue, system) })));
+    return systems.flatMap((system) => applicable
+      .filter((issue) => systemKeys(issue).includes(system) && checklistItemFor(issue, system).trim())
+      .map((issue) => ({ issue, system, section: displaySystem(issue, system) })));
   }
   return issues.filter((issue) => issue.snippet).map((issue) => ({ issue }));
 }

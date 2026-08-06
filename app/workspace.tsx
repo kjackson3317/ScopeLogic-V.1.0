@@ -130,6 +130,7 @@ type Issue = {
   formalRfi: boolean;
   checklist: boolean;
   checklistItem: string;
+  checklistItems: Record<string, string>;
   response: string;
   responseReason: string;
 };
@@ -177,7 +178,7 @@ const blankContract = (): ContractDetails => ({
 const blankProject = (id: string): Project => ({ id, name: 'New ScopeLogic Project', client: '', customerId: '', contactIds: [], versionDate: new Date().toISOString().slice(0, 10), status: 'Planning', systems: [], revision: 'Rev 0', modified: 'Now', contract: blankContract() });
 const blankCustomer = (): Customer => ({ id: crypto.randomUUID(), name: '', address1: '', address2: '', city: '', state: '', zip: '', website: '', notes: '', contacts: [] });
 const blankCustomerContact = (): CustomerContact => ({ id: crypto.randomUUID(), name: '', title: '', email: '', phone: '' });
-const blankIssue = (number: number): Issue => ({ uid: crypto.randomUUID(), id: `SLR-${String(number).padStart(3, '0')}`, system: 'Structured Cabling', customSystem: '', systems: ['Structured Cabling'], recommendations: { 'Structured Cabling': '' }, title: '', status: 'Open', concern: '', rfiQuestion: '', basis: '', reason: '', reference: '', rfi: '', resolution: '', snippet: '', sow: true, clarification: true, formalRfi: false, checklist: false, checklistItem: '', response: 'Included', responseReason: '' });
+const blankIssue = (number: number): Issue => ({ uid: crypto.randomUUID(), id: `SLR-${String(number).padStart(3, '0')}`, system: 'Structured Cabling', customSystem: '', systems: ['Structured Cabling'], recommendations: { 'Structured Cabling': '' }, title: '', status: 'Open', concern: '', rfiQuestion: '', basis: '', reason: '', reference: '', rfi: '', resolution: '', snippet: '', sow: true, clarification: true, formalRfi: false, checklist: false, checklistItem: '', checklistItems: { 'Structured Cabling': '' }, response: 'Included', responseReason: '' });
 const cloneIssue = (issue: Issue): Issue => JSON.parse(JSON.stringify(issue));
 const displaySystem = (issue: Issue, system: string) => system === 'Other' ? issue.customSystem || 'Other' : system;
 const issueSystemKeys = (issue: Issue) => issue.systems?.length ? issue.systems : [issue.system || 'Structured Cabling'];
@@ -185,8 +186,13 @@ const issueSystemNames = (issue: Issue) => issueSystemKeys(issue).map((system) =
 const systemName = (issue: Issue) => issueSystemNames(issue).join('; ');
 const recommendationSummary = (issue: Issue) => issueSystemKeys(issue).map((system) => {
   const recommendation = issue.recommendations?.[system] || (system === issue.system ? issue.basis : '') || '';
-  return `${displaySystem(issue, system)}: ${recommendation}`;
+  return `${displaySystem(issue, system)}\n${recommendation || 'No recommendation entered'}`;
 }).join('\n\n');
+const checklistItemFor = (issue: Issue, system: string) => issue.checklistItems?.[system] || '';
+const checklistSummary = (issue: Issue) => issueSystemKeys(issue)
+  .filter((system) => checklistItemFor(issue, system).trim())
+  .map((system) => `${displaySystem(issue, system)}\n${checklistItemFor(issue, system)}`)
+  .join('\n\n');
 const normalizeIssues = (items: Issue[]) => {
   let rfiNumber = 0;
   let snippetNumber = 0;
@@ -209,18 +215,26 @@ const normalizeProject = (project: Partial<Project> & { id: string } & { bidDate
 });
 
 const normalizeIssue = (issue: Partial<Issue> & Pick<Issue, 'uid' | 'id'>): Issue => {
-  const checklistItem = issue.checklistItem ?? (issue.checklist ? issue.title || '' : '');
+  const legacyChecklistItem = issue.checklistItem ?? (issue.checklist ? issue.title || '' : '');
   const systems = Array.from(new Set((Array.isArray(issue.systems) && issue.systems.length ? issue.systems : [issue.system || 'Structured Cabling']).map(String).filter(Boolean)));
   const hasRecommendations = issue.recommendations && typeof issue.recommendations === 'object' && Object.keys(issue.recommendations).length > 0;
   const recommendations = hasRecommendations
     ? { ...issue.recommendations }
     : { [systems[0]]: issue.basis || '' };
-  systems.forEach((system) => { if (!(system in recommendations)) recommendations[system] = ''; });
+  const hasChecklistItems = issue.checklistItems && typeof issue.checklistItems === 'object' && Object.keys(issue.checklistItems).length > 0;
+  const checklistItems = hasChecklistItems
+    ? { ...issue.checklistItems }
+    : Object.fromEntries(systems.map((system) => [system, legacyChecklistItem || '']));
+  systems.forEach((system) => {
+    if (!(system in recommendations)) recommendations[system] = '';
+    if (!(system in checklistItems)) checklistItems[system] = '';
+  });
+  const firstChecklistItem = systems.map((system) => checklistItems[system] || '').find((value) => value.trim()) || '';
   return {
     ...blankIssue(1), ...issue,
-    system: systems[0], systems, recommendations,
+    system: systems[0], systems, recommendations, checklistItems,
     rfiQuestion: issue.rfiQuestion ?? (issue.formalRfi ? issue.concern || '' : ''),
-    checklistItem, checklist: Boolean(checklistItem.trim()),
+    checklistItem: firstChecklistItem, checklist: Boolean(firstChecklistItem.trim()),
   };
 };
 
@@ -244,15 +258,16 @@ const RELEASE_OPTIONS: { kind: PdfKind; label: string }[] = [
 const ALL_RELEASE_KINDS = RELEASE_OPTIONS.map((item) => item.kind);
 
 type DeliverableRow = { key: string; cells: string[] };
-const sowDeliverableRows = (issues: Issue[]): DeliverableRow[] => issues.filter((issue) => issue.sow).flatMap((issue) =>
-  issueSystemKeys(issue).map((system) => ({ key: `${issue.uid}:${system}`, cells: [issue.id, displaySystem(issue, system), issue.title, issue.concern, issue.recommendations?.[system] || '', issue.reference] })),
-);
+const sowDeliverableRows = (issues: Issue[]): DeliverableRow[] => issues.filter((issue) => issue.sow).map((issue) => ({
+  key: issue.uid,
+  cells: [issue.id, systemName(issue), issue.title, issue.concern, recommendationSummary(issue), issue.reference],
+}));
 const clarificationDeliverableRows = (issues: Issue[]): DeliverableRow[] => issues.filter((issue) => issue.clarification).map((issue) => ({
   key: issue.uid,
   cells: [[issue.id, issue.rfi].filter(Boolean).join('\n'), systemName(issue), issue.concern, recommendationSummary(issue), issue.resolution, issue.status, issue.reference],
 }));
 const rfiDeliverableRows = (issues: Issue[]): DeliverableRow[] => issues.filter((issue) => issue.formalRfi).map((issue) => ({ key: issue.uid, cells: [issue.rfi, systemName(issue), issue.rfiQuestion || issue.concern, issue.resolution] }));
-const checklistDeliverableRows = (issues: Issue[]): DeliverableRow[] => issues.filter((issue) => issue.checklistItem.trim()).map((issue) => ({ key: issue.uid, cells: [issue.id, systemName(issue), issue.checklistItem, 'Editable in PDF', 'Editable in PDF'] }));
+const checklistDeliverableRows = (issues: Issue[]): DeliverableRow[] => issues.filter((issue) => checklistSummary(issue).trim()).map((issue) => ({ key: issue.uid, cells: [issue.id, issueSystemKeys(issue).filter((system) => checklistItemFor(issue, system).trim()).map((system) => displaySystem(issue, system)).join('; '), checklistSummary(issue), 'Editable in PDF', 'Editable in PDF'] }));
 const snippetDeliverableRows = (issues: Issue[]): DeliverableRow[] => issues.filter((issue) => issue.snippet).map((issue) => ({ key: issue.uid, cells: [issue.snippet, issue.id, systemName(issue), issue.reference, issue.title] }));
 
 function openFileDatabase() {
@@ -502,7 +517,9 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
     if (draft.formalRfi && !draft.rfiQuestion.trim()) return message('RFI Question Required', 'Enter the formal RFI question before submitting an SLR assigned to Formal RFI.');
     const isNewEntry = !selectedUid;
     const savedId = draft.id;
-    const submittedDraft = { ...draft, system: draft.systems[0], basis: draft.recommendations[draft.systems[0]] || '', checklistItem: draft.checklistItem.trim(), checklist: Boolean(draft.checklistItem.trim()) };
+    const submittedChecklistItems = Object.fromEntries(draft.systems.map((system) => [system, (draft.checklistItems?.[system] || '').trim()]));
+    const firstChecklistItem = draft.systems.map((system) => submittedChecklistItems[system]).find((value) => value.trim()) || '';
+    const submittedDraft = { ...draft, system: draft.systems[0], basis: draft.recommendations[draft.systems[0]] || '', checklistItems: submittedChecklistItems, checklistItem: firstChecklistItem, checklist: Boolean(firstChecklistItem) };
     setIssues((items) => selectedUid ? items.map((item) => item.uid === selectedUid ? { ...submittedDraft, uid: selectedUid } : item) : [...items, submittedDraft]);
     setSelectedUid('');
     setDraft(isNewEntry ? blankIssue(issues.length + 2) : null);
@@ -666,7 +683,7 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
   return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileNav ? 'show' : ''}`}>
-        <div className="brand"><div className="brand-mark"><img src="/brand/scopelogic-logo-mark.png" alt="ScopeLogic" /></div><div><div className="brand-name-box"><img className="brand-wordmark" src="/brand/scopelogic-wordmark.png" alt="ScopeLogic" /></div><span>v1.0 RC4</span></div></div>
+        <div className="brand"><div className="brand-mark"><img src="/brand/scopelogic-logo-mark.png" alt="ScopeLogic" /></div><div><div className="brand-name-box"><img className="brand-wordmark" src="/brand/scopelogic-wordmark.png" alt="ScopeLogic" /></div><span>v1.0 RC4.1</span></div></div>
         <button className="project-switch" onClick={() => setView('projects')}><span>Current project</span><b>{project.name}</b><small>Switch projects</small></button>
         <Nav label="PROJECT" items={[["setup", "Project Setup"], ["dashboard", "Dashboard"], ["documents", "Project Documents"], ["notes", "Internal Notes"], ["internal", "ScopeLogic Internal Matrix"]]} view={view} setView={setView} />
         <Nav label="DELIVERABLES" items={navDeliverables} view={view} setView={setView} />
@@ -686,10 +703,10 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
           {view === 'documents' && <Documents projectId={projectId} docs={docs} setDocs={setDocs} openPreview={setPreview} confirmAction={confirmAction} requestInput={requestInput} message={message} cloudEnabled={dataMode === 'cloud'} />}
           {view === 'notes' && <InternalNotes value={internalNotes} save={(value) => { setNotesByProject((current) => ({ ...current, [projectId]: value })); message('Saved', 'Internal notes were saved.'); }} />}
           {view === 'internal' && <InternalMatrix issues={filtered} allCount={issues.length} draft={draft} selectedUid={selectedUid} edit={editIssue} setDraft={setDraft} submit={submit} remove={deleteEntry} newDraft={newDraft} saveTemplate={saveTemplate} templates={templates} deleteTemplate={requestDeleteTemplate} search={search} setSearch={setSearch} systems={systems} systemFilter={systemFilter} setSystemFilter={setSystemFilter} statusFilter={statusFilter} setStatusFilter={setStatusFilter} tab={tab} setTab={setTab} confirmAction={confirmAction} />}
-          {view === 'sow' && <Deliverable title="Recommended SOW Matrix" eyebrow="Primary Flagship Deliverable" description="Multi-system SLRs appear once under each selected system with that system's Recommended Bid Basis." rows={sowDeliverableRows(issues)} columns={['SLR', 'System', 'Scope Item', 'Scope Concern', 'Recommended Bid Basis', 'Document Reference']} update={() => updatePdf('sow', 'Recommended SOW Matrix')} url={pdfUrls.sow} onDownload={() => recordDownload('Recommended_SOW_Matrix.pdf', 'Recommended SOW Matrix')} preview={(url) => setPreview({ title: 'Recommended SOW Matrix', url, mode: 'pdf' })} />}
+          {view === 'sow' && <Deliverable title="Recommended SOW Matrix" eyebrow="Primary Flagship Deliverable" description="Each SLR appears once. All affected systems and their separate Recommended Bid Basis sections remain inside the same matrix row." rows={sowDeliverableRows(issues)} columns={['SLR', 'Systems', 'Scope Item', 'Scope Concern', 'Recommended Bid Basis by System', 'Document Reference']} update={() => updatePdf('sow', 'Recommended SOW Matrix')} url={pdfUrls.sow} onDownload={() => recordDownload('Recommended_SOW_Matrix.pdf', 'Recommended SOW Matrix')} preview={(url) => setPreview({ title: 'Recommended SOW Matrix', url, mode: 'pdf' })} />}
           {view === 'clarifications' && <Deliverable title="Clarification Matrix" eyebrow="GC Working Document" description="Each SLR remains one record while all selected systems and system-specific recommendations are shown together." rows={clarificationDeliverableRows(issues)} columns={['SLR / RFI', 'Systems', 'Question / Issue', 'Recommended Bid Basis by System', 'Resolution', 'Status', 'Document Reference']} update={() => updatePdf('clarifications', 'Clarification Matrix')} url={pdfUrls.clarifications} onDownload={() => recordDownload('Clarification_Matrix.pdf', 'Clarification Matrix')} preview={(url) => setPreview({ title: 'Clarification Matrix', url, mode: 'pdf' })} />}
           {view === 'rfi' && <Deliverable title="Formal RFI" eyebrow="A/E Deliverable" description="One RFI number is retained even when the issue affects multiple systems. The answer remains available for internal tracking but is omitted from the Formal RFI PDF." rows={rfiDeliverableRows(issues)} columns={['RFI No.', 'Systems', 'Question', 'Answer']} update={() => updatePdf('rfi', 'Formal RFI')} url={pdfUrls.rfi} onDownload={() => recordDownload('Formal_RFI.pdf', 'Formal RFI')} preview={(url) => setPreview({ title: 'Formal RFI', url, mode: 'pdf' })} />}
-          {view === 'checklist' && <Deliverable title="Contractor Response Checklist" eyebrow="Editable PDF" description="The PDF contains one continuous document divided into system sections. Additional pages are created only when content requires them." rows={checklistDeliverableRows(issues)} columns={['SLR', 'Systems', 'Checklist Scope Item', 'Response', 'Reason']} update={() => updatePdf('checklist', 'Contractor Response Checklist')} url={pdfUrls.checklist} onDownload={() => recordDownload('Contractor_Response_Checklist.pdf', 'Contractor Response Checklist')} preview={(url) => setPreview({ title: 'Contractor Response Checklist', url, mode: 'pdf' })} />}
+          {view === 'checklist' && <Deliverable title="Contractor Response Checklist" eyebrow="Editable PDF" description="The PDF contains one continuous document divided into system sections. Each selected system uses its own checklist scope item, and additional pages are created only when content requires them." rows={checklistDeliverableRows(issues)} columns={['SLR', 'Systems', 'Checklist Scope Item by System', 'Response', 'Reason']} update={() => updatePdf('checklist', 'Contractor Response Checklist')} url={pdfUrls.checklist} onDownload={() => recordDownload('Contractor_Response_Checklist.pdf', 'Contractor Response Checklist')} preview={(url) => setPreview({ title: 'Contractor Response Checklist', url, mode: 'pdf' })} />}
           {view === 'snippets' && <Deliverable title="Snippet Register" eyebrow="Supporting Reference Document" description="Snippet numbers remain tied to one SLR while all applicable systems are shown." rows={snippetDeliverableRows(issues)} columns={['Snippet No.', 'SLR', 'Systems', 'Document Reference', 'Caption']} update={() => updatePdf('snippets', 'Snippet Register')} url={pdfUrls.snippets} onDownload={() => recordDownload('Snippet_Register.pdf', 'Snippet Register')} preview={(url) => setPreview({ title: 'Snippet Register', url, mode: 'pdf' })} />}
           {view === 'releases' && <OfficialReleases project={project} generate={() => setReleaseSelection({ kinds: [...ALL_RELEASE_KINDS], notes: '' })} />}
           {view === 'exports' && <ExportLog entries={exportEntries} />}
@@ -715,19 +732,26 @@ function InternalMatrix(props: any) {
   const setSystems = (systems: string[]) => props.setDraft((current: Issue | null) => {
     if (!current) return current;
     const recommendations = { ...current.recommendations };
-    systems.forEach((system) => { if (!(system in recommendations)) recommendations[system] = ''; });
+    const checklistItems = { ...current.checklistItems };
+    systems.forEach((system) => {
+      if (!(system in recommendations)) recommendations[system] = '';
+      if (!(system in checklistItems)) checklistItems[system] = '';
+    });
     Object.keys(recommendations).forEach((system) => { if (!systems.includes(system)) delete recommendations[system]; });
-    return { ...current, systems, system: systems[0] || '', recommendations };
+    Object.keys(checklistItems).forEach((system) => { if (!systems.includes(system)) delete checklistItems[system]; });
+    return { ...current, systems, system: systems[0] || '', recommendations, checklistItems };
   });
   const toggleSystem = (system: string) => {
     if (!draft) return;
     if (!draft.systems.includes(system)) return setSystems([...draft.systems, system]);
     const recommendation = draft.recommendations?.[system]?.trim();
+    const checklistItem = draft.checklistItems?.[system]?.trim();
     const remove = () => setSystems(draft.systems.filter((item) => item !== system));
-    if (recommendation) props.confirmAction('Remove System?', `Removing ${displaySystem(draft, system)} will also remove its Recommended Bid Basis from this SLR.`, remove, 'Remove System', true);
+    if (recommendation || checklistItem) props.confirmAction('Remove System?', `Removing ${displaySystem(draft, system)} will also remove its Recommended Bid Basis and Contractor Checklist Scope Item from this SLR.`, remove, 'Remove System', true);
     else remove();
   };
   const patchRecommendation = (system: string, value: string) => props.setDraft((current: Issue | null) => current ? { ...current, recommendations: { ...current.recommendations, [system]: value } } : current);
+  const patchChecklistItem = (system: string, value: string) => props.setDraft((current: Issue | null) => current ? { ...current, checklistItems: { ...current.checklistItems, [system]: value } } : current);
 
   return <>
     <PageHead eyebrow="Primary Workspace" title="ScopeLogic Internal Matrix" description="Create one SLR for a scope issue, select every affected system, and enter a separate Recommended Bid Basis for each system." action={<div className="button-row"><button className="secondary" onClick={props.remove}>{draft && !props.selectedUid ? 'Discard Draft' : 'Delete'}</button><button className="primary" onClick={() => props.newDraft()}>+ New Issue</button></div>} />
@@ -754,13 +778,13 @@ function InternalMatrix(props: any) {
 
         <div className="recommendation-sections"><div className="recommendation-heading"><b>Recommended Bid Basis by System</b><span>Each selected system receives its own recommendation in the Recommended SOW Matrix.</span></div>{draft.systems.length ? draft.systems.map((system) => <div key={system} className="recommendation-field"><AutoGrowTextArea label={`Recommended Bid Basis — ${displaySystem(draft, system)}`} value={draft.recommendations?.[system] || ''} onChange={(value) => patchRecommendation(system, value)} /></div>) : <div className="empty-panel compact"><b>No systems selected.</b><p>Select at least one affected system above.</p></div>}</div>
 
-        <AutoGrowTextArea label="Contractor Checklist Scope Item" value={draft.checklistItem} onChange={(value) => patch('checklistItem', value)} />
-        <p className="help-text checklist-help">This exact language appears in every selected system section of the Contractor Response Checklist. Leave blank to omit the SLR from the checklist.</p>
+        <div className="recommendation-sections checklist-scope-sections"><div className="recommendation-heading"><b>Contractor Checklist Scope Item by System</b><span>Each selected system receives its own contractor checklist language.</span></div>{draft.systems.length ? draft.systems.map((system) => <div key={system} className="recommendation-field"><AutoGrowTextArea label={`Contractor Checklist Scope Item — ${displaySystem(draft, system)}`} value={draft.checklistItems?.[system] || ''} onChange={(value) => patchChecklistItem(system, value)} /></div>) : <div className="empty-panel compact"><b>No systems selected.</b><p>Select at least one affected system above.</p></div>}</div>
+        <p className="help-text checklist-help">Leave a system-specific field blank to omit this SLR from that system section of the Contractor Response Checklist.</p>
 
         <div className="detail-tabs"><button className={props.tab === 'details' ? 'active' : ''} onClick={() => props.setTab('details')}>Details</button><button className={props.tab === 'snippets' ? 'active' : ''} onClick={() => props.setTab('snippets')}>Snippets</button><button className={props.tab === 'deliverables' ? 'active' : ''} onClick={() => props.setTab('deliverables')}>Deliverables</button><button className={props.tab === 'history' ? 'active' : ''} onClick={() => props.setTab('history')}>History</button></div>
         {props.tab === 'details' && <div className="tab-panel"><AutoGrowTextArea label="RFI Resolution / Official Answer" value={draft.resolution} onChange={(value) => patch('resolution', value)} /></div>}
         {props.tab === 'snippets' && <div className="tab-panel"><Check label="Create an automatically numbered snippet reference for this SLR" value={Boolean(draft.snippet)} change={(value) => patch('snippet', value ? 'pending' : '')} /><p className="help-text">The final SNP number is assigned on submission and renumbered when entries are deleted.</p></div>}
-        {props.tab === 'deliverables' && <div className="tab-panel checklist"><Check label="Recommended SOW Matrix" value={draft.sow} change={(value) => patch('sow', value)} /><Check label="Clarification Matrix" value={draft.clarification} change={(value) => patch('clarification', value)} /><Check label="Formal RFI" value={draft.formalRfi} change={(value) => patch('formalRfi', value)} /><div className="deliverable-rule-note"><b>Contractor Response Checklist</b><span>Controlled by the Contractor Checklist Scope Item field above.</span></div></div>}
+        {props.tab === 'deliverables' && <div className="tab-panel checklist"><Check label="Recommended SOW Matrix" value={draft.sow} change={(value) => patch('sow', value)} /><Check label="Clarification Matrix" value={draft.clarification} change={(value) => patch('clarification', value)} /><Check label="Formal RFI" value={draft.formalRfi} change={(value) => patch('formalRfi', value)} /><div className="deliverable-rule-note"><b>Contractor Response Checklist</b><span>Controlled by the system-specific Contractor Checklist Scope Item fields above.</span></div></div>}
         {props.tab === 'history' && <div className="tab-panel timeline"><p><b>Draft workflow</b><span>Only Submit Entry publishes changes to the deliverables.</span></p></div>}
         <div className="submit-bar"><button className="secondary" onClick={props.saveTemplate}>Save This SLR as Template</button><button className="primary" onClick={props.submit}>Submit Entry</button></div>
       </>}
@@ -1081,7 +1105,7 @@ function SystemStatus({ dataMode, syncState, syncError, cloudStatus, retryCloudS
     <PageHead eyebrow="Administration" title="System Status" description="Production database, private document storage, and browser recovery status." action={<button className="primary" onClick={() => void retryCloudSync()}>Retry Cloud Sync</button>} />
     <div className="system-status-grid">
       <section className={`system-status-card ${statusOk ? 'ok' : 'warn'}`}><span>Workspace</span><b>{dataMode === 'cloud' ? (syncState === 'saving' ? 'Saving to cloud' : syncState === 'error' ? 'Cloud save error' : 'Cloud synced') : 'Local fallback'}</b><p>{syncError || 'Supabase is the active source of truth. The retained browser copy remains available for recovery.'}</p></section>
-      <section className={`system-status-card ${cloudStatus.schema.healthy ? 'ok' : 'warn'}`}><span>Database schema</span><b>{cloudStatus.schema.version}</b><p>{cloudStatus.schema.healthy ? 'All required production tables and RC4 columns are available.' : `Missing: ${cloudStatus.schema.missing.join(', ') || 'Unknown schema items'}`}</p></section>
+      <section className={`system-status-card ${cloudStatus.schema.healthy ? 'ok' : 'warn'}`}><span>Database schema</span><b>{cloudStatus.schema.version}</b><p>{cloudStatus.schema.healthy ? 'All required production tables and RC4.1 columns are available.' : `Missing: ${cloudStatus.schema.missing.join(', ') || 'Unknown schema items'}`}</p></section>
       <section className={`system-status-card ${cloudStatus.schema.bucketReady ? 'ok' : 'warn'}`}><span>Private storage</span><b>{cloudDocuments.length} of {documents.length} files in cloud</b><p>{cloudStatus.schema.bucketReady ? 'The project-files bucket is private and available.' : 'The private storage bucket requires attention.'}</p></section>
       <section className="system-status-card"><span>Last cloud save</span><b>{cloudStatus.lastCloudSyncAt ? new Date(cloudStatus.lastCloudSyncAt).toLocaleString() : 'Not recorded'}</b><p>Cloud revision {cloudStatus.cloudRevision}. Browser recovery data has not been deleted.</p></section>
     </div>
@@ -1093,7 +1117,7 @@ function OfficialLogoStandard() {
     ['Scope Concern', 'Clarification Matrix', 'Internal issue statement or clarification need.'],
     ['Formal RFI Question', 'Formal RFI', 'A/E-facing question. Only completed when an official RFI is required.'],
     ['Recommended Bid Basis by System', 'Recommended SOW Matrix', 'A separate interim bid basis or recommended scope standard for every selected system.'],
-    ['Contractor Checklist Scope Item', 'Contractor Response Checklist', 'Exact checklist language. Blank excludes the SLR from the checklist.'],
+    ['Contractor Checklist Scope Item by System', 'Contractor Response Checklist', 'System-specific checklist language. A blank system field excludes the SLR from that system section.'],
     ['RFI Resolution / Official Answer', 'Clarification Matrix and RFI tracking', 'Official response received from the A/E or owner.'],
   ];
   return <>
@@ -1104,7 +1128,7 @@ function OfficialLogoStandard() {
         <section className="standard-card"><span>01</span><h3>SLR numbering</h3><p>Every project starts at SLR-001. RFI and snippet numbers are generated only when applicable. Deleting a submitted record closes numbering gaps automatically.</p></section>
         <section className="standard-card"><span>02</span><h3>Submission control</h3><p>Internal Matrix edits remain drafts until Submit Entry is selected. Only submitted records feed deliverables and generated PDFs.</p></section>
         <section className="standard-card"><span>03</span><h3>Global SLR templates</h3><p>Saved templates carry from project to project. Templates store reusable scope logic but never retain the originating project’s SLR, RFI, snippet, or document-reference numbers.</p></section>
-        <section className="standard-card"><span>04</span><h3>Checklist inclusion</h3><p>An SLR appears on the Contractor Response Checklist only when Contractor Checklist Scope Item contains text. Multi-system SLRs repeat in each applicable system section of the same editable PDF.</p></section>
+        <section className="standard-card"><span>04</span><h3>Checklist inclusion</h3><p>An SLR appears in a system section of the Contractor Response Checklist only when that system's Contractor Checklist Scope Item contains text.</p></section>
         <section className="standard-card"><span>05</span><h3>Document control</h3><p>One uploaded document revision may be marked Current. Superseded files belong in Previous Documents. Revision identifies the issue level; Current identifies the active file.</p></section>
         <section className="standard-card"><span>06</span><h3>Official releases</h3><p>An official GC release is one combined PDF with a cover page, project revision, version date, and only the deliverables selected for that release.</p></section>
       </div>
@@ -1177,7 +1201,7 @@ function ProjectLibrary({ projects, active, entries, open, add, addEntry, delete
 }
 
 function OfficialReleases({ project, generate }: { project: Project; generate: () => void }) {
-  return <><PageHead eyebrow="Project Control" title="Official Releases" description="Generate the formal GC release package after reviewing the current submitted SLRs and individual PDFs." action={<button className="primary" onClick={generate}>Generate Official Release</button>} /><div className="panel release-workspace"><span>Current release basis</span><h2>{project.name}</h2><div className="release-summary-grid"><div><b>{project.revision}</b><span>Project revision</span></div><div><b>{project.versionDate || 'Not set'}</b><span>Version date</span></div><div><b>Private cloud archive</b><span>Release storage</span></div></div><p>RC4 continues the existing official-release archive. Immutable release numbering and superseded/current controls are scheduled for the final v1.0 closeout release.</p></div></>;
+  return <><PageHead eyebrow="Project Control" title="Official Releases" description="Generate the formal GC release package after reviewing the current submitted SLRs and individual PDFs." action={<button className="primary" onClick={generate}>Generate Official Release</button>} /><div className="panel release-workspace"><span>Current release basis</span><h2>{project.name}</h2><div className="release-summary-grid"><div><b>{project.revision}</b><span>Project revision</span></div><div><b>{project.versionDate || 'Not set'}</b><span>Version date</span></div><div><b>Private cloud archive</b><span>Release storage</span></div></div><p>RC4.1 continues the existing official-release archive. Immutable release numbering and superseded/current controls are scheduled for the final v1.0 closeout release.</p></div></>;
 }
 
 const moneyNumber = (value: string) => Number(String(value || '').replace(/[^0-9.-]/g, '')) || 0;
