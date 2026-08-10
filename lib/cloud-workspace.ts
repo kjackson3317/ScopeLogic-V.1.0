@@ -91,6 +91,7 @@ export type Issue = {
   basis: string;
   reason: string;
   reference: string;
+  sourceType: string;
   rfi: string;
   resolution: string;
   snippet: string;
@@ -265,7 +266,7 @@ export async function inspectCloudSchema(force = false): Promise<CloudSchemaHeal
     const message = formatSupabaseError(result.error);
     const missingFunction = /scopelogic_schema_health|function .* does not exist|PGRST202/i.test(message);
     throw new Error(missingFunction
-      ? 'The ScopeLogic database health function is unavailable. Confirm migrations through 20260806000400_scopelogic_rc5_mobile_ai.sql are applied, wait 30 seconds, and retry.'
+      ? 'The ScopeLogic database health function is unavailable. Confirm migrations through 20260810000100_scopelogic_rc55_matrix_source_reference.sql are applied, wait 30 seconds, and retry.'
       : `Cloud schema diagnostic failed: ${message}`);
   }
 
@@ -278,8 +279,8 @@ export async function inspectCloudSchema(force = false): Promise<CloudSchemaHeal
     checkedAt: text(raw.checkedAt ?? raw.checked_at) || new Date().toISOString(),
   };
   schemaHealthCache = { value: health, checkedAt: now };
-  if (health.version !== '1.0-RC5.2') {
-    throw new Error('ScopeLogic v1.0 RC5.2 requires migrations through 20260807000100_scopelogic_rc52_estimating.sql. The browser recovery copy remains available and no RC5 cloud write was attempted.');
+  if (health.version !== '1.0-RC5.5') {
+    throw new Error('ScopeLogic v1.0 RC5.5 requires migrations through 20260810000100_scopelogic_rc55_matrix_source_reference.sql. The browser recovery copy remains available and no RC5 cloud write was attempted.');
   }
   if (!health.healthy) throw new Error(`Cloud schema is incomplete. Missing: ${health.missing.join(', ') || 'unknown required objects'}.`);
   return health;
@@ -445,6 +446,7 @@ export async function loadWorkspaceFromCloud(forceSchemaCheck = false): Promise<
       basis: text(row.recommended_bid_basis),
       reason: text(row.reason_basis),
       reference: text(row.reference),
+      sourceType: text(row.source_type),
       rfi: text(row.rfi_number),
       resolution: text(row.resolution),
       snippet: text(row.snippet_number),
@@ -653,6 +655,7 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
       recommended_bid_basis: issue.recommendations?.[issue.systems?.[0] || issue.system] || issue.basis || '',
       reason_basis: issue.reason || '',
       reference: issue.reference || '',
+      source_type: issue.sourceType || '',
       rfi_number: issue.rfi || '',
       resolution: issue.resolution || '',
       snippet_number: issue.snippet || '',

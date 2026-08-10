@@ -258,3 +258,85 @@ html,body{max-width:100%;overflow-x:hidden}.app-shell{min-height:100dvh}.sidebar
 @media(max-width:620px){.drawing-takeoff-head-actions{grid-template-columns:1fr}.drawing-mode-grid{grid-template-columns:repeat(3,1fr)}.drawing-tools-panel{padding:9px}.drawing-scroll{padding:8px}.drawing-canvas-panel,.drawing-scroll,.drawing-loading,.drawing-empty{min-height:430px}.drawing-tool-modal .form-grid.two{grid-template-columns:1fr}.drawing-tool-modal .span-two{grid-column:auto}.drawing-page-controls{flex-wrap:wrap}.drawing-finish-bar{left:8px;right:8px;transform:none;justify-content:center}.drawing-summary-row{grid-template-columns:minmax(0,1fr) 52px 58px}}
 .drawing-qty-note{display:block;margin-top:4px;color:#477e7b;font-size:8px;font-weight:700;white-space:normal}
 .drawing-tool-modal .form-grid.two{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px}.drawing-tool-modal .form-grid label{display:grid;gap:5px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}.drawing-tool-modal .form-grid input,.drawing-tool-modal .form-grid select{width:100%;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);padding:9px;font:inherit;text-transform:none;letter-spacing:0}.drawing-tool-modal .form-grid label small{font-size:8px;line-height:1.4;text-transform:none;letter-spacing:0;font-weight:500}.drawing-tool-modal .modal-actions{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--line);background:#f8faf7}.drawing-tool-modal .modal-head{height:auto;min-height:58px}.drawing-tool-modal .modal-head span{font-size:8px;color:var(--green2);font-weight:800;letter-spacing:.08em}.drawing-tool-modal .modal-head h2{margin:3px 0 0;font-size:16px}
+
+/* RC5.5 — estimating search, BOM ergonomics, rule reuse, matrix references */
+.part-filter-grid{display:grid;grid-template-columns:repeat(3,minmax(160px,1fr));gap:8px}
+.parts-db-filter-panel,.rule-part-search-panel{padding:14px 16px;border-bottom:1px solid var(--line);background:#fbfcfa}
+.parts-db-filter-grid{max-width:1100px}
+.parts-filter-status{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:9px;color:var(--muted);font-size:10px}
+.parts-search-empty{margin:16px;border:1px dashed #bcc8b8;border-radius:10px;background:#f7faf5;padding:42px 24px;text-align:center;color:var(--muted)}
+.parts-search-empty b{display:block;color:var(--ink);font-size:14px;margin-bottom:7px}
+.parts-search-empty p{max-width:760px;margin:0 auto;line-height:1.5}
+.parts-db-head{align-items:flex-start}
+.parts-db-head .parts-db-actions{max-width:980px}
+.parts-table .manufacturer-input{min-width:150px}
+.parts-table .part-number-input{min-width:150px}
+.parts-table .description-input{min-width:330px}
+.parts-table .system-input{min-width:150px}
+.parts-table .category-input{min-width:130px}
+.parts-table .vendor-input{min-width:145px}
+
+/* Quote BOM columns are sized around the data they actually contain. */
+.quote-items-table{min-width:1180px;table-layout:auto}
+.quote-items-table .description-input{min-width:320px;width:100%}
+.quote-items-table .qty-input{min-width:54px!important;width:58px!important;text-align:right}
+.quote-items-table .money-input{min-width:72px!important;width:82px!important;text-align:right}
+.quote-items-table .labor-min-input{min-width:52px!important;width:58px!important;text-align:right}
+.template-items-table .description-input{min-width:300px}
+.quote-table .qty-input,.quote-table .money-input,.quote-table .labor-min-input{padding-left:5px;padding-right:5px}
+.bom-bulk-actions{display:flex;align-items:center;gap:12px;padding:9px 16px;border-bottom:1px solid var(--line);background:#fff}
+.bom-bulk-actions label{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:800}
+.bom-bulk-actions>span{font-size:10px;color:var(--muted);margin-right:auto}
+.bom-bulk-actions .danger-button:disabled{opacity:.45;cursor:not-allowed}
+.selected-bom-line td{background:#f1f6ef}
+
+/* Header ordering mirrors line-item ordering while retaining precise arrow controls. */
+.bom-group-edit-row{grid-template-columns:30px minmax(300px,1fr) 76px auto}
+.header-order-buttons{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.header-order-buttons .compact-button{min-width:32px;padding:6px 8px}
+
+/* Take Off rule part search and Access/CCTV scenario helpers. */
+.rule-part-search-panel{padding-left:0;padding-right:0;background:transparent;border:0}
+.rule-part-search-panel .part-filter-grid{margin-bottom:8px}
+.rule-scenario-help{display:block;margin-top:6px;color:var(--muted);font-size:9px;line-height:1.45}
+.formula-modal-meta{grid-template-columns:1.35fr 1fr 1fr 145px 90px}
+.rule-library-select{display:flex;gap:10px;align-items:center;padding:12px 16px}
+.rule-library-select select{min-width:260px;flex:1;border:1px solid var(--line);border-radius:6px;padding:9px;background:#fff;color:var(--ink)}
+
+/* Internal Matrix: distinguish the permanent SLR cross-reference from the source citation. */
+.matrix-reference-grid{display:grid;grid-template-columns:130px 190px minmax(240px,1fr) 190px 130px;gap:10px;margin:14px 0 4px}
+.matrix-reference-grid .field{min-width:0}
+.matrix-reference-grid .field select,.matrix-reference-grid .field input{width:100%;border:1px solid #ccd4ca;border-radius:7px;background:#fff;padding:10px;color:var(--ink)}
+.matrix-reference-grid input:disabled{background:#f0f3ee;color:#596258}
+.reference-help{margin:4px 0 16px!important;padding:9px 11px;border-left:3px solid var(--blue);background:#f4f8fc}
+
+@media(max-width:1100px){
+  .matrix-reference-grid{grid-template-columns:1fr 1fr 1fr}
+  .formula-modal-meta{grid-template-columns:1fr 1fr 1fr}
+}
+@media(max-width:900px){
+  .part-filter-grid{grid-template-columns:1fr 1fr}
+  .parts-db-head{align-items:stretch;flex-direction:column}
+  .parts-db-head .parts-db-actions{max-width:none}
+  .bom-bulk-actions{flex-wrap:wrap}
+  .bom-bulk-actions>span{margin-right:0}
+  .matrix-reference-grid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:700px){
+  .part-filter-grid,.matrix-reference-grid{grid-template-columns:1fr}
+  .parts-db-filter-panel{padding:10px}
+  .parts-filter-status{align-items:flex-start;flex-direction:column}
+  .parts-search-empty{margin:10px;padding:28px 16px}
+  .bom-bulk-actions{display:grid;grid-template-columns:1fr auto;gap:8px 10px}
+  .bom-bulk-actions>span{grid-column:1/-1}
+  .bom-bulk-actions .danger-button{width:100%;grid-column:1/-1}
+  .bom-group-edit-row{grid-template-columns:28px minmax(150px,1fr) 72px auto}
+  .formula-modal-meta{grid-template-columns:1fr}
+  .rule-library-select{align-items:stretch;flex-direction:column}
+  .rule-library-select select{min-width:0;width:100%}
+}
+@media(max-width:520px){
+  .bom-group-edit-row{grid-template-columns:24px minmax(130px,1fr)}
+  .bom-group-edit-row .header-order-buttons,.bom-group-edit-row>.link-button{grid-column:2}
+  .header-order-buttons{width:76px}
+}
