@@ -77,8 +77,6 @@ export type Customer = {
   contacts: CustomerContact[];
 };
 
-export type AiAssistance = { provider: 'OpenAI'; model: string; generatedAt: string; appliedAt: string; appliedFields: string[]; reviewedByUser: boolean };
-
 export type Issue = {
   uid: string;
   id: string;
@@ -104,10 +102,9 @@ export type Issue = {
   checklistItems: Record<string, string>;
   response: string;
   responseReason: string;
-  aiAssistance: AiAssistance | null;
 };
 
-export type Template = { uid: string; name: string; issue: Omit<Issue, 'uid' | 'id' | 'rfi' | 'snippet' | 'aiAssistance'> };
+export type Template = { uid: string; name: string; issue: Omit<Issue, 'uid' | 'id' | 'rfi' | 'snippet'> };
 
 export type Doc = {
   id: string;
@@ -130,6 +127,28 @@ export type ExportEntry = {
   downloadedAt: string;
   projectRevision: string;
 };
+
+export type LaborRate = { id: string; name: string; costPerHour: number; markup?: number; active: boolean };
+export type DifficultyMultiplier = { id: string; name: string; multiplier: number; active: boolean };
+export type PartRecord = { id: string; manufacturer: string; partNumber: string; description: string; system: string; category: string; bomSection?: string; unitCost: number; materialMarkup: number; engineeringMinutes: number; installationMinutes: number; programmingMinutes: number; testingMinutes: number; laborMinutes?: Record<string, number>; cableType?: string; cableFeet?: number; vendor: string; updatedAt: string; active: boolean };
+export type QuoteGroup = { id: string; name: string };
+export type QuoteLine = { id: string; partId: string; manufacturer: string; partNumber: string; description: string; system: string; bomSection?: string; groupId?: string; showOnBom?: boolean; qty: number; unitCost: number; materialMarkup: number; engineeringMinutes: number; installationMinutes: number; programmingMinutes: number; testingMinutes: number; laborMinutes?: Record<string, number>; cableType?: string; cableFeet?: number; adHoc?: boolean };
+export type TravelCalculator = { crewSize: number; roundTripHours: number; days: number; hotelNights: number; roomRate: number; perDiemRate: number; laborRateId: string };
+export type Quote = { id: string; number: string; name: string; status: string; taxRate: number; bondRate: number; shipping: number; otherCosts: number; lines: QuoteLine[]; groups?: QuoteGroup[]; createdAt: string; updatedAt: string; difficultyId?: string; globalMaterialMarkup?: number; laborMarkups?: Record<string, number>; projectManagementHours?: number; travelHours?: Record<string, number>; travel?: TravelCalculator; laborAdjustments?: Record<string, number>; jobMaterialDiscount?: number; perDiemTravel?: number; terms?: string; internalNotes?: string; adminNotes?: string; engineeringNotRequired?: boolean };
+export type QuoteTemplate = { id: string; name: string; description: string; system: string; globalMaterialMarkup: number; difficultyId?: string; laborMarkups?: Record<string, number>; groups?: QuoteGroup[]; lines: QuoteLine[]; createdAt: string; updatedAt: string };
+export type TakeoffCalculationMode = 'multiply' | 'capacity' | 'cable-length';
+export type TakeoffRounding = 'up' | 'down';
+export type TakeoffFormulaItem = { id: string; partId: string; qtyPerUnit: number; calculationMode?: TakeoffCalculationMode; capacity?: number; rounding?: TakeoffRounding };
+export type TakeoffFormula = { id: string; name: string; system: string; unitLabel: string; items: TakeoffFormulaItem[]; laborMinutesPerUnit: Record<string, number>; active: boolean };
+export type TakeoffEntry = { id: string; formulaId: string; description: string; qty: number; notes: string; source?: 'manual' | 'drawing' };
+export type TakeoffProjectSettings = { selectedSystems: string[]; activeRuleIds: string[]; averageCableLength: number };
+export type DrawingTakeoffTool = { id: string; name: string; system: string; shape: 'square' | 'triangle' | 'circle' | 'diamond'; color: string; multiplier: number; unit: string; scope: 'global' | 'project'; projectId?: string; formulaId?: string };
+export type DrawingTakeoffMark = { id: string; docId: string; page: number; toolId: string; x: number; y: number };
+export type DrawingPoint = { x: number; y: number };
+export type DrawingMeasurement = { id: string; docId: string; page: number; type: 'distance' | 'polyline' | 'area' | 'perimeter'; points: DrawingPoint[]; value: number; unit: string; name: string; system: string };
+export type DrawingPageCalibration = { pxPerFoot: number; label: string };
+export type DrawingAnnotation = { id: string; docId: string; page: number; type: 'rectangle' | 'cloud' | 'arrow' | 'highlight' | 'snippet'; points: DrawingPoint[]; label?: string; issueUid?: string; issueId?: string };
+export type ScopeOfWorkDoc = { includedHtml: string; excludedHtml: string };
 
 export type OfficialRelease = {
   id: string;
@@ -156,6 +175,20 @@ export type WorkspaceSnapshot = {
   exportsByProject: Record<string, ExportEntry[]>;
   calendarEntries: CalendarEntry[];
   customers: Customer[];
+  laborRates: LaborRate[];
+  difficultyMultipliers: DifficultyMultiplier[];
+  parts: PartRecord[];
+  quotesByProject: Record<string, Quote[]>;
+  quoteTemplates: QuoteTemplate[];
+  takeoffFormulas: TakeoffFormula[];
+  takeoffEntriesByProject: Record<string, TakeoffEntry[]>;
+  takeoffSettingsByProject: Record<string, TakeoffProjectSettings>;
+  drawingTakeoffTools: DrawingTakeoffTool[];
+  drawingTakeoffMarksByProject: Record<string, DrawingTakeoffMark[]>;
+  drawingMeasurementsByProject: Record<string, DrawingMeasurement[]>;
+  drawingCalibrationsByProject: Record<string, Record<string, DrawingPageCalibration>>;
+  drawingAnnotationsByProject: Record<string, DrawingAnnotation[]>;
+  scopeOfWorkByProject: Record<string, ScopeOfWorkDoc>;
 };
 
 export type CloudSchemaHealth = {
@@ -245,8 +278,8 @@ export async function inspectCloudSchema(force = false): Promise<CloudSchemaHeal
     checkedAt: text(raw.checkedAt ?? raw.checked_at) || new Date().toISOString(),
   };
   schemaHealthCache = { value: health, checkedAt: now };
-  if (health.version !== '1.0-RC5') {
-    throw new Error('ScopeLogic v1.0 RC5 requires migrations 20260806000300_scopelogic_v1_production_closeout.sql and 20260806000400_scopelogic_rc5_mobile_ai.sql. The browser recovery copy remains available and no RC5 cloud write was attempted.');
+  if (health.version !== '1.0-RC5.2') {
+    throw new Error('ScopeLogic v1.0 RC5.2 requires migrations through 20260807000100_scopelogic_rc52_estimating.sql. The browser recovery copy remains available and no RC5 cloud write was attempted.');
   }
   if (!health.healthy) throw new Error(`Cloud schema is incomplete. Missing: ${health.missing.join(', ') || 'unknown required objects'}.`);
   return health;
@@ -423,7 +456,6 @@ export async function loadWorkspaceFromCloud(forceSchemaCheck = false): Promise<
       checklistItems,
       response: text(row.contractor_response) || 'Included',
       responseReason: text(row.contractor_response_reason),
-      aiAssistance: row.ai_assistance && typeof row.ai_assistance === 'object' && Object.keys(row.ai_assistance).length ? row.ai_assistance as AiAssistance : null,
     });
   }
 
@@ -484,8 +516,24 @@ export async function loadWorkspaceFromCloud(forceSchemaCheck = false): Promise<
   const projectId = projects.some((project) => project.id === selectedProjectId) ? selectedProjectId : projects[0]?.id || '';
   const documents = (documentResult.data || []) as AnyRecord[];
 
+  const estimatingData = settings.estimating_data && typeof settings.estimating_data === 'object' ? settings.estimating_data as AnyRecord : {};
+  const laborRates = Array.isArray(estimatingData.laborRates) ? estimatingData.laborRates as LaborRate[] : [];
+  const difficultyMultipliers = Array.isArray(estimatingData.difficultyMultipliers) ? estimatingData.difficultyMultipliers as DifficultyMultiplier[] : [];
+  const parts = Array.isArray(estimatingData.parts) ? estimatingData.parts as PartRecord[] : [];
+  const quotesByProject = estimatingData.quotesByProject && typeof estimatingData.quotesByProject === 'object' ? estimatingData.quotesByProject as Record<string, Quote[]> : {};
+  const quoteTemplates = Array.isArray(estimatingData.quoteTemplates) ? estimatingData.quoteTemplates as QuoteTemplate[] : [];
+  const takeoffFormulas = Array.isArray(estimatingData.takeoffFormulas) ? estimatingData.takeoffFormulas as TakeoffFormula[] : [];
+  const takeoffEntriesByProject = estimatingData.takeoffEntriesByProject && typeof estimatingData.takeoffEntriesByProject === 'object' ? estimatingData.takeoffEntriesByProject as Record<string, TakeoffEntry[]> : {};
+  const takeoffSettingsByProject = estimatingData.takeoffSettingsByProject && typeof estimatingData.takeoffSettingsByProject === 'object' ? estimatingData.takeoffSettingsByProject as Record<string, TakeoffProjectSettings> : {};
+  const drawingTakeoffTools = Array.isArray(estimatingData.drawingTakeoffTools) ? estimatingData.drawingTakeoffTools as DrawingTakeoffTool[] : [];
+  const drawingTakeoffMarksByProject = estimatingData.drawingTakeoffMarksByProject && typeof estimatingData.drawingTakeoffMarksByProject === 'object' ? estimatingData.drawingTakeoffMarksByProject as Record<string, DrawingTakeoffMark[]> : {};
+  const drawingMeasurementsByProject = estimatingData.drawingMeasurementsByProject && typeof estimatingData.drawingMeasurementsByProject === 'object' ? estimatingData.drawingMeasurementsByProject as Record<string, DrawingMeasurement[]> : {};
+  const drawingCalibrationsByProject = estimatingData.drawingCalibrationsByProject && typeof estimatingData.drawingCalibrationsByProject === 'object' ? estimatingData.drawingCalibrationsByProject as Record<string, Record<string, DrawingPageCalibration>> : {};
+  const drawingAnnotationsByProject = estimatingData.drawingAnnotationsByProject && typeof estimatingData.drawingAnnotationsByProject === 'object' ? estimatingData.drawingAnnotationsByProject as Record<string, DrawingAnnotation[]> : {};
+  const scopeOfWorkByProject = estimatingData.scopeOfWorkByProject && typeof estimatingData.scopeOfWorkByProject === 'object' ? estimatingData.scopeOfWorkByProject as Record<string, ScopeOfWorkDoc> : {};
+
   return {
-    snapshot: { projects, projectId, issuesByProject, docsByProject, templates, notesByProject, exportsByProject, calendarEntries, customers },
+    snapshot: { projects, projectId, issuesByProject, docsByProject, templates, notesByProject, exportsByProject, calendarEntries, customers, laborRates, difficultyMultipliers, parts, quotesByProject, quoteTemplates, takeoffFormulas, takeoffEntriesByProject, takeoffSettingsByProject, drawingTakeoffTools, drawingTakeoffMarksByProject, drawingMeasurementsByProject, drawingCalibrationsByProject, drawingAnnotationsByProject, scopeOfWorkByProject },
     status: {
       source: 'cloud',
       cutoverCompletedAt: settings.cloud_cutover_completed_at || null,
@@ -615,7 +663,6 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
       checklist_scope_items_by_system: issue.checklistItems || Object.fromEntries((issue.systems?.length ? issue.systems : [issue.system || 'Structured Cabling']).map((system) => [system, issue.checklistItem || ''])),
       contractor_response: issue.response || 'Included',
       contractor_response_reason: issue.responseReason || '',
-      ai_assistance: issue.aiAssistance || {},
     }));
     (snapshot.docsByProject[project.id] || []).forEach((doc, index) => documentRows.push({
       owner_id: ownerId,
@@ -703,6 +750,7 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
     data_mode: 'cloud',
     cloud_revision: nextRevision,
     last_cloud_sync_at: new Date().toISOString(),
+    estimating_data: { laborRates: snapshot.laborRates || [], difficultyMultipliers: snapshot.difficultyMultipliers || [], parts: snapshot.parts || [], quotesByProject: snapshot.quotesByProject || {}, quoteTemplates: snapshot.quoteTemplates || [], takeoffFormulas: snapshot.takeoffFormulas || [], takeoffEntriesByProject: snapshot.takeoffEntriesByProject || {}, takeoffSettingsByProject: snapshot.takeoffSettingsByProject || {}, drawingTakeoffTools: snapshot.drawingTakeoffTools || [], drawingTakeoffMarksByProject: snapshot.drawingTakeoffMarksByProject || {}, drawingMeasurementsByProject: snapshot.drawingMeasurementsByProject || {}, drawingCalibrationsByProject: snapshot.drawingCalibrationsByProject || {}, drawingAnnotationsByProject: snapshot.drawingAnnotationsByProject || {}, scopeOfWorkByProject: snapshot.scopeOfWorkByProject || {} },
   }, { onConflict: 'user_id' }), 'Save workspace settings');
 
   await deleteStaleLegacyRows(supabase, 'projects', ownerId, projectRows.map((row) => row.legacy_id));

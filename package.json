@@ -1,13 +1,14 @@
 {
   "name": "scopelogic",
-  "version": "1.0.0-rc.5",
+  "version": "1.0.0-rc.5.4",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "prebuild": "node scripts/verify-clean-source.mjs",
     "build": "next build",
     "start": "next start",
-    "verify-source": "node scripts/verify-clean-source.mjs"
+    "verify-source": "node scripts/verify-clean-source.mjs",
+    "postinstall": "node scripts/copy-pdf-worker.mjs"
   },
   "dependencies": {
     "next": "16.2.10",
@@ -15,7 +16,9 @@
     "react-dom": "19.2.0",
     "pdf-lib": "1.17.1",
     "@supabase/ssr": "0.12.3",
-    "@supabase/supabase-js": "2.110.9"
+    "@supabase/supabase-js": "2.110.9",
+    "exceljs": "4.4.0",
+    "pdfjs-dist": "4.10.38"
   },
   "devDependencies": {
     "@types/node": "22.0.0",
