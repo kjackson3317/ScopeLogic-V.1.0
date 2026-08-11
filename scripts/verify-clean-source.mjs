@@ -76,7 +76,7 @@ for (const requiredText of [
 ]) {
   if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing ${requiredText}`);
 }
-if (workspace.includes('DEFAULT_TAKEOFF_FORMULAS')) violations.push('app/workspace.tsx: Take Off rules must not be preloaded in RC5.5');
+if (workspace.includes('DEFAULT_TAKEOFF_FORMULAS')) violations.push('app/workspace.tsx: Take Off rules must not be preloaded in RC5.5.1');
 if (!workspace.includes("filter((formula) => !String(formula.id || '').startsWith('default-'))")) violations.push('app/workspace.tsx: legacy RC5.3.2 default Take Off rules are not filtered');
 if (!workspace.includes("quote.status!=='Approved'")) violations.push('app/workspace.tsx: customer quote PDF must be restricted to Approved quotes');
 if (!workspace.includes('duplicatePartNumbers') || !workspace.includes('saveParts')) violations.push('app/workspace.tsx: duplicate Part Number enforcement is missing');
@@ -85,6 +85,9 @@ if (!workspace.includes('combinedScopeOfWorkHtml') || !workspace.includes('singl
 if (!workspace.includes("groupId:''") || !workspace.includes("showOnBom:true")) violations.push('app/workspace.tsx: new quote items must default to UNGROUPED and customer-BOM visible');
 for (const requiredText of ['parts-db-filter-grid', 'Part Number / partial part number', 'Delete Selected', 'Duplicate Rule', 'IF Scenario', 'ruleScenarioOptions', 'keepZero', 'Every visit opens on a new template draft', 'matrix-reference-grid', 'Source Type', 'Markup Reference']) {
   if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5 behavior: ${requiredText}`);
+}
+for (const requiredText of ['bomPdfSelectOpen', 'Select Items to Show on Proposal', 'quote-switcher-bar', 'desktopNavCollapsed', 'Source Type(s)', 'Not Mentioned in Contract Documents', 'alphaNumericCompare']) {
+  if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5.1 behavior: ${requiredText}`);
 }
 
 for (const removedText of ['Email Settings', 'Email All PDFs', 'Bid Leveling Summary', 'AI Draft Assistant', 'SCOPELOGIC_AI_ENABLED', 'OPENAI_API_KEY', 'migrateDocumentFiles', '<AutoGrowTextArea label=\"Contractor Checklist Scope Item\"']) {
@@ -120,6 +123,8 @@ for (const requiredText of ['recommendationSummary', 'checklistItemFor', 'drawCh
   if (!pdfGenerator.includes(requiredText)) violations.push(`app/pdf-generator.ts: missing RC4 PDF behavior: ${requiredText}`);
 }
 
+if (pdfGenerator.includes("input.quote.status")) violations.push('app/pdf-generator.ts: customer-facing proposal must not display internal quote status');
+
 for (const requiredText of ['buildQuotePdfBytes', "export type QuotePdfMode = 'full-bom' | 'summary-only'", 'PROJECT PROPOSAL', 'Scope of Work', 'Bill of Materials', "['Material Total',input.totals.material]", "['Labor Total',input.totals.labor]", "['Tax',input.totals.tax]", "'TOTAL PRICE'"]) {
   if (!pdfGenerator.includes(requiredText)) violations.push(`app/pdf-generator.ts: missing RC5.3.5 customer quote behavior: ${requiredText}`);
 }
@@ -136,7 +141,7 @@ if (/title: 'Formal RFI'[\s\S]{0,220}headers:\s*\[[^\]]*Answer/.test(pdfGenerato
 }
 
 const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-if (packageJson.version !== '1.0.0-rc.5.5') violations.push('package.json: version must be 1.0.0-rc.5.5');
+if (packageJson.version !== '1.0.0-rc.5.5.1') violations.push('package.json: version must be 1.0.0-rc.5.5.1');
 if (packageJson.dependencies?.resend || packageJson.devDependencies?.resend) violations.push('package.json: Resend dependency must be removed');
 if (packageJson.dependencies?.exceljs !== '4.4.0') violations.push('package.json: ExcelJS 4.4.0 is required for browser XLSX import/export.');
 if (packageJson.dependencies?.['pdfjs-dist'] !== '4.10.38') violations.push('package.json: PDF.js 4.10.38 is required for Drawing Take Off.');
@@ -151,7 +156,7 @@ try {
 
 try {
   await access(join(root, 'app', 'api', 'ai'));
-  violations.push('app/api/ai: deferred AI API route must not be included in RC5.5');
+  violations.push('app/api/ai: deferred AI API route must not be included in RC5.5.1');
 } catch {
   // Expected while AI is deferred.
 }

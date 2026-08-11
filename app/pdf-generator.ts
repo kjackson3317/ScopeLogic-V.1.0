@@ -535,7 +535,6 @@ export type QuotePdfInput = {
   quote: {
     number: string;
     name: string;
-    status: string;
     groups: { id: string; name: string }[];
     lines: { groupId: string; description: string; qty: number }[];
   };
@@ -616,7 +615,6 @@ export async function buildQuotePdfBytes(input: QuotePdfInput) {
   firstPage.drawText('PROJECT PROPOSAL',{x:pageWidth-margin-190,y:pageHeight-61,size:18,font:bold,color:black});
   const proposalNo=safe(input.quote.number||'—');
   firstPage.drawText(`Quote ${proposalNo}`,{x:pageWidth-margin-190,y:pageHeight-81,size:9,font:bold,color:green});
-  firstPage.drawText(safe(input.quote.status||'Approved').toUpperCase(),{x:pageWidth-margin-190,y:pageHeight-97,size:7,font:bold,color:muted});
   firstPage.drawLine({start:{x:margin,y:pageHeight-132},end:{x:pageWidth-margin,y:pageHeight-132},thickness:1.5,color:blueGreen});
 
   const infoTop=pageHeight-158;

@@ -50,8 +50,9 @@ type Props = {
 
 type Mode = 'pan' | 'count' | 'calibrate' | 'distance' | 'polyline' | 'area' | 'perimeter' | 'rectangle' | 'cloud' | 'arrow' | 'highlight' | 'snippet';
 
+const alphaNumericCompare = (a: string, b: string) => String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base', numeric: true });
 const COLORS = ['#31513b', '#477e7b', '#2563eb', '#b45309', '#b91c1c', '#6d28d9', '#111827', '#0e7490'];
-const SHAPES: DrawingToolShape[] = ['square', 'triangle', 'circle', 'diamond'];
+const SHAPES: DrawingToolShape[] = ['square', 'triangle', 'circle', 'diamond'].sort(alphaNumericCompare) as DrawingToolShape[];
 const uid = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const fmt = (value: number) => Number.isFinite(value) ? (Math.round(value * 100) / 100).toString() : '';
 const lineLength = (points: { x: number; y: number }[]) => points.slice(1).reduce((sum, point, index) => sum + Math.hypot(point.x - points[index].x, point.y - points[index].y), 0);
@@ -65,8 +66,8 @@ function Shape({ shape, color, size = 15 }: { shape: DrawingToolShape; color: st
 }
 
 export default function DrawingTakeoffPage(props: Props) {
-  const pdfDocs = useMemo(() => props.docs.filter((doc) => doc.current && (doc.fileType === 'application/pdf' || doc.fileName.toLowerCase().endsWith('.pdf'))), [props.docs]);
-  const availableTools = useMemo(() => props.tools.filter((tool) => tool.scope === 'global' || tool.projectId === props.projectId), [props.tools, props.projectId]);
+  const pdfDocs = useMemo(() => props.docs.filter((doc) => doc.current && (doc.fileType === 'application/pdf' || doc.fileName.toLowerCase().endsWith('.pdf'))).sort((a,b)=>alphaNumericCompare(a.fileName,b.fileName)), [props.docs]);
+  const availableTools = useMemo(() => props.tools.filter((tool) => tool.scope === 'global' || tool.projectId === props.projectId).sort((a,b)=>alphaNumericCompare(a.name,b.name)), [props.tools, props.projectId]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<SVGSVGElement>(null);
   const pdfRef = useRef<any>(null);
@@ -318,15 +319,15 @@ export default function DrawingTakeoffPage(props: Props) {
 
 function ToolModal({ projectId, systems, formulas, onClose, onCreate }: { projectId: string; systems: string[]; formulas: TakeoffFormula[]; onClose: () => void; onCreate: (tool: DrawingTakeoffTool) => void }) {
   const [value, setValue] = useState({ name: '', system: systems[0] || 'Structured Cabling', shape: 'square' as DrawingToolShape, color: COLORS[0], multiplier: 1, unit: 'qty', scope: 'project' as DrawingToolScope, formulaId: '' });
-  const systemOptions = [...new Set([...systems, ...formulas.map((formula) => formula.system)])].filter(Boolean);
-  const eligibleRules = formulas.filter((formula) => formula.system === value.system);
+  const systemOptions = [...new Set([...systems, ...formulas.map((formula) => formula.system)])].filter(Boolean).sort(alphaNumericCompare);
+  const eligibleRules = formulas.filter((formula) => formula.system === value.system).sort((a,b)=>alphaNumericCompare(a.name,b.name));
   return <div className="quote-picker-backdrop"><section className="quote-picker-modal drawing-tool-modal"><div className="modal-head"><div><span>DRAWING TAKE OFF</span><h2>Create Saved Tool</h2></div><button className="modal-close" onClick={onClose}>×</button></div><div className="form-grid two">
     <label>Tool Name<input value={value.name} onChange={(event) => setValue({ ...value, name: event.target.value })} placeholder="Example: Single Reader Door" /></label>
     <label>System<select value={value.system} onChange={(event) => setValue({ ...value, system: event.target.value, formulaId: '' })}>{systemOptions.length ? systemOptions.map((system) => <option key={system}>{system}</option>) : <option>Structured Cabling</option>}</select></label>
     <label>Symbol Shape<select value={value.shape} onChange={(event) => setValue({ ...value, shape: event.target.value as DrawingToolShape })}>{SHAPES.map((shape) => <option key={shape}>{shape}</option>)}</select></label>
     <label>Quantity Multiplier<input type="number" min="0" step="0.01" value={value.multiplier} onChange={(event) => setValue({ ...value, multiplier: Number(event.target.value) || 0 })} /></label>
     <label>Result Unit<input value={value.unit} onChange={(event) => setValue({ ...value, unit: event.target.value })} placeholder="devices, cables, doors..." /></label>
-    <label>Availability<select value={value.scope} onChange={(event) => setValue({ ...value, scope: event.target.value as DrawingToolScope })}><option value="project">This Project Only</option><option value="global">Global — All Projects</option></select></label>
+    <label>Availability<select value={value.scope} onChange={(event) => setValue({ ...value, scope: event.target.value as DrawingToolScope })}><option value="global">Global — All Projects</option><option value="project">This Project Only</option></select></label>
     <label className="span-two">Linked Take Off Rule<select value={value.formulaId} onChange={(event) => setValue({ ...value, formulaId: event.target.value })}><option value="">No rule link — summary only</option>{eligibleRules.map((formula) => <option key={formula.id} value={formula.id}>{formula.name}</option>)}</select><small>When linked, Sync Counts to Take Off updates this rule's drawing-sourced quantity.</small></label>
     <div className="span-two"><span className="field-label">Color</span><div className="drawing-color-row">{COLORS.map((color) => <button type="button" key={color} aria-label={`Use ${color}`} className={value.color === color ? 'selected' : ''} style={{ background: color }} onClick={() => setValue({ ...value, color })} />)}</div></div>
   </div><div className="modal-actions"><button className="secondary" onClick={onClose}>Cancel</button><button disabled={!value.name.trim()} onClick={() => onCreate({ id: uid('tool'), name: value.name.trim(), system: value.system, shape: value.shape, color: value.color, multiplier: value.multiplier || 1, unit: value.unit.trim() || 'qty', scope: value.scope, projectId: value.scope === 'project' ? projectId : undefined, formulaId: value.formulaId || undefined })}>Create Tool</button></div></section></div>;
