@@ -5,11 +5,14 @@ import { bytesToText, createZip, readZip, textToBytes } from '../lib/zip';
 import { buildPdfBytes, buildQuotePdfBytes, buildReleasePackageBytes, type PdfKind, type QuotePdfMode } from './pdf-generator';
 import DrawingTakeoffPage, { type DrawingAnnotation, type DrawingMeasurement, type DrawingPageCalibration, type DrawingTakeoffMark, type DrawingTakeoffTool } from './drawing-takeoff';
 import {
+  createWorkspaceBackup,
   createOfficialReleaseUrl,
   createProjectFileUrl,
   getNextOfficialReleaseNumber,
   inspectCloudSchema,
+  listWorkspaceBackups,
   listOfficialReleases,
+  loadWorkspaceBackup,
   loadWorkspaceFromCloud,
   removeProjectFile,
   renameProjectFile,
@@ -18,6 +21,7 @@ import {
   uploadProjectFile,
   type CloudWorkspaceStatus,
   type OfficialRelease,
+  type WorkspaceBackupSummary,
   type WorkspaceSnapshot,
 } from '../lib/cloud-workspace';
 
@@ -191,6 +195,14 @@ type ProjectBackupManifest = {
   exports: ExportEntry[];
   customer: Customer | null;
   files: { documentId: string; archivePath: string; fileName: string; fileType: string }[];
+};
+
+type WorkspaceBackupFile = {
+  format: 'ScopeLogicWorkspaceBackup';
+  version: '1.0';
+  applicationVersion: '1.0.0-rc.5.5.2';
+  exportedAt: string;
+  snapshot: WorkspaceSnapshot;
 };
 
 const safeArchiveName = (value: string, fallback: string) => value.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^\.+/, '') || fallback;
@@ -544,6 +556,9 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
   const [officialReleases, setOfficialReleases] = useState<OfficialRelease[]>([]);
   const [releaseLoading, setReleaseLoading] = useState(false);
   const backupInputRef = useRef<HTMLInputElement>(null);
+  const workspaceInputRef = useRef<HTMLInputElement>(null);
+  const [workspaceBackups, setWorkspaceBackups] = useState<WorkspaceBackupSummary[]>([]);
+  const [backupLoading, setBackupLoading] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [dataMode, setDataMode] = useState<'cloud' | 'local-fallback' | 'loading'>('loading');
   const [syncState, setSyncState] = useState<'loading' | 'synced' | 'saving' | 'error'>('loading');
@@ -661,12 +676,20 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
     const localSnapshot = readLocalWorkspace();
     const localMeta = readLocalSyncMeta();
     if (localSnapshot) applySnapshot(localSnapshot);
-    loadWorkspaceFromCloud().then((result) => {
+    loadWorkspaceFromCloud().then(async (result) => {
       if (!active) return;
       setCloudStatus(result.status);
-      if (result.snapshot && !(localMeta.pendingCloudChanges && localSnapshot)) {
+      if (result.snapshot) {
+        if (localMeta.pendingCloudChanges && hasMeaningfulWorkspace(localSnapshot)) {
+          try {
+            await createWorkspaceBackup(localSnapshot as WorkspaceSnapshot, 'Browser fallback quarantined during startup', 'browser-recovery');
+          } catch (error) {
+            console.error('Could not quarantine the browser fallback before loading cloud data.', error);
+          }
+        }
         applySnapshot(result.snapshot);
         skipNextCloudSync.current = true;
+        writeLocalSyncMeta({ pendingCloudChanges: false, lastCloudSyncAt: result.status.lastCloudSyncAt || new Date().toISOString() });
       } else if (localMeta.pendingCloudChanges && localSnapshot) {
         applySnapshot(localSnapshot);
         skipNextCloudSync.current = false;
@@ -701,6 +724,22 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
       .finally(() => { if (active) setReleaseLoading(false); });
     return () => { active = false; };
   }, [hydrated, dataMode, projectId]);
+
+  const refreshWorkspaceBackups = useCallback(async () => {
+    if (dataMode !== 'cloud') return;
+    setBackupLoading(true);
+    try {
+      setWorkspaceBackups(await listWorkspaceBackups());
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : 'Restore points could not be loaded.');
+    } finally {
+      setBackupLoading(false);
+    }
+  }, [dataMode]);
+
+  useEffect(() => {
+    if (hydrated && view === 'production' && dataMode === 'cloud') void refreshWorkspaceBackups();
+  }, [hydrated, view, dataMode, refreshWorkspaceBackups]);
 
   const cloudSnapshot = useMemo<WorkspaceSnapshot>(() => ({
     projects, projectId, issuesByProject, docsByProject, templates, notesByProject, exportsByProject, calendarEntries, customers, laborRates, difficultyMultipliers, parts, quotesByProject, quoteTemplates, takeoffFormulas, takeoffEntriesByProject, takeoffSettingsByProject, drawingTakeoffTools, drawingTakeoffMarksByProject, drawingMeasurementsByProject, drawingCalibrationsByProject, drawingAnnotationsByProject, scopeOfWorkByProject,
@@ -843,17 +882,16 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
       const retainedLocal = readLocalWorkspace();
       const cloudResult = await loadWorkspaceFromCloud(true);
 
-      if (localMeta.pendingCloudChanges && hasMeaningfulWorkspace(retainedLocal)) {
-        await saveWorkspaceToCloud(cloudSnapshot);
-        const refreshed = await loadWorkspaceFromCloud(true);
-        if (refreshed.snapshot) applySnapshot(refreshed.snapshot);
-        setCloudStatus(refreshed.status);
-        message('Cloud Connection Restored', 'The retained browser changes were validated, saved to Supabase, and loaded back from the production database.');
-      } else if (cloudResult.snapshot) {
+      if (cloudResult.snapshot) {
+        if (localMeta.pendingCloudChanges && hasMeaningfulWorkspace(retainedLocal)) {
+          await createWorkspaceBackup(retainedLocal as WorkspaceSnapshot, 'Browser fallback quarantined during reconnect', 'browser-recovery');
+        }
         applySnapshot(cloudResult.snapshot);
         setCloudStatus(cloudResult.status);
         skipNextCloudSync.current = true;
-        message('Cloud Connection Restored', 'The production database passed validation and the live cloud workspace was loaded.');
+        message('Cloud Connection Restored', localMeta.pendingCloudChanges
+          ? 'The newer production workspace was loaded. The browser fallback was preserved as a restore point and was not allowed to overwrite cloud data.'
+          : 'The production database passed validation and the live cloud workspace was loaded.');
       } else if (hasMeaningfulWorkspace(retainedLocal)) {
         await saveWorkspaceToCloud(cloudSnapshot);
         const refreshed = await loadWorkspaceFromCloud(true);
@@ -898,6 +936,102 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
   const recordDownload = (fileName: string, deliverable: string) => {
     const entry: ExportEntry = { id: crypto.randomUUID(), fileName, deliverable, downloadedAt: new Date().toLocaleString(), projectRevision: project.revision || 'Rev 0' };
     setExportsByProject((current) => ({ ...current, [projectId]: [entry, ...(current[projectId] || [])] }));
+  };
+
+  const exportWorkspaceBackup = () => {
+    const payload: WorkspaceBackupFile = {
+      format: 'ScopeLogicWorkspaceBackup',
+      version: '1.0',
+      applicationVersion: '1.0.0-rc.5.5.2',
+      exportedAt: new Date().toISOString(),
+      snapshot: JSON.parse(JSON.stringify(cloudSnapshot)) as WorkspaceSnapshot,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `ScopeLogic_Full_Workspace_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+    message('Full Workspace Backup Created', `Downloaded ${projects.length} projects, ${parts.length} parts, and ${Object.values(quotesByProject).reduce((sum, quotes) => sum + quotes.length, 0)} quotes with templates, takeoff data, pricing, notes, and settings.`);
+  };
+
+  const createManualRestorePoint = async () => {
+    try {
+      await createWorkspaceBackup(cloudSnapshot, 'Manual restore point', 'manual');
+      await refreshWorkspaceBackups();
+      message('Restore Point Created', 'A complete workspace checkpoint was stored securely in Supabase.');
+    } catch (error) {
+      message('Restore Point Failed', error instanceof Error ? error.message : 'The restore point could not be created.');
+    }
+  };
+
+  const restoreWorkspacePoint = (backup: WorkspaceBackupSummary) => {
+    confirmAction(
+      'Restore Full Workspace?',
+      `Replace the current workspace with the ${new Date(backup.createdAt).toLocaleString()} restore point containing ${backup.projectCount} projects, ${backup.partCount} parts, and ${backup.quoteCount} quotes? A pre-restore checkpoint will be created first.`,
+      async () => {
+        try {
+          setBackupLoading(true);
+          await createWorkspaceBackup(cloudSnapshot, 'Automatic checkpoint before restore', 'pre-restore');
+          const snapshot = await loadWorkspaceBackup(backup.id);
+          await saveWorkspaceToCloud(snapshot);
+          const refreshed = await loadWorkspaceFromCloud(true);
+          if (!refreshed.snapshot) throw new Error('The restored cloud workspace could not be reloaded.');
+          applySnapshot(refreshed.snapshot);
+          setCloudStatus(refreshed.status);
+          skipNextCloudSync.current = true;
+          writeLocalSyncMeta({ pendingCloudChanges: false, lastCloudSyncAt: refreshed.status.lastCloudSyncAt || new Date().toISOString() });
+          await refreshWorkspaceBackups();
+          message('Workspace Restored', 'The selected restore point is now the cloud workspace. The previous state remains available as a pre-restore checkpoint.');
+        } catch (error) {
+          message('Workspace Restore Failed', error instanceof Error ? error.message : 'The restore point could not be applied.');
+        } finally {
+          setBackupLoading(false);
+        }
+      },
+      'Restore Workspace',
+      true,
+    );
+  };
+
+  const importWorkspaceBackup = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const payload = JSON.parse(await file.text()) as WorkspaceBackupFile;
+      if (payload.format !== 'ScopeLogicWorkspaceBackup' || payload.version !== '1.0' || !payload.snapshot?.projects) {
+        throw new Error('The selected file is not a supported ScopeLogic full-workspace backup.');
+      }
+      const quoteCount = Object.values(payload.snapshot.quotesByProject || {}).reduce((sum, quotes) => sum + quotes.length, 0);
+      confirmAction(
+        'Import Full Workspace?',
+        `Import ${payload.snapshot.projects.length} projects, ${payload.snapshot.parts?.length || 0} parts, and ${quoteCount} quotes from ${new Date(payload.exportedAt).toLocaleString()}? A pre-import restore point will be created first.`,
+        async () => {
+          try {
+            await createWorkspaceBackup(cloudSnapshot, 'Automatic checkpoint before full-workspace import', 'pre-restore');
+            await saveWorkspaceToCloud(payload.snapshot);
+            const refreshed = await loadWorkspaceFromCloud(true);
+            if (!refreshed.snapshot) throw new Error('The imported cloud workspace could not be reloaded.');
+            applySnapshot(refreshed.snapshot);
+            setCloudStatus(refreshed.status);
+            skipNextCloudSync.current = true;
+            writeLocalSyncMeta({ pendingCloudChanges: false, lastCloudSyncAt: refreshed.status.lastCloudSyncAt || new Date().toISOString() });
+            await refreshWorkspaceBackups();
+            message('Workspace Imported', 'The full workspace backup is active and cloud synced.');
+          } catch (error) {
+            message('Workspace Import Failed', error instanceof Error ? error.message : 'The full workspace backup could not be imported.');
+          }
+        },
+        'Import Workspace',
+        true,
+      );
+    } catch (error) {
+      message('Invalid Workspace Backup', error instanceof Error ? error.message : 'The selected file could not be read.');
+    }
   };
 
   const exportProjectBackup = async () => {
@@ -1102,7 +1236,7 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
       {mobileNav && <button className="sidebar-backdrop" aria-label="Close navigation menu" onClick={closeMobileNav} />}
       <aside id="scopelogic-sidebar" ref={sidebarRef} className={`sidebar ${mobileNav ? 'show' : ''}`} aria-label="ScopeLogic navigation" aria-modal={mobileNav ? 'true' : undefined} role={mobileNav ? 'dialog' : undefined}>
         <div className="sidebar-mobile-head"><span>Navigation</span><button className="sidebar-close" onClick={closeMobileNav} aria-label="Close navigation menu">Close ×</button></div>
-        <div className="brand"><div className="brand-mark"><img src="/brand/scopelogic-logo-mark.png" alt="ScopeLogic" /></div><div><div className="brand-name-box"><img className="brand-wordmark" src="/brand/scopelogic-wordmark.png" alt="ScopeLogic" /></div><span>v1.0 RC5.5.1</span></div></div>
+        <div className="brand"><div className="brand-mark"><img src="/brand/scopelogic-logo-mark.png" alt="ScopeLogic" /></div><div><div className="brand-name-box"><img className="brand-wordmark" src="/brand/scopelogic-wordmark.png" alt="ScopeLogic" /></div><span>v1.0 RC5.5.2</span></div></div>
         <button className="project-switch" onClick={() => navigateTo('projects')}><span>Current project</span><b>{project.name}</b><small>Switch projects</small></button>
         <Nav label="PROJECT" items={[["setup", "Project Setup"], ["dashboard", "Dashboard"], ["documents", "Project Documents"], ["notes", "Internal Notes"], ["internal", "ScopeLogic Internal Matrix"]]} view={view} setView={navigateTo} />
         <Nav label="DELIVERABLES" items={navDeliverables} view={view} setView={navigateTo} />
@@ -1144,10 +1278,11 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
           {view === 'contract' && <ContractInformation project={project} customers={customers} save={(contract) => { setProjects((items) => items.map((item) => item.id === projectId ? { ...item, contract, modified: 'Now' } : item)); message('Saved', 'Contract Information was saved.'); }} />}
           {view === 'customers' && <CustomerDatabase customers={customers} save={setCustomers} message={message} />}
           {view === 'standards' && <OfficialLogoStandard />}
-          {view === 'production' && <SystemStatus dataMode={dataMode} syncState={syncState} syncError={syncError} cloudStatus={cloudStatus} retryCloudSync={retryCloudSync} docsByProject={docsByProject} exportBackup={exportProjectBackup} chooseBackup={() => backupInputRef.current?.click()} />}
+          {view === 'production' && <SystemStatus dataMode={dataMode} syncState={syncState} syncError={syncError} cloudStatus={cloudStatus} retryCloudSync={retryCloudSync} docsByProject={docsByProject} exportBackup={exportProjectBackup} chooseBackup={() => backupInputRef.current?.click()} exportWorkspace={exportWorkspaceBackup} chooseWorkspace={() => workspaceInputRef.current?.click()} createRestorePoint={createManualRestorePoint} backups={workspaceBackups} backupLoading={backupLoading} restorePoint={restoreWorkspacePoint} />}
         </div>
       </main>
       <input ref={backupInputRef} type="file" accept=".zip,application/zip" hidden onChange={restoreProjectBackup} />
+      <input ref={workspaceInputRef} type="file" accept=".json,application/json" hidden onChange={importWorkspaceBackup} />
       {preview && <PreviewModal preview={preview} close={() => setPreview(null)} />}
       {dialog && <AppDialog dialog={dialog} close={() => setDialog(null)} />}
       {releaseSelection && <ReleaseSelectionDialog selection={releaseSelection} change={setReleaseSelection} close={() => setReleaseSelection(null)} confirm={async (selection) => { setReleaseSelection(null); await downloadReleasePackage(selection.kinds, selection.notes); }} />}
@@ -1536,20 +1671,24 @@ function ReleaseSelectionDialog({ selection, change, close, confirm }: { selecti
   return <div className="dialog-backdrop release-backdrop" role="presentation"><div className="release-dialog" role="dialog" aria-modal="true"><div className="dialog-title"><b>Generate Official GC Release</b><button onClick={close}>Close</button></div><p>Select the deliverables to include. ScopeLogic will create one combined PDF with a release cover page.</p><div className="release-options">{RELEASE_OPTIONS.map((item) => <label key={item.kind}><input type="checkbox" checked={selection.kinds.includes(item.kind)} onChange={() => toggle(item.kind)} /><span>{item.label}</span></label>)}</div><label className="field"><span>Release Notes / Cover Note</span><textarea value={selection.notes} onChange={(event) => change({ ...selection, notes: event.target.value })} placeholder="Optional note for this official release..." /></label><div className="dialog-actions"><button className="secondary" onClick={close}>Cancel</button><button className="primary" disabled={!selection.kinds.length} onClick={() => confirm(selection)}>Generate Release</button></div></div></div>;
 }
 
-function SystemStatus({ dataMode, syncState, syncError, cloudStatus, retryCloudSync, docsByProject, exportBackup, chooseBackup }: { dataMode: 'cloud' | 'local-fallback' | 'loading'; syncState: 'loading' | 'synced' | 'saving' | 'error'; syncError: string; cloudStatus: CloudWorkspaceStatus; retryCloudSync: () => void | Promise<void>; docsByProject: Record<string, Doc[]>; exportBackup: () => void | Promise<void>; chooseBackup: () => void }) {
+function SystemStatus({ dataMode, syncState, syncError, cloudStatus, retryCloudSync, docsByProject, exportBackup, chooseBackup, exportWorkspace, chooseWorkspace, createRestorePoint, backups, backupLoading, restorePoint }: { dataMode: 'cloud' | 'local-fallback' | 'loading'; syncState: 'loading' | 'synced' | 'saving' | 'error'; syncError: string; cloudStatus: CloudWorkspaceStatus; retryCloudSync: () => void | Promise<void>; docsByProject: Record<string, Doc[]>; exportBackup: () => void | Promise<void>; chooseBackup: () => void; exportWorkspace: () => void; chooseWorkspace: () => void; createRestorePoint: () => void | Promise<void>; backups: WorkspaceBackupSummary[]; backupLoading: boolean; restorePoint: (backup: WorkspaceBackupSummary) => void }) {
   const documents = Object.values(docsByProject).flat();
   const cloudDocuments = documents.filter((doc) => Boolean(doc.storagePath));
   const statusOk = dataMode === 'cloud' && syncState === 'synced' && cloudStatus.schema.healthy;
   return <>
-    <PageHead eyebrow="Administration" title="System Status" description="Production status, private storage, browser recovery, and controlled backup tools." action={<div className="button-row"><button className="secondary" onClick={() => void exportBackup()}>Export Current Project Backup</button><button className="secondary" onClick={chooseBackup}>Restore Project Backup</button><button className="primary" onClick={() => void retryCloudSync()}>Retry Cloud Sync</button></div>} />
+    <PageHead eyebrow="Administration" title="System Status" description="Production status, full-workspace restore points, private storage, and controlled backup tools." action={<div className="button-row"><button className="secondary" onClick={exportWorkspace}>Download Full Workspace</button><button className="secondary" onClick={chooseWorkspace}>Import Full Workspace</button><button className="secondary" disabled={backupLoading || dataMode !== 'cloud'} onClick={() => void createRestorePoint()}>Create Restore Point</button><button className="primary" onClick={() => void retryCloudSync()}>Retry Cloud Sync</button></div>} />
     <div className="system-status-grid">
       <section className={`system-status-card ${statusOk ? 'ok' : 'warn'}`}><span>Workspace</span><b>{dataMode === 'cloud' ? (syncState === 'saving' ? 'Saving to cloud' : syncState === 'error' ? 'Cloud save error' : 'Cloud synced') : 'Local fallback'}</b><p>{syncError || 'Supabase is the active source of truth. The retained browser copy remains available as a controlled recovery layer.'}</p></section>
       <section className={`system-status-card ${cloudStatus.schema.healthy ? 'ok' : 'warn'}`}><span>Database schema</span><b>{cloudStatus.schema.version}</b><p>{cloudStatus.schema.healthy ? 'All required ScopeLogic v1.0 production columns and controls are available.' : `Missing: ${cloudStatus.schema.missing.join(', ') || 'Unknown schema items'}`}</p></section>
       <section className={`system-status-card ${cloudStatus.schema.bucketReady ? 'ok' : 'warn'}`}><span>Private storage</span><b>{cloudDocuments.length} of {documents.length} files in cloud</b><p>{cloudStatus.schema.bucketReady ? 'The project-files bucket is private and available.' : 'The private storage bucket requires attention.'}</p></section>
-      <section className="system-status-card ok"><span>Application release</span><b>ScopeLogic v1.0 RC5.1</b><p>Official releases are numbered, cloud archived, content-hashed, and protected from alteration or deletion.</p></section>
+      <section className="system-status-card ok"><span>Application release</span><b>ScopeLogic v1.0 RC5.5.2</b><p>Cloud revision conflicts are blocked, full-workspace checkpoints are available, and stale browser fallbacks cannot overwrite newer production data.</p></section>
       <section className="system-status-card"><span>Last cloud save</span><b>{cloudStatus.lastCloudSyncAt ? new Date(cloudStatus.lastCloudSyncAt).toLocaleString() : 'Not recorded'}</b><p>Cloud revision {cloudStatus.cloudRevision}. Browser recovery data has not been deleted.</p></section>
-      <section className="system-status-card"><span>Project backup</span><b>ZIP export and restore</b><p>Backups contain the current project record, SLR data, project documents, internal notes, and export history. Restore always creates a new project.</p></section>
+      <section className="system-status-card"><span>Full workspace backup</span><b>JSON export and restore</b><p>Includes every project, part, quote, template, takeoff record, customer, note, pricing rule, and workspace setting.</p></section>
     </div>
+    <section className="restore-center">
+      <div className="restore-center-head"><div><span>Data Protection</span><h2>Restore Center</h2><p>ScopeLogic keeps a bounded history of automatic, manual, browser-recovery, and pre-restore checkpoints.</p></div><div className="button-row"><button className="secondary" onClick={() => void exportBackup()}>Export Current Project Backup</button><button className="secondary" onClick={chooseBackup}>Restore Project ZIP as New</button></div></div>
+      {backupLoading ? <div className="empty-state"><b>Loading restore points…</b></div> : backups.length ? <div className="restore-point-list">{backups.map((backup) => <div className="restore-point-row" key={backup.id}><div><b>{new Date(backup.createdAt).toLocaleString()}</b><span>{backup.reason}</span></div><div className="restore-point-metrics"><span>{backup.kind.replace('-', ' ')}</span><span>Rev {backup.cloudRevision}</span><span>{backup.projectCount} projects</span><span>{backup.partCount} parts</span><span>{backup.quoteCount} quotes</span></div><button className="secondary" onClick={() => restorePoint(backup)}>Restore</button></div>)}</div> : <div className="empty-state"><b>No restore points yet.</b><p>Create one now; automatic checkpoints are added at most once every 15 minutes while work is saved.</p></div>}
+    </section>
   </>;
 }
 

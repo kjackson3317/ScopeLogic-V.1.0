@@ -210,6 +210,17 @@ export type CloudWorkspaceStatus = {
   schema: CloudSchemaHealth;
 };
 
+export type WorkspaceBackupSummary = {
+  id: string;
+  kind: 'automatic' | 'manual' | 'browser-recovery' | 'pre-restore';
+  reason: string;
+  cloudRevision: number;
+  projectCount: number;
+  partCount: number;
+  quoteCount: number;
+  createdAt: string;
+};
+
 type AnyRecord = Record<string, any>;
 type BrowserClient = ReturnType<typeof createClient>;
 
@@ -254,6 +265,92 @@ async function currentUser(supabase: BrowserClient) {
 
 
 let schemaHealthCache: { value: CloudSchemaHealth; checkedAt: number } | null = null;
+let knownCloudRevision: number | null = null;
+
+const workspaceQuoteCount = (snapshot: WorkspaceSnapshot) => Object.values(snapshot.quotesByProject || {})
+  .reduce((sum, quotes) => sum + (Array.isArray(quotes) ? quotes.length : 0), 0);
+
+async function insertWorkspaceBackup(
+  supabase: BrowserClient,
+  ownerId: string,
+  snapshot: WorkspaceSnapshot,
+  reason: string,
+  kind: WorkspaceBackupSummary['kind'],
+  force: boolean,
+) {
+  if (!force && kind === 'automatic') {
+    const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    const recent = requireResult(
+      await supabase.from('workspace_backups').select('id').eq('owner_id', ownerId).eq('backup_kind', 'automatic').gte('created_at', cutoff).limit(1),
+      'Check recent workspace checkpoints',
+    );
+    if (recent.data?.length) return;
+  }
+
+  requireResult(await supabase.from('workspace_backups').insert({
+    owner_id: ownerId,
+    backup_kind: kind,
+    reason,
+    cloud_revision: knownCloudRevision || 0,
+    project_count: snapshot.projects?.length || 0,
+    part_count: snapshot.parts?.length || 0,
+    quote_count: workspaceQuoteCount(snapshot),
+    workspace_snapshot: snapshot,
+  }), 'Create workspace checkpoint');
+
+  const history = requireResult(
+    await supabase.from('workspace_backups').select('id,backup_kind').eq('owner_id', ownerId).order('created_at', { ascending: false }),
+    'Read workspace checkpoint retention',
+  );
+  const automatic = (history.data || []).filter((row: AnyRecord) => row.backup_kind === 'automatic').slice(12);
+  const manual = (history.data || []).filter((row: AnyRecord) => row.backup_kind !== 'automatic').slice(10);
+  const expired = [...automatic, ...manual].map((row: AnyRecord) => row.id);
+  if (expired.length) requireResult(await supabase.from('workspace_backups').delete().in('id', expired), 'Trim old workspace checkpoints');
+}
+
+export async function createWorkspaceBackup(
+  snapshot: WorkspaceSnapshot,
+  reason = 'Manual restore point',
+  kind: WorkspaceBackupSummary['kind'] = 'manual',
+) {
+  const supabase = createClient();
+  const user = await currentUser(supabase);
+  await insertWorkspaceBackup(supabase, user.id, snapshot, reason, kind, true);
+}
+
+export async function listWorkspaceBackups(limit = 22): Promise<WorkspaceBackupSummary[]> {
+  const supabase = createClient();
+  const user = await currentUser(supabase);
+  const result = requireResult(
+    await supabase.from('workspace_backups')
+      .select('id,backup_kind,reason,cloud_revision,project_count,part_count,quote_count,created_at')
+      .eq('owner_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(limit),
+    'List workspace restore points',
+  );
+  return (result.data || []).map((row: AnyRecord) => ({
+    id: text(row.id),
+    kind: row.backup_kind as WorkspaceBackupSummary['kind'],
+    reason: text(row.reason),
+    cloudRevision: Number(row.cloud_revision || 0),
+    projectCount: Number(row.project_count || 0),
+    partCount: Number(row.part_count || 0),
+    quoteCount: Number(row.quote_count || 0),
+    createdAt: text(row.created_at),
+  }));
+}
+
+export async function loadWorkspaceBackup(backupId: string): Promise<WorkspaceSnapshot> {
+  const supabase = createClient();
+  const user = await currentUser(supabase);
+  const result = requireResult(
+    await supabase.from('workspace_backups').select('workspace_snapshot').eq('owner_id', user.id).eq('id', backupId).single(),
+    'Load workspace restore point',
+  );
+  if (!result.data?.workspace_snapshot) throw new Error('The selected restore point no longer exists.');
+  return result.data.workspace_snapshot as WorkspaceSnapshot;
+}
 
 export async function inspectCloudSchema(force = false): Promise<CloudSchemaHealth> {
   const now = Date.now();
@@ -315,6 +412,7 @@ export async function loadWorkspaceFromCloud(forceSchemaCheck = false): Promise<
   const contactRows = contactResult.data || [];
   const projectRows = projectResult.data || [];
   const settings = settingsResult.data || {};
+  knownCloudRevision = Number(settings.cloud_revision || 0);
 
   if (!projectRows.length && !customerRows.length) {
     return {
@@ -573,6 +671,15 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
   const supabase = createClient();
   const user = await currentUser(supabase);
   const ownerId = user.id;
+  const currentSetting = requireResult(
+    await supabase.from('user_settings').select('cloud_revision').eq('owner_id', ownerId).maybeSingle(),
+    'Read cloud revision',
+  );
+  const currentRevision = Number(currentSetting.data?.cloud_revision || 0);
+  if (knownCloudRevision !== null && currentRevision !== knownCloudRevision) {
+    throw new Error(`Cloud revision conflict: ScopeLogic expected revision ${knownCloudRevision}, but production is revision ${currentRevision}. Reload the cloud workspace before saving. No browser fallback was uploaded.`);
+  }
+  await insertWorkspaceBackup(supabase, ownerId, snapshot, 'Automatic workspace checkpoint', 'automatic', false);
 
   const customerRows = snapshot.customers.map((customer, index) => ({
     owner_id: ownerId,
@@ -744,9 +851,8 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
     event_type: entry.type || 'Other',
   })));
 
-  const currentSetting = requireResult(await supabase.from('user_settings').select('cloud_revision').eq('owner_id', ownerId).maybeSingle(), 'Read cloud revision');
-  const nextRevision = Number(currentSetting.data?.cloud_revision || 0) + 1;
-  requireResult(await supabase.from('user_settings').upsert({
+  const nextRevision = currentRevision + 1;
+  const settingsPayload = {
     user_id: ownerId,
     owner_id: ownerId,
     selected_project_legacy_id: snapshot.projectId || null,
@@ -754,7 +860,17 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
     cloud_revision: nextRevision,
     last_cloud_sync_at: new Date().toISOString(),
     estimating_data: { laborRates: snapshot.laborRates || [], difficultyMultipliers: snapshot.difficultyMultipliers || [], parts: snapshot.parts || [], quotesByProject: snapshot.quotesByProject || {}, quoteTemplates: snapshot.quoteTemplates || [], takeoffFormulas: snapshot.takeoffFormulas || [], takeoffEntriesByProject: snapshot.takeoffEntriesByProject || {}, takeoffSettingsByProject: snapshot.takeoffSettingsByProject || {}, drawingTakeoffTools: snapshot.drawingTakeoffTools || [], drawingTakeoffMarksByProject: snapshot.drawingTakeoffMarksByProject || {}, drawingMeasurementsByProject: snapshot.drawingMeasurementsByProject || {}, drawingCalibrationsByProject: snapshot.drawingCalibrationsByProject || {}, drawingAnnotationsByProject: snapshot.drawingAnnotationsByProject || {}, scopeOfWorkByProject: snapshot.scopeOfWorkByProject || {} },
-  }, { onConflict: 'user_id' }), 'Save workspace settings');
+  };
+  if (currentSetting.data) {
+    const saved = requireResult(
+      await supabase.from('user_settings').update(settingsPayload).eq('owner_id', ownerId).eq('cloud_revision', currentRevision).select('cloud_revision'),
+      'Save workspace settings',
+    );
+    if (!saved.data?.length) throw new Error('Cloud revision changed during the save. Reload ScopeLogic before retrying; the newer production workspace was not overwritten.');
+  } else {
+    requireResult(await supabase.from('user_settings').upsert(settingsPayload, { onConflict: 'user_id' }), 'Initialize workspace settings');
+  }
+  knownCloudRevision = nextRevision;
 
   await deleteStaleLegacyRows(supabase, 'projects', ownerId, projectRows.map((row) => row.legacy_id));
   await deleteStaleLegacyRows(supabase, 'contacts', ownerId, contactRows.map((row) => row.legacy_id));

@@ -76,7 +76,7 @@ for (const requiredText of [
 ]) {
   if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing ${requiredText}`);
 }
-if (workspace.includes('DEFAULT_TAKEOFF_FORMULAS')) violations.push('app/workspace.tsx: Take Off rules must not be preloaded in RC5.5.1');
+if (workspace.includes('DEFAULT_TAKEOFF_FORMULAS')) violations.push('app/workspace.tsx: Take Off rules must not be preloaded in RC5.5.2');
 if (!workspace.includes("filter((formula) => !String(formula.id || '').startsWith('default-'))")) violations.push('app/workspace.tsx: legacy RC5.3.2 default Take Off rules are not filtered');
 if (!workspace.includes("quote.status!=='Approved'")) violations.push('app/workspace.tsx: customer quote PDF must be restricted to Approved quotes');
 if (!workspace.includes('duplicatePartNumbers') || !workspace.includes('saveParts')) violations.push('app/workspace.tsx: duplicate Part Number enforcement is missing');
@@ -87,7 +87,10 @@ for (const requiredText of ['parts-db-filter-grid', 'Part Number / partial part 
   if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5 behavior: ${requiredText}`);
 }
 for (const requiredText of ['bomPdfSelectOpen', 'Select Items to Show on Proposal', 'quote-switcher-bar', 'desktopNavCollapsed', 'Source Type(s)', 'Not Mentioned in Contract Documents', 'alphaNumericCompare']) {
-  if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5.1 behavior: ${requiredText}`);
+  if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5.2 inherited behavior: ${requiredText}`);
+}
+for (const requiredText of ['Download Full Workspace', 'Import Full Workspace', 'Create Restore Point', 'Restore Center', 'Browser fallback quarantined']) {
+  if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5.2 data protection: ${requiredText}`);
 }
 
 for (const removedText of ['Email Settings', 'Email All PDFs', 'Bid Leveling Summary', 'AI Draft Assistant', 'SCOPELOGIC_AI_ENABLED', 'OPENAI_API_KEY', 'migrateDocumentFiles', '<AutoGrowTextArea label=\"Contractor Checklist Scope Item\"']) {
@@ -117,6 +120,9 @@ const cloudWorkspace = await readFile(join(root, 'lib', 'cloud-workspace.ts'), '
 for (const requiredText of ["storage.from('project-files')", 'createSignedUrl', 'inspectCloudSchema', 'renameProjectFile', "health.version !== '1.0-RC5.5'", 'checklist_scope_items_by_system', 'source_type', 'create_scopelogic_official_release', 'listOfficialReleases']) {
   if (!cloudWorkspace.includes(requiredText)) violations.push(`lib/cloud-workspace.ts: missing ${requiredText}`);
 }
+for (const requiredText of ['workspace_backups', 'Automatic workspace checkpoint', 'Cloud revision conflict', 'knownCloudRevision']) {
+  if (!cloudWorkspace.includes(requiredText)) violations.push(`lib/cloud-workspace.ts: missing RC5.5.2 data protection: ${requiredText}`);
+}
 
 const pdfGenerator = await readFile(join(root, 'app', 'pdf-generator.ts'), 'utf8');
 for (const requiredText of ['recommendationSummary', 'checklistItemFor', 'drawChecklistSection', "columnIndex === 2", 'SYSTEM_ORDER', "headers: ['RFI No.', 'Systems', 'Question']", "headers: ['SLR', 'Systems', 'Scope Item', 'Scope Concern', 'Recommended Bid Basis by System', 'Source Reference']"]) {
@@ -141,7 +147,7 @@ if (/title: 'Formal RFI'[\s\S]{0,220}headers:\s*\[[^\]]*Answer/.test(pdfGenerato
 }
 
 const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-if (packageJson.version !== '1.0.0-rc.5.5.1') violations.push('package.json: version must be 1.0.0-rc.5.5.1');
+if (packageJson.version !== '1.0.0-rc.5.5.2') violations.push('package.json: version must be 1.0.0-rc.5.5.2');
 if (packageJson.dependencies?.resend || packageJson.devDependencies?.resend) violations.push('package.json: Resend dependency must be removed');
 if (packageJson.dependencies?.exceljs !== '4.4.0') violations.push('package.json: ExcelJS 4.4.0 is required for browser XLSX import/export.');
 if (packageJson.dependencies?.['pdfjs-dist'] !== '4.10.38') violations.push('package.json: PDF.js 4.10.38 is required for Drawing Take Off.');
@@ -156,7 +162,7 @@ try {
 
 try {
   await access(join(root, 'app', 'api', 'ai'));
-  violations.push('app/api/ai: deferred AI API route must not be included in RC5.5.1');
+  violations.push('app/api/ai: deferred AI API route must not be included in RC5.5.2');
 } catch {
   // Expected while AI is deferred.
 }
@@ -175,6 +181,7 @@ for (const [fileName, requiredTexts] of [
   ['20260806000400_scopelogic_rc5_mobile_ai.sql', ['ai_assistance', "'version', '1.0-RC5'"]],
   ['20260807000100_scopelogic_rc52_estimating.sql', ['estimating_data', "'version', '1.0-RC5.2'"]],
   ['20260810000100_scopelogic_rc55_matrix_source_reference.sql', ['source_type', "'version', '1.0-RC5.5'", "notify pgrst, 'reload schema'"]],
+  ['20260811000100_scopelogic_rc552_data_protection.sql', ['workspace_backups', 'workspace_snapshot', 'workspace_backups_select_self', 'workspace_backups_insert_self', 'grant select, insert, delete', "notify pgrst, 'reload schema'"]],
 ]) {
   try {
     const migration = await readFile(join(root, 'supabase', 'migrations', fileName), 'utf8');
