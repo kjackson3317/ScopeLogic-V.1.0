@@ -22,6 +22,7 @@ export type PdfIssue = {
   rfiQuestion: string;
   basis: string;
   reference: string;
+  sourceType: string;
   rfi: string;
   resolution: string;
   snippet: string;
@@ -101,13 +102,13 @@ const safe = (value: string) =>
 function configFor(kind: PdfKind): PdfConfig {
   if (kind === 'sow') return {
     title: 'Recommended SOW Matrix',
-    headers: ['SLR', 'Systems', 'Scope Item', 'Scope Concern', 'Recommended Bid Basis by System', 'Document Reference'],
+    headers: ['SLR', 'Systems', 'Scope Item', 'Scope Concern', 'Recommended Bid Basis by System', 'Source Reference'],
     ratios: [0.055, 0.125, 0.13, 0.22, 0.285, 0.185],
     values: ({ issue }) => [issue.id, systemNames(issue), issue.title, issue.concern, recommendationSummary(issue), issue.reference],
   };
   if (kind === 'clarifications') return {
     title: 'Clarification Matrix',
-    headers: ['SLR / RFI', 'Systems', 'Question / Issue', 'Recommended Bid Basis by System', 'Resolution', 'Status', 'Document Reference'],
+    headers: ['SLR / RFI', 'Systems', 'Question / Issue', 'Recommended Bid Basis by System', 'Resolution', 'Status', 'Source Reference'],
     ratios: [0.075, 0.105, 0.205, 0.225, 0.15, 0.075, 0.165],
     values: ({ issue }) => [[issue.id, issue.rfi].filter(Boolean).join('\n'), systemNames(issue), issue.concern, recommendationSummary(issue), issue.resolution, issue.status, issue.reference],
   };
@@ -125,7 +126,7 @@ function configFor(kind: PdfKind): PdfConfig {
   };
   return {
     title: 'Snippet Register',
-    headers: ['Snippet No.', 'SLR', 'Systems', 'Document Reference', 'Caption'],
+    headers: ['Snippet No.', 'SLR', 'Systems', 'Source Reference', 'Caption'],
     ratios: [0.09, 0.07, 0.16, 0.26, 0.42],
     values: ({ issue }) => [issue.snippet, issue.id, systemNames(issue), issue.reference, issue.title],
   };
@@ -525,4 +526,234 @@ export async function buildReleasePackageBytes(project: PdfProject, issues: PdfI
     await appendDeliverable(output, kind, project, issues, brand, `release_${kind}`);
   }
   return output.save();
+}
+
+export type QuotePdfMode = 'full-bom' | 'summary-only';
+export type QuotePdfInput = {
+  mode: QuotePdfMode;
+  project: PdfProject;
+  quote: {
+    number: string;
+    name: string;
+    groups: { id: string; name: string }[];
+    lines: { groupId: string; alternateId?: string; description: string; qty: number }[];
+  };
+  scope: { includedHtml: string; excludedHtml: string };
+  totals: { material: number; labor: number; tax: number; total: number };
+  alternates: { id: string; type: 'add' | 'deduct'; name: string; material: number; labor: number; total: number }[];
+};
+
+function htmlToQuoteText(value: string) {
+  return safe(String(value || '')
+    .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+    .replace(/<\/(p|div|h[1-6]|li)>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '- ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim());
+}
+
+function quoteMoney(value: number) {
+  const n = Number.isFinite(value) ? value : 0;
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+export async function buildQuotePdfBytes(input: QuotePdfInput) {
+  const document = await PDFDocument.create();
+  const font = await document.embedFont(StandardFonts.Helvetica);
+  const bold = await document.embedFont(StandardFonts.HelveticaBold);
+  const brand = await embedBrand(document, await loadBrandAssets());
+
+  const odGreen = rgb(0.15, 0.19, 0.09);
+  const green = rgb(0.28, 0.36, 0.14);
+  const blueGreen = rgb(0.30, 0.46, 0.43);
+  const paleBlueGreen = rgb(0.91, 0.95, 0.94);
+  const paleGray = rgb(0.965, 0.97, 0.96);
+  const border = rgb(0.68, 0.73, 0.69);
+  const muted = rgb(0.34, 0.39, 0.34);
+  const black = rgb(0.07, 0.09, 0.07);
+  const white = rgb(1, 1, 1);
+  const pageWidth = 612;
+  const pageHeight = 792;
+  const margin = 38;
+  const bottomLimit = 62;
+  const contentWidth = pageWidth - margin * 2;
+
+  const fitSizeOnly = (text:string, preferred:number, maxWidth:number, minimum=6, useBold=false) => {
+    const target=useBold?bold:font;
+    let size=preferred;
+    const value=safe(text);
+    while(size>minimum&&target.widthOfTextAtSize(value,size)>maxWidth)size-=0.25;
+    return size;
+  };
+  const drawFooter=(page:PDFPage,pageNumber:number)=>{
+    page.drawLine({start:{x:margin,y:47},end:{x:pageWidth-margin,y:47},thickness:.45,color:border});
+    page.drawText('ScopeLogic LLC  |  Identify · Clarify · Rectify',{x:margin,y:31,size:6.5,font:bold,color:muted});
+    const number=`Page ${pageNumber}`;const w=font.widthOfTextAtSize(number,6.5);
+    page.drawText(number,{x:pageWidth-margin-w,y:31,size:6.5,font,color:muted});
+  };
+  let pageNumber=0;
+  const addCompactPage=(title:string)=>{
+    const page=document.addPage([pageWidth,pageHeight]);pageNumber+=1;
+    page.drawRectangle({x:0,y:pageHeight-10,width:pageWidth,height:10,color:odGreen});
+    const word=brand.wordmark.scaleToFit(150,24);page.drawImage(brand.wordmark,{x:margin,y:pageHeight-45,width:word.width,height:word.height});
+    const titleSafe=safe(title).toUpperCase();const size=fitSizeOnly(titleSafe,15,250,9,true);const w=bold.widthOfTextAtSize(titleSafe,size);
+    page.drawText(titleSafe,{x:pageWidth-margin-w,y:pageHeight-40,size,font:bold,color:black});
+    page.drawLine({start:{x:margin,y:pageHeight-59},end:{x:pageWidth-margin,y:pageHeight-59},thickness:1.3,color:blueGreen});
+    drawFooter(page,pageNumber);
+    return {page,y:pageHeight-82};
+  };
+
+  const firstPage=document.addPage([pageWidth,pageHeight]);pageNumber+=1;
+  firstPage.drawRectangle({x:0,y:pageHeight-12,width:pageWidth,height:12,color:odGreen});
+  const fullLogo=brand.full.scaleToFit(200,90);firstPage.drawImage(brand.full,{x:margin,y:pageHeight-122,width:fullLogo.width,height:fullLogo.height});
+  firstPage.drawText('PROJECT PROPOSAL',{x:pageWidth-margin-190,y:pageHeight-61,size:18,font:bold,color:black});
+  const proposalNo=safe(input.quote.number||'—');
+  firstPage.drawText(`Quote ${proposalNo}`,{x:pageWidth-margin-190,y:pageHeight-81,size:9,font:bold,color:green});
+  firstPage.drawLine({start:{x:margin,y:pageHeight-132},end:{x:pageWidth-margin,y:pageHeight-132},thickness:1.5,color:blueGreen});
+
+  const infoTop=pageHeight-158;
+  const columnGap=24;
+  const columnWidth=(contentWidth-columnGap)/2;
+  const drawInfoColumn=(x:number,title:string,rows:[string,string][])=>{
+    firstPage.drawText(title,{x,y:infoTop,size:7,font:bold,color:green});
+    let y=infoTop-23;
+    for(const [label,value] of rows){
+      firstPage.drawText(label.toUpperCase(),{x,y:y+8,size:5.8,font:bold,color:muted});
+      const lines=wrapText(value||'—',columnWidth,font,9.3);
+      const shown=lines.slice(0,2);
+      drawWrapped(firstPage,shown,x,y-5,font,9.3,11.5,black);
+      const lineY=y-9-(shown.length-1)*11.5;
+      firstPage.drawLine({start:{x,y:lineY},end:{x:x+columnWidth,y:lineY},thickness:.5,color:border});
+      y=lineY-19;
+    }
+  };
+  drawInfoColumn(margin,'CUSTOMER / PROJECT',[[ 'Customer',input.project.client||'Not entered' ],[ 'Project',input.project.name||'ScopeLogic Project' ]]);
+  drawInfoColumn(margin+columnWidth+columnGap,'QUOTE INFORMATION',[[ 'Quote Name',input.quote.name||'Quote' ],[ 'Revision / Date',`${input.project.revision||'Rev 0'}  ·  ${input.project.versionDate||'Not set'}` ]]);
+
+  let page=firstPage;
+  let y=pageHeight-310;
+  const sectionBar=(target:PDFPage,title:string)=>{
+    target.drawRectangle({x:margin,y:y-2,width:contentWidth,height:20,color:paleBlueGreen,borderColor:blueGreen,borderWidth:.6});
+    target.drawText(title.toUpperCase(),{x:margin+8,y:y+4,size:7,font:bold,color:black});
+    y-=31;
+  };
+  const startContinuation=(title:string)=>{const next=addCompactPage(title);page=next.page;y=next.y;};
+
+  // Scope of Work flows as one proposal section. Long content continues without clipping.
+  sectionBar(page,'Scope of Work');
+  const scopeText=htmlToQuoteText([input.scope.includedHtml,input.scope.excludedHtml].filter((value)=>String(value||'').trim()).join('<p><br></p>'))||'No Scope of Work content entered.';
+  const scopeParagraphs=scopeText.split(/\n/);
+  for(const paragraph of scopeParagraphs){
+    if(!paragraph.trim()){y-=7;if(y<bottomLimit+20)startContinuation('Scope of Work — Continued');continue;}
+    const isBullet=/^[-*]\s+/.test(paragraph.trim());
+    const clean=isBullet?paragraph.trim().replace(/^[-*]\s+/,''):paragraph.trim();
+    const x=margin+(isBullet?14:0);
+    const maxWidth=contentWidth-(isBullet?14:0);
+    const lines=wrapText(clean,maxWidth,font,9);
+    let offset=0;
+    while(offset<lines.length){
+      const available=Math.max(1,Math.floor((y-bottomLimit-10)/12));
+      if(available<1||y<bottomLimit+18){startContinuation('Scope of Work — Continued');continue;}
+      const chunk=lines.slice(offset,offset+available);
+      if(isBullet&&offset===0)page.drawCircle({x:margin+4,y:y-3,size:1.8,color:green});
+      drawWrapped(page,chunk,x,y,font,9,12,black);
+      y-=chunk.length*12+5;
+      offset+=chunk.length;
+      if(offset<lines.length)startContinuation('Scope of Work — Continued');
+    }
+  }
+  y-=8;
+
+  const drawBomColumnHeader=()=>{
+    if(y<bottomLimit+32)startContinuation('Bill of Materials — Continued');
+    page.drawRectangle({x:margin,y:y-2,width:contentWidth,height:20,color:odGreen});
+    page.drawText('DESCRIPTION',{x:margin+8,y:y+4,size:7,font:bold,color:white});
+    const qty='QTY';const qtyW=bold.widthOfTextAtSize(qty,7);
+    page.drawText(qty,{x:pageWidth-margin-8-qtyW,y:y+4,size:7,font:bold,color:white});
+    y-=26;
+  };
+
+  if(input.mode==='full-bom'){
+    if(y<250)startContinuation('Bill of Materials');
+    sectionBar(page,'Bill of Materials');
+    drawBomColumnHeader();
+    const baseBomLines=input.quote.lines.filter((line)=>!line.alternateId);
+    const hasHeaders=input.quote.groups.length>0;
+    const baseSections=hasHeaders
+      ? [...input.quote.groups.map((group)=>({id:group.id,name:group.name,lines:baseBomLines.filter((line)=>(line.groupId||'')===group.id)})),{id:'',name:'UNGROUPED',lines:baseBomLines.filter((line)=>!input.quote.groups.some((group)=>group.id===(line.groupId||'')))}].filter((group)=>group.lines.length)
+      : [{id:'flat',name:'',lines:baseBomLines}];
+    const alternateSections=input.alternates.map((alternate)=>({id:`alternate-${alternate.id}`,name:`${alternate.type==='deduct'?'DEDUCT':'ADD'} ALTERNATE — ${alternate.name}`,lines:input.quote.lines.filter((line)=>line.alternateId===alternate.id)})).filter((section)=>section.lines.length);
+    const sections=[...baseSections,...alternateSections];
+    for(const group of sections){
+      if(hasHeaders||group.id.startsWith('alternate-')){
+        const groupLines=wrapText(safe(group.name||'UNGROUPED').toUpperCase(),contentWidth-16,bold,8);
+        const groupHeight=Math.max(22,groupLines.length*10+8);
+        if(y-groupHeight<bottomLimit+10){startContinuation('Bill of Materials — Continued');drawBomColumnHeader();}
+        page.drawRectangle({x:margin,y:y-groupHeight+4,width:contentWidth,height:groupHeight,color:paleGray,borderColor:border,borderWidth:.35});
+        page.drawRectangle({x:margin,y:y-groupHeight+4,width:4,height:groupHeight,color:blueGreen});
+        drawWrapped(page,groupLines,margin+10,y-7,bold,8,10,black);y-=groupHeight+2;
+      }
+      for(const line of group.lines){
+        const descriptionLines=wrapText(line.description||'Item',contentWidth-70,font,8.7);
+        let offset=0;let firstChunk=true;
+        while(offset<descriptionLines.length){
+          if(y<bottomLimit+25){startContinuation('Bill of Materials — Continued');drawBomColumnHeader();}
+          const available=Math.max(1,Math.floor((y-bottomLimit-5)/11));
+          const chunk=descriptionLines.slice(offset,offset+available);
+          const rowHeight=Math.max(22,chunk.length*11+7);
+          drawWrapped(page,chunk,margin+8,y-9,font,8.7,11,black);
+          if(firstChunk){const qtyText=String(line.qty);const qSize=fitSizeOnly(qtyText,9,45,6,true);const qW=bold.widthOfTextAtSize(qtyText,qSize);page.drawText(qtyText,{x:pageWidth-margin-8-qW,y:y-10,size:qSize,font:bold,color:black});}
+          page.drawLine({start:{x:margin,y:y-rowHeight+3},end:{x:pageWidth-margin,y:y-rowHeight+3},thickness:.35,color:border});
+          y-=rowHeight;offset+=chunk.length;firstChunk=false;
+          if(offset<descriptionLines.length){startContinuation('Bill of Materials — Continued');drawBomColumnHeader();}
+        }
+      }
+      y-=4;
+    }
+    y-=6;
+  }
+
+  // Pricing summary follows the proposal content, using the visual hierarchy of a conventional estimate.
+  if(y<215)startContinuation('Proposal Summary');
+  sectionBar(page,'Pricing Summary');
+  const summaryWidth=280;
+  const summaryX=pageWidth-margin-summaryWidth;
+  const rows:[string,number][]=[['Material Total',input.totals.material],['Labor Total',input.totals.labor],['Tax',input.totals.tax]];
+  for(const [label,value] of rows){
+    page.drawText(label,{x:summaryX,y,size:8.7,font:bold,color:black});
+    const amount=quoteMoney(value);const amountSize=fitSizeOnly(amount,9.5,115,7,true);const amountWidth=bold.widthOfTextAtSize(amount,amountSize);
+    page.drawText(amount,{x:pageWidth-margin-4-amountWidth,y,size:amountSize,font:bold,color:black});
+    page.drawLine({start:{x:summaryX,y:y-8},end:{x:pageWidth-margin,y:y-8},thickness:.45,color:border});y-=25;
+  }
+  page.drawRectangle({x:summaryX-6,y:y-21,width:summaryWidth+6,height:35,color:odGreen});
+  page.drawText('TOTAL PRICE',{x:summaryX+4,y:y-8,size:9,font:bold,color:white});
+  const total=quoteMoney(input.totals.total);const totalSize=fitSizeOnly(total,13,135,8,true);const totalWidth=bold.widthOfTextAtSize(total,totalSize);
+  page.drawText(total,{x:pageWidth-margin-5-totalWidth,y:y-11,size:totalSize,font:bold,color:white});
+  y-=52;
+  if(input.alternates.length){
+    if(y<150)startContinuation('Alternates');
+    sectionBar(page,'Add / Deduct Alternates');
+    for(const alternate of input.alternates){
+      if(y<bottomLimit+42)startContinuation('Alternates — Continued');
+      const signed=(value:number)=>`${value<0?'- ':'+ '}${quoteMoney(Math.abs(value))}`;
+      page.drawText(`${alternate.type==='deduct'?'DEDUCT':'ADD'} — ${safe(alternate.name)}`,{x:margin,y,size:8.5,font:bold,color:black});
+      y-=14;
+      page.drawText(`Material ${signed(alternate.material)}   |   Labor ${signed(alternate.labor)}   |   Alternate Total ${signed(alternate.total)}`,{x:margin+8,y,size:7.5,font:bold,color:alternate.type==='deduct'?rgb(.55,.16,.14):green});
+      y-=21;
+    }
+  }
+  const terms=wrapText('This proposal reflects the approved ScopeLogic quote and the Scope of Work stated above. Any change in scope, quantities, assumptions, or project conditions may require a revised proposal.',contentWidth,font,7.2);
+  if(y-terms.length*10<bottomLimit)startContinuation('Proposal Summary — Continued');
+  drawWrapped(page,terms,margin,y,font,7.2,10,muted);
+
+  // Footer is added to the first page last because compact pages receive it when created.
+  drawFooter(firstPage,1);
+  return document.save();
 }

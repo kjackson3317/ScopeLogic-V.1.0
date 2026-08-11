@@ -1,23 +1,21 @@
-# ScopeLogic v1.0 RC5
+# ScopeLogic v1.0 RC5.5
 
-ScopeLogic v1.0 RC5 is the final release candidate for the browser-based Division 27/28 scope consulting workspace. It preserves the verified RC4.1 matrix and PDF workflow, adds the v1.0 production-closeout controls, corrects the mobile experience, and introduces a controlled AI Draft Assistant.
+ScopeLogic RC5.5 is the current integrated estimating release candidate. It preserves the RC5.4 PDF Drawing Take Off → Take Off Rules → BOM → Quote workflow and improves catalog search, quote editing, rule reuse, customer proposals, and Internal Matrix references.
 
-## Production capabilities
+## Current estimating capabilities
 
-- Supabase authentication, row-level security, and cloud database source of truth
-- Private cloud storage for project documents and official release PDFs
-- Multi-system SLR records with one-row matrix presentation
-- Per-system Recommended Bid Basis and Contractor Checklist Scope Item fields
-- Editable Contractor Response Checklist PDF
-- Formal RFI PDF without an external Answer field
-- Numbered, immutable Official Releases with captured snapshot and SHA-256 hash
-- Project backup ZIP export and controlled restore as a new project
-- Mobile navigation drawer with Close control, outside-tap close, automatic close after selection, and browser-Back handling
-- Responsive Internal Matrix, dialogs, action controls, document screens, and SLR cards
-- Authenticated OpenAI-powered SLR Draft Assistant with structured field output
-- Field-by-field AI review; existing text is never overwritten by default
-- No automatic SLR submission and no AI-generated document references
-- Internal AI-assistance provenance that is excluded from client deliverables
+- PDF Drawing Take Off with counts, measurements, calibration, markups, snippets/SLRs, and linked estimating-rule quantities
+- Parts Database with XLSX import, pricing-only updates, full catalog export, unique Part Number enforcement, and Manufacturer/Part Number/Description AND filtering
+- Parts Database stays unrendered until a search is entered and sorts Manufacturer A–Z / Part Number A–Z
+- Quote Builder with source-aware Manual/Template/Take Off quantities, intentional Qty 0 lines, multi-select delete, compact numeric inputs, and wide descriptions
+- Job-specific BOM headers with drag/drop and explicit header up/down reordering
+- Quote Templates open on a new draft by default so saved templates are edited only after deliberate selection
+- Take Off rule duplication, Access Control/CCTV IF Scenario labels, part-database multi-filter search, capacity calculations, and cable-package calculations
+- No preloaded Take Off rules; estimators create and activate their own rule library
+- Unified rich-text Scope of Work
+- Approved-only customer proposal PDF with Full BOM or No BOM presentation; customer BOM uses Description + Qty and preserves quote headers
+- Internal Matrix uses permanent SLR ID / Markup Reference plus Source Type and Source Reference for contract citations
+- Responsive/mobile behavior preserved for estimating, Drawing Take Off, catalog, rules, BOM, and Scope of Work
 
 ## Required environment variables
 
@@ -25,36 +23,24 @@ ScopeLogic v1.0 RC5 is the final release candidate for the browser-based Divisio
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 NEXT_PUBLIC_SITE_URL
-OPENAI_API_KEY
-SCOPELOGIC_AI_ENABLED
 ```
 
-Optional:
+## Supabase migrations
+
+RC5.5 requires all prior migrations plus:
 
 ```text
-OPENAI_MODEL=gpt-5-mini
+supabase/migrations/20260810000100_scopelogic_rc55_matrix_source_reference.sql
 ```
 
-Keep `SCOPELOGIC_AI_ENABLED=false` in Production until the separate AI acceptance test is complete. The remainder of ScopeLogic operates normally while AI is disabled.
-
-## Required Supabase migrations
-
-Apply all migrations through:
-
-```text
-supabase/migrations/20260806000400_scopelogic_rc5_mobile_ai.sql
-```
-
-Because migration `20260806000300_scopelogic_v1_production_closeout.sql` has not yet been applied, the first RC5 production push should list both `20260806000300` and `20260806000400` in sequence.
-
-The RC5 System Status schema version is `1.0-RC5`.
+Apply migrations before starting RC5.5 against the cloud workspace.
 
 ## Verification
 
 ```bash
-node scripts/verify-clean-source.mjs
 npm install
+npm run verify-source
 npm run build
 ```
 
-Complete `RC5-ACCEPTANCE-CHECKLIST.md` before enabling AI in Production or tagging `v1.0.0`.
+Complete local and Vercel Preview acceptance testing before promoting the tested deployment to Production.

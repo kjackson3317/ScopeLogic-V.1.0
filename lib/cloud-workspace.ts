@@ -77,8 +77,6 @@ export type Customer = {
   contacts: CustomerContact[];
 };
 
-export type AiAssistance = { provider: 'OpenAI'; model: string; generatedAt: string; appliedAt: string; appliedFields: string[]; reviewedByUser: boolean };
-
 export type Issue = {
   uid: string;
   id: string;
@@ -93,6 +91,7 @@ export type Issue = {
   basis: string;
   reason: string;
   reference: string;
+  sourceType: string;
   rfi: string;
   resolution: string;
   snippet: string;
@@ -104,10 +103,9 @@ export type Issue = {
   checklistItems: Record<string, string>;
   response: string;
   responseReason: string;
-  aiAssistance: AiAssistance | null;
 };
 
-export type Template = { uid: string; name: string; issue: Omit<Issue, 'uid' | 'id' | 'rfi' | 'snippet' | 'aiAssistance'> };
+export type Template = { uid: string; name: string; issue: Omit<Issue, 'uid' | 'id' | 'rfi' | 'snippet'> };
 
 export type Doc = {
   id: string;
@@ -130,6 +128,28 @@ export type ExportEntry = {
   downloadedAt: string;
   projectRevision: string;
 };
+
+export type LaborRate = { id: string; name: string; costPerHour: number; markup?: number; active: boolean };
+export type DifficultyMultiplier = { id: string; name: string; multiplier: number; active: boolean };
+export type PartRecord = { id: string; manufacturer: string; partNumber: string; description: string; system: string; category: string; bomSection?: string; unitCost: number; materialMarkup: number; engineeringMinutes: number; installationMinutes: number; programmingMinutes: number; testingMinutes: number; laborMinutes?: Record<string, number>; cableType?: string; cableFeet?: number; vendor: string; updatedAt: string; active: boolean };
+export type QuoteGroup = { id: string; name: string };
+export type QuoteLine = { id: string; partId: string; manufacturer: string; partNumber: string; description: string; system: string; bomSection?: string; groupId?: string; showOnBom?: boolean; qty: number; unitCost: number; materialMarkup: number; engineeringMinutes: number; installationMinutes: number; programmingMinutes: number; testingMinutes: number; laborMinutes?: Record<string, number>; cableType?: string; cableFeet?: number; adHoc?: boolean };
+export type TravelCalculator = { crewSize: number; roundTripHours: number; days: number; hotelNights: number; roomRate: number; perDiemRate: number; laborRateId: string };
+export type Quote = { id: string; number: string; name: string; status: string; taxRate: number; bondRate: number; shipping: number; otherCosts: number; lines: QuoteLine[]; groups?: QuoteGroup[]; createdAt: string; updatedAt: string; difficultyId?: string; globalMaterialMarkup?: number; laborMarkups?: Record<string, number>; projectManagementHours?: number; travelHours?: Record<string, number>; travel?: TravelCalculator; laborAdjustments?: Record<string, number>; jobMaterialDiscount?: number; perDiemTravel?: number; terms?: string; internalNotes?: string; adminNotes?: string; engineeringNotRequired?: boolean };
+export type QuoteTemplate = { id: string; name: string; description: string; system: string; globalMaterialMarkup: number; difficultyId?: string; laborMarkups?: Record<string, number>; groups?: QuoteGroup[]; lines: QuoteLine[]; createdAt: string; updatedAt: string };
+export type TakeoffCalculationMode = 'multiply' | 'capacity' | 'cable-length';
+export type TakeoffRounding = 'up' | 'down';
+export type TakeoffFormulaItem = { id: string; partId: string; qtyPerUnit: number; calculationMode?: TakeoffCalculationMode; capacity?: number; rounding?: TakeoffRounding };
+export type TakeoffFormula = { id: string; name: string; system: string; unitLabel: string; items: TakeoffFormulaItem[]; laborMinutesPerUnit: Record<string, number>; active: boolean };
+export type TakeoffEntry = { id: string; formulaId: string; description: string; qty: number; notes: string; source?: 'manual' | 'drawing' };
+export type TakeoffProjectSettings = { selectedSystems: string[]; activeRuleIds: string[]; averageCableLength: number };
+export type DrawingTakeoffTool = { id: string; name: string; system: string; shape: 'square' | 'triangle' | 'circle' | 'diamond'; color: string; multiplier: number; unit: string; scope: 'global' | 'project'; projectId?: string; formulaId?: string };
+export type DrawingTakeoffMark = { id: string; docId: string; page: number; toolId: string; x: number; y: number };
+export type DrawingPoint = { x: number; y: number };
+export type DrawingMeasurement = { id: string; docId: string; page: number; type: 'distance' | 'polyline' | 'area' | 'perimeter'; points: DrawingPoint[]; value: number; unit: string; name: string; system: string };
+export type DrawingPageCalibration = { pxPerFoot: number; label: string };
+export type DrawingAnnotation = { id: string; docId: string; page: number; type: 'rectangle' | 'cloud' | 'arrow' | 'highlight' | 'snippet'; points: DrawingPoint[]; label?: string; issueUid?: string; issueId?: string };
+export type ScopeOfWorkDoc = { includedHtml: string; excludedHtml: string };
 
 export type OfficialRelease = {
   id: string;
@@ -156,6 +176,20 @@ export type WorkspaceSnapshot = {
   exportsByProject: Record<string, ExportEntry[]>;
   calendarEntries: CalendarEntry[];
   customers: Customer[];
+  laborRates: LaborRate[];
+  difficultyMultipliers: DifficultyMultiplier[];
+  parts: PartRecord[];
+  quotesByProject: Record<string, Quote[]>;
+  quoteTemplates: QuoteTemplate[];
+  takeoffFormulas: TakeoffFormula[];
+  takeoffEntriesByProject: Record<string, TakeoffEntry[]>;
+  takeoffSettingsByProject: Record<string, TakeoffProjectSettings>;
+  drawingTakeoffTools: DrawingTakeoffTool[];
+  drawingTakeoffMarksByProject: Record<string, DrawingTakeoffMark[]>;
+  drawingMeasurementsByProject: Record<string, DrawingMeasurement[]>;
+  drawingCalibrationsByProject: Record<string, Record<string, DrawingPageCalibration>>;
+  drawingAnnotationsByProject: Record<string, DrawingAnnotation[]>;
+  scopeOfWorkByProject: Record<string, ScopeOfWorkDoc>;
 };
 
 export type CloudSchemaHealth = {
@@ -174,6 +208,17 @@ export type CloudWorkspaceStatus = {
   documentCount: number;
   storedDocumentCount: number;
   schema: CloudSchemaHealth;
+};
+
+export type WorkspaceBackupSummary = {
+  id: string;
+  kind: 'automatic' | 'manual' | 'browser-recovery' | 'pre-restore';
+  reason: string;
+  cloudRevision: number;
+  projectCount: number;
+  partCount: number;
+  quoteCount: number;
+  createdAt: string;
 };
 
 type AnyRecord = Record<string, any>;
@@ -220,6 +265,92 @@ async function currentUser(supabase: BrowserClient) {
 
 
 let schemaHealthCache: { value: CloudSchemaHealth; checkedAt: number } | null = null;
+let knownCloudRevision: number | null = null;
+
+const workspaceQuoteCount = (snapshot: WorkspaceSnapshot) => Object.values(snapshot.quotesByProject || {})
+  .reduce((sum, quotes) => sum + (Array.isArray(quotes) ? quotes.length : 0), 0);
+
+async function insertWorkspaceBackup(
+  supabase: BrowserClient,
+  ownerId: string,
+  snapshot: WorkspaceSnapshot,
+  reason: string,
+  kind: WorkspaceBackupSummary['kind'],
+  force: boolean,
+) {
+  if (!force && kind === 'automatic') {
+    const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    const recent = requireResult(
+      await supabase.from('workspace_backups').select('id').eq('owner_id', ownerId).eq('backup_kind', 'automatic').gte('created_at', cutoff).limit(1),
+      'Check recent workspace checkpoints',
+    );
+    if (recent.data?.length) return;
+  }
+
+  requireResult(await supabase.from('workspace_backups').insert({
+    owner_id: ownerId,
+    backup_kind: kind,
+    reason,
+    cloud_revision: knownCloudRevision || 0,
+    project_count: snapshot.projects?.length || 0,
+    part_count: snapshot.parts?.length || 0,
+    quote_count: workspaceQuoteCount(snapshot),
+    workspace_snapshot: snapshot,
+  }), 'Create workspace checkpoint');
+
+  const history = requireResult(
+    await supabase.from('workspace_backups').select('id,backup_kind').eq('owner_id', ownerId).order('created_at', { ascending: false }),
+    'Read workspace checkpoint retention',
+  );
+  const automatic = (history.data || []).filter((row: AnyRecord) => row.backup_kind === 'automatic').slice(12);
+  const manual = (history.data || []).filter((row: AnyRecord) => row.backup_kind !== 'automatic').slice(10);
+  const expired = [...automatic, ...manual].map((row: AnyRecord) => row.id);
+  if (expired.length) requireResult(await supabase.from('workspace_backups').delete().in('id', expired), 'Trim old workspace checkpoints');
+}
+
+export async function createWorkspaceBackup(
+  snapshot: WorkspaceSnapshot,
+  reason = 'Manual restore point',
+  kind: WorkspaceBackupSummary['kind'] = 'manual',
+) {
+  const supabase = createClient();
+  const user = await currentUser(supabase);
+  await insertWorkspaceBackup(supabase, user.id, snapshot, reason, kind, true);
+}
+
+export async function listWorkspaceBackups(limit = 22): Promise<WorkspaceBackupSummary[]> {
+  const supabase = createClient();
+  const user = await currentUser(supabase);
+  const result = requireResult(
+    await supabase.from('workspace_backups')
+      .select('id,backup_kind,reason,cloud_revision,project_count,part_count,quote_count,created_at')
+      .eq('owner_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(limit),
+    'List workspace restore points',
+  );
+  return (result.data || []).map((row: AnyRecord) => ({
+    id: text(row.id),
+    kind: row.backup_kind as WorkspaceBackupSummary['kind'],
+    reason: text(row.reason),
+    cloudRevision: Number(row.cloud_revision || 0),
+    projectCount: Number(row.project_count || 0),
+    partCount: Number(row.part_count || 0),
+    quoteCount: Number(row.quote_count || 0),
+    createdAt: text(row.created_at),
+  }));
+}
+
+export async function loadWorkspaceBackup(backupId: string): Promise<WorkspaceSnapshot> {
+  const supabase = createClient();
+  const user = await currentUser(supabase);
+  const result = requireResult(
+    await supabase.from('workspace_backups').select('workspace_snapshot').eq('owner_id', user.id).eq('id', backupId).single(),
+    'Load workspace restore point',
+  );
+  if (!result.data?.workspace_snapshot) throw new Error('The selected restore point no longer exists.');
+  return result.data.workspace_snapshot as WorkspaceSnapshot;
+}
 
 export async function inspectCloudSchema(force = false): Promise<CloudSchemaHealth> {
   const now = Date.now();
@@ -232,7 +363,7 @@ export async function inspectCloudSchema(force = false): Promise<CloudSchemaHeal
     const message = formatSupabaseError(result.error);
     const missingFunction = /scopelogic_schema_health|function .* does not exist|PGRST202/i.test(message);
     throw new Error(missingFunction
-      ? 'The ScopeLogic database health function is unavailable. Confirm migrations through 20260806000400_scopelogic_rc5_mobile_ai.sql are applied, wait 30 seconds, and retry.'
+      ? 'The ScopeLogic database health function is unavailable. Confirm migrations through 20260810000100_scopelogic_rc55_matrix_source_reference.sql are applied, wait 30 seconds, and retry.'
       : `Cloud schema diagnostic failed: ${message}`);
   }
 
@@ -245,8 +376,8 @@ export async function inspectCloudSchema(force = false): Promise<CloudSchemaHeal
     checkedAt: text(raw.checkedAt ?? raw.checked_at) || new Date().toISOString(),
   };
   schemaHealthCache = { value: health, checkedAt: now };
-  if (health.version !== '1.0-RC5') {
-    throw new Error('ScopeLogic v1.0 RC5 requires migrations 20260806000300_scopelogic_v1_production_closeout.sql and 20260806000400_scopelogic_rc5_mobile_ai.sql. The browser recovery copy remains available and no RC5 cloud write was attempted.');
+  if (health.version !== '1.0-RC5.5') {
+    throw new Error('ScopeLogic v1.0 RC5.5 requires migrations through 20260810000100_scopelogic_rc55_matrix_source_reference.sql. The browser recovery copy remains available and no RC5 cloud write was attempted.');
   }
   if (!health.healthy) throw new Error(`Cloud schema is incomplete. Missing: ${health.missing.join(', ') || 'unknown required objects'}.`);
   return health;
@@ -281,6 +412,7 @@ export async function loadWorkspaceFromCloud(forceSchemaCheck = false): Promise<
   const contactRows = contactResult.data || [];
   const projectRows = projectResult.data || [];
   const settings = settingsResult.data || {};
+  knownCloudRevision = Number(settings.cloud_revision || 0);
 
   if (!projectRows.length && !customerRows.length) {
     return {
@@ -412,6 +544,7 @@ export async function loadWorkspaceFromCloud(forceSchemaCheck = false): Promise<
       basis: text(row.recommended_bid_basis),
       reason: text(row.reason_basis),
       reference: text(row.reference),
+      sourceType: text(row.source_type),
       rfi: text(row.rfi_number),
       resolution: text(row.resolution),
       snippet: text(row.snippet_number),
@@ -423,7 +556,6 @@ export async function loadWorkspaceFromCloud(forceSchemaCheck = false): Promise<
       checklistItems,
       response: text(row.contractor_response) || 'Included',
       responseReason: text(row.contractor_response_reason),
-      aiAssistance: row.ai_assistance && typeof row.ai_assistance === 'object' && Object.keys(row.ai_assistance).length ? row.ai_assistance as AiAssistance : null,
     });
   }
 
@@ -484,8 +616,24 @@ export async function loadWorkspaceFromCloud(forceSchemaCheck = false): Promise<
   const projectId = projects.some((project) => project.id === selectedProjectId) ? selectedProjectId : projects[0]?.id || '';
   const documents = (documentResult.data || []) as AnyRecord[];
 
+  const estimatingData = settings.estimating_data && typeof settings.estimating_data === 'object' ? settings.estimating_data as AnyRecord : {};
+  const laborRates = Array.isArray(estimatingData.laborRates) ? estimatingData.laborRates as LaborRate[] : [];
+  const difficultyMultipliers = Array.isArray(estimatingData.difficultyMultipliers) ? estimatingData.difficultyMultipliers as DifficultyMultiplier[] : [];
+  const parts = Array.isArray(estimatingData.parts) ? estimatingData.parts as PartRecord[] : [];
+  const quotesByProject = estimatingData.quotesByProject && typeof estimatingData.quotesByProject === 'object' ? estimatingData.quotesByProject as Record<string, Quote[]> : {};
+  const quoteTemplates = Array.isArray(estimatingData.quoteTemplates) ? estimatingData.quoteTemplates as QuoteTemplate[] : [];
+  const takeoffFormulas = Array.isArray(estimatingData.takeoffFormulas) ? estimatingData.takeoffFormulas as TakeoffFormula[] : [];
+  const takeoffEntriesByProject = estimatingData.takeoffEntriesByProject && typeof estimatingData.takeoffEntriesByProject === 'object' ? estimatingData.takeoffEntriesByProject as Record<string, TakeoffEntry[]> : {};
+  const takeoffSettingsByProject = estimatingData.takeoffSettingsByProject && typeof estimatingData.takeoffSettingsByProject === 'object' ? estimatingData.takeoffSettingsByProject as Record<string, TakeoffProjectSettings> : {};
+  const drawingTakeoffTools = Array.isArray(estimatingData.drawingTakeoffTools) ? estimatingData.drawingTakeoffTools as DrawingTakeoffTool[] : [];
+  const drawingTakeoffMarksByProject = estimatingData.drawingTakeoffMarksByProject && typeof estimatingData.drawingTakeoffMarksByProject === 'object' ? estimatingData.drawingTakeoffMarksByProject as Record<string, DrawingTakeoffMark[]> : {};
+  const drawingMeasurementsByProject = estimatingData.drawingMeasurementsByProject && typeof estimatingData.drawingMeasurementsByProject === 'object' ? estimatingData.drawingMeasurementsByProject as Record<string, DrawingMeasurement[]> : {};
+  const drawingCalibrationsByProject = estimatingData.drawingCalibrationsByProject && typeof estimatingData.drawingCalibrationsByProject === 'object' ? estimatingData.drawingCalibrationsByProject as Record<string, Record<string, DrawingPageCalibration>> : {};
+  const drawingAnnotationsByProject = estimatingData.drawingAnnotationsByProject && typeof estimatingData.drawingAnnotationsByProject === 'object' ? estimatingData.drawingAnnotationsByProject as Record<string, DrawingAnnotation[]> : {};
+  const scopeOfWorkByProject = estimatingData.scopeOfWorkByProject && typeof estimatingData.scopeOfWorkByProject === 'object' ? estimatingData.scopeOfWorkByProject as Record<string, ScopeOfWorkDoc> : {};
+
   return {
-    snapshot: { projects, projectId, issuesByProject, docsByProject, templates, notesByProject, exportsByProject, calendarEntries, customers },
+    snapshot: { projects, projectId, issuesByProject, docsByProject, templates, notesByProject, exportsByProject, calendarEntries, customers, laborRates, difficultyMultipliers, parts, quotesByProject, quoteTemplates, takeoffFormulas, takeoffEntriesByProject, takeoffSettingsByProject, drawingTakeoffTools, drawingTakeoffMarksByProject, drawingMeasurementsByProject, drawingCalibrationsByProject, drawingAnnotationsByProject, scopeOfWorkByProject },
     status: {
       source: 'cloud',
       cutoverCompletedAt: settings.cloud_cutover_completed_at || null,
@@ -523,6 +671,15 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
   const supabase = createClient();
   const user = await currentUser(supabase);
   const ownerId = user.id;
+  const currentSetting = requireResult(
+    await supabase.from('user_settings').select('cloud_revision').eq('owner_id', ownerId).maybeSingle(),
+    'Read cloud revision',
+  );
+  const currentRevision = Number(currentSetting.data?.cloud_revision || 0);
+  if (knownCloudRevision !== null && currentRevision !== knownCloudRevision) {
+    throw new Error(`Cloud revision conflict: ScopeLogic expected revision ${knownCloudRevision}, but production is revision ${currentRevision}. Reload the cloud workspace before saving. No browser fallback was uploaded.`);
+  }
+  await insertWorkspaceBackup(supabase, ownerId, snapshot, 'Automatic workspace checkpoint', 'automatic', false);
 
   const customerRows = snapshot.customers.map((customer, index) => ({
     owner_id: ownerId,
@@ -605,6 +762,7 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
       recommended_bid_basis: issue.recommendations?.[issue.systems?.[0] || issue.system] || issue.basis || '',
       reason_basis: issue.reason || '',
       reference: issue.reference || '',
+      source_type: issue.sourceType || '',
       rfi_number: issue.rfi || '',
       resolution: issue.resolution || '',
       snippet_number: issue.snippet || '',
@@ -615,7 +773,6 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
       checklist_scope_items_by_system: issue.checklistItems || Object.fromEntries((issue.systems?.length ? issue.systems : [issue.system || 'Structured Cabling']).map((system) => [system, issue.checklistItem || ''])),
       contractor_response: issue.response || 'Included',
       contractor_response_reason: issue.responseReason || '',
-      ai_assistance: issue.aiAssistance || {},
     }));
     (snapshot.docsByProject[project.id] || []).forEach((doc, index) => documentRows.push({
       owner_id: ownerId,
@@ -694,16 +851,26 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
     event_type: entry.type || 'Other',
   })));
 
-  const currentSetting = requireResult(await supabase.from('user_settings').select('cloud_revision').eq('owner_id', ownerId).maybeSingle(), 'Read cloud revision');
-  const nextRevision = Number(currentSetting.data?.cloud_revision || 0) + 1;
-  requireResult(await supabase.from('user_settings').upsert({
+  const nextRevision = currentRevision + 1;
+  const settingsPayload = {
     user_id: ownerId,
     owner_id: ownerId,
     selected_project_legacy_id: snapshot.projectId || null,
     data_mode: 'cloud',
     cloud_revision: nextRevision,
     last_cloud_sync_at: new Date().toISOString(),
-  }, { onConflict: 'user_id' }), 'Save workspace settings');
+    estimating_data: { laborRates: snapshot.laborRates || [], difficultyMultipliers: snapshot.difficultyMultipliers || [], parts: snapshot.parts || [], quotesByProject: snapshot.quotesByProject || {}, quoteTemplates: snapshot.quoteTemplates || [], takeoffFormulas: snapshot.takeoffFormulas || [], takeoffEntriesByProject: snapshot.takeoffEntriesByProject || {}, takeoffSettingsByProject: snapshot.takeoffSettingsByProject || {}, drawingTakeoffTools: snapshot.drawingTakeoffTools || [], drawingTakeoffMarksByProject: snapshot.drawingTakeoffMarksByProject || {}, drawingMeasurementsByProject: snapshot.drawingMeasurementsByProject || {}, drawingCalibrationsByProject: snapshot.drawingCalibrationsByProject || {}, drawingAnnotationsByProject: snapshot.drawingAnnotationsByProject || {}, scopeOfWorkByProject: snapshot.scopeOfWorkByProject || {} },
+  };
+  if (currentSetting.data) {
+    const saved = requireResult(
+      await supabase.from('user_settings').update(settingsPayload).eq('owner_id', ownerId).eq('cloud_revision', currentRevision).select('cloud_revision'),
+      'Save workspace settings',
+    );
+    if (!saved.data?.length) throw new Error('Cloud revision changed during the save. Reload ScopeLogic before retrying; the newer production workspace was not overwritten.');
+  } else {
+    requireResult(await supabase.from('user_settings').upsert(settingsPayload, { onConflict: 'user_id' }), 'Initialize workspace settings');
+  }
+  knownCloudRevision = nextRevision;
 
   await deleteStaleLegacyRows(supabase, 'projects', ownerId, projectRows.map((row) => row.legacy_id));
   await deleteStaleLegacyRows(supabase, 'contacts', ownerId, contactRows.map((row) => row.legacy_id));

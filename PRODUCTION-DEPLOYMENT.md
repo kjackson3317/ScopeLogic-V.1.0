@@ -1,68 +1,41 @@
-# ScopeLogic v1.0 RC5 — Deployment
+# ScopeLogic v1.0 RC5.1 — Deployment
 
 ## 1. Source deployment
 
-Install the complete RC5 source through GitHub Codespaces using `CLEAN-GITHUB-REPLACEMENT.md`. The production build must complete before commit and push.
+Install the complete RC5.1 source through GitHub Codespaces using `CLEAN-GITHUB-REPLACEMENT.md`. The production build must complete before commit and push.
 
 ## 2. Vercel
 
-Confirm these variables are present:
+Keep these variables:
 
 ```text
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 NEXT_PUBLIC_SITE_URL
-OPENAI_API_KEY
-SCOPELOGIC_AI_ENABLED=false
 ```
 
-`OPENAI_MODEL=gpt-5-mini` is optional because the server route uses that model by default.
+RC5.1 does not use `OPENAI_API_KEY`, `OPENAI_MODEL`, or `SCOPELOGIC_AI_ENABLED`. Remove those three variables after the RC5.1 deployment is verified Ready.
 
-Deploy RC5 and wait for Vercel to report `Ready`. AI remains disabled while `SCOPELOGIC_AI_ENABLED=false`.
+## 3. Supabase
 
-## 3. Supabase migrations
-
-Relink the Codespace if required, then run:
+RC5.1 has no new database migration. Because production already reports `Remote database is up to date`, do not run migration repair or reset. After source deployment, an optional verification command is:
 
 ```bash
 npx supabase@latest migration list
-npx supabase@latest db push --dry-run
 ```
 
-The dry run should list only these pending migrations, in this order:
+All migrations through `20260806000400` should remain matched Local and Remote.
 
-```text
-20260806000300_scopelogic_v1_production_closeout.sql
-20260806000400_scopelogic_rc5_mobile_ai.sql
-```
+## 4. Production acceptance
 
-Then apply and verify:
+After Vercel reports Ready:
 
-```bash
-npx supabase@latest db push
-npx supabase@latest migration list
-npx supabase@latest db push
-```
+1. Open the permanent custom domain and press Ctrl+F5.
+2. Confirm existing projects and documents remain visible.
+3. Confirm the single top cloud status shows Cloud synced.
+4. Confirm no AI control or AI status card appears.
+5. Confirm Sign Out appears under Account at the bottom of the sidebar/mobile drawer.
+6. Open one project, one SLR, one cloud document, and one deliverable page.
+7. Complete `RC5.1-ACCEPTANCE-CHECKLIST.md`.
 
-The final command must report that the remote database is up to date. RC5 blocks cloud writes until schema version `1.0-RC5` is available.
-
-## 4. Core and mobile acceptance
-
-Complete the non-AI sections of `RC5-ACCEPTANCE-CHECKLIST.md` while Production AI remains disabled.
-
-## 5. AI preview acceptance
-
-Set `SCOPELOGIC_AI_ENABLED=true` for the Vercel Preview environment only, redeploy a preview, and complete the AI acceptance section. Never expose `OPENAI_API_KEY` through a `NEXT_PUBLIC_` variable.
-
-## 6. Production AI enablement
-
-After preview acceptance, change Production `SCOPELOGIC_AI_ENABLED` to `true`, redeploy, and repeat one controlled AI draft test. AI-generated text remains a draft until the administrator applies selected fields and selects Submit Entry.
-
-## 7. Final release
-
-After all acceptance tests pass:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
+Never run `supabase db reset --linked` against production.
