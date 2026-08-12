@@ -78,7 +78,7 @@ for (const requiredText of [
 }
 if (workspace.includes('DEFAULT_TAKEOFF_FORMULAS')) violations.push('app/workspace.tsx: Take Off rules must not be preloaded in RC5.5.2');
 if (!workspace.includes("filter((formula) => !String(formula.id || '').startsWith('default-'))")) violations.push('app/workspace.tsx: legacy RC5.3.2 default Take Off rules are not filtered');
-if (!workspace.includes("quote.status!=='Approved'")) violations.push('app/workspace.tsx: customer quote PDF must be restricted to Approved quotes');
+if (!workspace.includes("['Approved','Awarded'].includes(quote.status)")) violations.push('app/workspace.tsx: customer quote PDF must be restricted to Approved or Awarded quotes');
 if (!workspace.includes('duplicatePartNumbers') || !workspace.includes('saveParts')) violations.push('app/workspace.tsx: duplicate Part Number enforcement is missing');
 if (!workspace.includes('downloadCurrentDatabase') || !workspace.includes('ScopeLogic-Parts-Database.xlsx')) violations.push('app/workspace.tsx: full parts database export is missing');
 if (!workspace.includes('combinedScopeOfWorkHtml') || !workspace.includes('single-scope')) violations.push('app/workspace.tsx: unified Scope of Work editor is missing');
@@ -88,6 +88,12 @@ for (const requiredText of ['parts-db-filter-grid', 'Part Number / partial part 
 }
 for (const requiredText of ['bomPdfSelectOpen', 'Select Items to Show on Proposal', 'quote-switcher-bar', 'desktopNavCollapsed', 'Source Type(s)', 'Not Mentioned in Contract Documents', 'alphaNumericCompare']) {
   if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5.2 inherited behavior: ${requiredText}`);
+}
+for (const requiredText of ['formatQuoteNumber', 'createRevision', 'createChangeOrder', 'duplicateQuote', 'Copy Existing Quote', 'saveCurrentAsTemplate', 'quote-bom-tabs', 'Purchasing BOM', 'breakoutSummaries', 'materialMarkupOverride', 'shippingMarkup', 'otherCostsMarkup', 'summary-notes-fill', 'Short Alternate Scope of Work']) {
+  if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5.4 quote behavior: ${requiredText}`);
+}
+for (const requiredText of ['quotePdfPricingDisplay', 'Customer Pricing Display', 'Detailed pricing', 'Total price only']) {
+  if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5.5 proposal pricing visibility: ${requiredText}`);
 }
 for (const requiredText of ['Download Full Workspace', 'Import Full Workspace', 'Create Restore Point', 'Restore Center', 'Browser fallback quarantined']) {
   if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5.2 data protection: ${requiredText}`);
@@ -131,8 +137,11 @@ for (const requiredText of ['recommendationSummary', 'checklistItemFor', 'drawCh
 
 if (pdfGenerator.includes("input.quote.status")) violations.push('app/pdf-generator.ts: customer-facing proposal must not display internal quote status');
 
-for (const requiredText of ['buildQuotePdfBytes', "export type QuotePdfMode = 'full-bom' | 'summary-only'", 'PROJECT PROPOSAL', 'Scope of Work', 'Bill of Materials', "['Material Total',input.totals.material]", "['Labor Total',input.totals.labor]", "['Tax',input.totals.tax]", "'TOTAL PRICE'"]) {
+for (const requiredText of ['buildQuotePdfBytes', "export type QuotePdfMode = 'full-bom' | 'summary-only'", 'PROJECT PROPOSAL', 'Scope of Work', 'Bill of Materials', "['Material Total',input.totals.material]", "['Labor Total',input.totals.labor]", "['Tax',input.totals.tax]", "'TOTAL PRICE'", 'Base Bid Pricing Breakouts', 'Pricing Alternates', 'ALTERNATE SCOPE']) {
   if (!pdfGenerator.includes(requiredText)) violations.push(`app/pdf-generator.ts: missing RC5.3.5 customer quote behavior: ${requiredText}`);
+}
+for (const requiredText of ["export type QuotePdfPricingDisplay = 'detailed' | 'total-only'", "input.pricingDisplay !== 'total-only'", "`Alternate Total ${signed(alternate.total)}`"]) {
+  if (!pdfGenerator.includes(requiredText)) violations.push(`app/pdf-generator.ts: missing RC5.5.5 total-only proposal behavior: ${requiredText}`);
 }
 
 if (!pdfGenerator.includes("if (kind === 'sow') return issues.filter((issue) => issue.sow).map")) {
@@ -147,7 +156,7 @@ if (/title: 'Formal RFI'[\s\S]{0,220}headers:\s*\[[^\]]*Answer/.test(pdfGenerato
 }
 
 const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-if (packageJson.version !== '1.0.0-rc.5.5.3') violations.push('package.json: version must be 1.0.0-rc.5.5.3');
+if (packageJson.version !== '1.0.0-rc.5.5.5') violations.push('package.json: version must be 1.0.0-rc.5.5.5');
 if (packageJson.dependencies?.resend || packageJson.devDependencies?.resend) violations.push('package.json: Resend dependency must be removed');
 if (packageJson.dependencies?.exceljs !== '4.4.0') violations.push('package.json: ExcelJS 4.4.0 is required for browser XLSX import/export.');
 if (packageJson.dependencies?.['pdfjs-dist'] !== '4.10.38') violations.push('package.json: PDF.js 4.10.38 is required for Drawing Take Off.');

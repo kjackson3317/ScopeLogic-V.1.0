@@ -285,7 +285,7 @@ async function appendDeliverable(
     const height = 22;
     if (y - height < footerLimit) return false;
     page.drawRectangle({ x: margin, y: y - height, width: contentWidth, height, color: darkGreen });
-    const label = `${section.toUpperCase()}${continued ? ' — CONTINUED' : ''}`;
+    const label = `${section.toUpperCase()}${continued ? ' - CONTINUED' : ''}`;
     const fitted = fitText(label, bold, 8, contentWidth - 12, 6);
     page.drawText(fitted.text, { x: margin + 6, y: y - 15, size: fitted.size, font: bold, color: white });
     y -= height;
@@ -529,18 +529,21 @@ export async function buildReleasePackageBytes(project: PdfProject, issues: PdfI
 }
 
 export type QuotePdfMode = 'full-bom' | 'summary-only';
+export type QuotePdfPricingDisplay = 'detailed' | 'total-only';
 export type QuotePdfInput = {
   mode: QuotePdfMode;
+  pricingDisplay?: QuotePdfPricingDisplay;
   project: PdfProject;
   quote: {
     number: string;
     name: string;
     groups: { id: string; name: string }[];
-    lines: { groupId: string; alternateId?: string; description: string; qty: number }[];
+    lines: { groupId: string; description: string; qty: number }[];
   };
   scope: { includedHtml: string; excludedHtml: string };
-  totals: { material: number; labor: number; tax: number; total: number };
-  alternates: { id: string; type: 'add' | 'deduct'; name: string; material: number; labor: number; total: number }[];
+  totals: { material: number; labor: number; other: number; tax: number; bond: number; total: number };
+  breakouts: { id: string; name: string; description: string; material: number; labor: number; other: number; total: number }[];
+  alternates: { id: string; name: string; scopeHtml: string; awarded: boolean; classification: 'ADD' | 'DEDUCT' | 'NO COST'; material: number; labor: number; total: number }[];
 };
 
 function htmlToQuoteText(value: string) {
@@ -557,6 +560,20 @@ function htmlToQuoteText(value: string) {
     .replace(/&#39;/gi, "'")
     .replace(/\n{3,}/g, '\n\n')
     .trim());
+}
+
+type QuoteTextBlock = { text: string; indent: number; marker: 'bullet' | 'number' | 'none'; number?: number; spacing: number; heading: boolean };
+function htmlToQuoteBlocks(value: string): QuoteTextBlock[] {
+  const fallback=()=>htmlToQuoteText(value).split(/\n/).map((text)=>({text,indent:0,marker:/^[-*]\s+/.test(text)?'bullet' as const:'none' as const,spacing:1.15,heading:false})).map((block)=>({...block,text:block.marker==='bullet'?block.text.replace(/^[-*]\s+/,''):block.text}));
+  if(typeof DOMParser==='undefined')return fallback();
+  const body=new DOMParser().parseFromString(String(value||''),'text/html').body;
+  const blocks:QuoteTextBlock[]=[];
+  const directText=(element:Element)=>{let text='';for(const child of Array.from(element.childNodes)){if(child.nodeType===Node.TEXT_NODE)text+=child.textContent||'';else if(child instanceof Element&&!['UL','OL'].includes(child.tagName))text+=child.tagName==='BR'?'\n':child.textContent||'';}return text.replace(/\s+/g,' ').trim();};
+  const spacingFor=(element:Element)=>{const parsed=parseFloat((element as HTMLElement).style.lineHeight||'');return Number.isFinite(parsed)?Math.max(1,Math.min(2,parsed)):1.15;};
+  const walkList=(list:Element,indent:number)=>{let number=1;for(const child of Array.from(list.children)){if(child.tagName!=='LI')continue;const text=directText(child);if(text)blocks.push({text,indent,marker:list.tagName==='OL'?'number':'bullet',number:list.tagName==='OL'?number:undefined,spacing:spacingFor(child),heading:false});for(const nested of Array.from(child.children).filter((item)=>['UL','OL'].includes(item.tagName)))walkList(nested,indent+1);number+=1;}};
+  const walk=(element:Element)=>{if(['UL','OL'].includes(element.tagName)){walkList(element,0);return;}const text=directText(element);const heading=/^H[1-6]$/.test(element.tagName);if(text)blocks.push({text,indent:0,marker:'none',spacing:spacingFor(element),heading});for(const child of Array.from(element.children).filter((item)=>['UL','OL'].includes(item.tagName)))walkList(child,0);};
+  for(const child of Array.from(body.children))walk(child);
+  return blocks.length?blocks:fallback();
 }
 
 function quoteMoney(value: number) {
@@ -584,6 +601,7 @@ export async function buildQuotePdfBytes(input: QuotePdfInput) {
   const margin = 38;
   const bottomLimit = 62;
   const contentWidth = pageWidth - margin * 2;
+  const detailedPricing = input.pricingDisplay !== 'total-only';
 
   const fitSizeOnly = (text:string, preferred:number, maxWidth:number, minimum=6, useBold=false) => {
     const target=useBold?bold:font;
@@ -594,7 +612,7 @@ export async function buildQuotePdfBytes(input: QuotePdfInput) {
   };
   const drawFooter=(page:PDFPage,pageNumber:number)=>{
     page.drawLine({start:{x:margin,y:47},end:{x:pageWidth-margin,y:47},thickness:.45,color:border});
-    page.drawText('ScopeLogic LLC  |  Identify · Clarify · Rectify',{x:margin,y:31,size:6.5,font:bold,color:muted});
+    page.drawText('ScopeLogic LLC  |  Identify | Clarify | Rectify',{x:margin,y:31,size:6.5,font:bold,color:muted});
     const number=`Page ${pageNumber}`;const w=font.widthOfTextAtSize(number,6.5);
     page.drawText(number,{x:pageWidth-margin-w,y:31,size:6.5,font,color:muted});
   };
@@ -614,7 +632,7 @@ export async function buildQuotePdfBytes(input: QuotePdfInput) {
   firstPage.drawRectangle({x:0,y:pageHeight-12,width:pageWidth,height:12,color:odGreen});
   const fullLogo=brand.full.scaleToFit(200,90);firstPage.drawImage(brand.full,{x:margin,y:pageHeight-122,width:fullLogo.width,height:fullLogo.height});
   firstPage.drawText('PROJECT PROPOSAL',{x:pageWidth-margin-190,y:pageHeight-61,size:18,font:bold,color:black});
-  const proposalNo=safe(input.quote.number||'—');
+  const proposalNo=safe(input.quote.number||'Not set');
   firstPage.drawText(`Quote ${proposalNo}`,{x:pageWidth-margin-190,y:pageHeight-81,size:9,font:bold,color:green});
   firstPage.drawLine({start:{x:margin,y:pageHeight-132},end:{x:pageWidth-margin,y:pageHeight-132},thickness:1.5,color:blueGreen});
 
@@ -626,7 +644,7 @@ export async function buildQuotePdfBytes(input: QuotePdfInput) {
     let y=infoTop-23;
     for(const [label,value] of rows){
       firstPage.drawText(label.toUpperCase(),{x,y:y+8,size:5.8,font:bold,color:muted});
-      const lines=wrapText(value||'—',columnWidth,font,9.3);
+      const lines=wrapText(value||'Not set',columnWidth,font,9.3);
       const shown=lines.slice(0,2);
       drawWrapped(firstPage,shown,x,y-5,font,9.3,11.5,black);
       const lineY=y-9-(shown.length-1)*11.5;
@@ -635,7 +653,7 @@ export async function buildQuotePdfBytes(input: QuotePdfInput) {
     }
   };
   drawInfoColumn(margin,'CUSTOMER / PROJECT',[[ 'Customer',input.project.client||'Not entered' ],[ 'Project',input.project.name||'ScopeLogic Project' ]]);
-  drawInfoColumn(margin+columnWidth+columnGap,'QUOTE INFORMATION',[[ 'Quote Name',input.quote.name||'Quote' ],[ 'Revision / Date',`${input.project.revision||'Rev 0'}  ·  ${input.project.versionDate||'Not set'}` ]]);
+  drawInfoColumn(margin+columnWidth+columnGap,'QUOTE INFORMATION',[[ 'Quote Name',input.quote.name||'Quote' ],[ 'Revision / Date',`${input.project.revision||'Rev 0'}  |  ${input.project.versionDate||'Not set'}` ]]);
 
   let page=firstPage;
   let y=pageHeight-310;
@@ -648,31 +666,34 @@ export async function buildQuotePdfBytes(input: QuotePdfInput) {
 
   // Scope of Work flows as one proposal section. Long content continues without clipping.
   sectionBar(page,'Scope of Work');
-  const scopeText=htmlToQuoteText([input.scope.includedHtml,input.scope.excludedHtml].filter((value)=>String(value||'').trim()).join('<p><br></p>'))||'No Scope of Work content entered.';
-  const scopeParagraphs=scopeText.split(/\n/);
-  for(const paragraph of scopeParagraphs){
-    if(!paragraph.trim()){y-=7;if(y<bottomLimit+20)startContinuation('Scope of Work — Continued');continue;}
-    const isBullet=/^[-*]\s+/.test(paragraph.trim());
-    const clean=isBullet?paragraph.trim().replace(/^[-*]\s+/,''):paragraph.trim();
-    const x=margin+(isBullet?14:0);
-    const maxWidth=contentWidth-(isBullet?14:0);
-    const lines=wrapText(clean,maxWidth,font,9);
+  const scopeBlocks=htmlToQuoteBlocks([input.scope.includedHtml,input.scope.excludedHtml].filter((value)=>String(value||'').trim()).join('<p><br></p>'));
+  if(!scopeBlocks.length)scopeBlocks.push({text:'No Scope of Work content entered.',indent:0,marker:'none',spacing:1.15,heading:false});
+  for(const block of scopeBlocks){
+    if(!block.text.trim()){y-=7;if(y<bottomLimit+20)startContinuation('Scope of Work - Continued');continue;}
+    const markerWidth=block.marker==='none'?0:14;
+    const x=margin+block.indent*13+markerWidth;
+    const maxWidth=contentWidth-block.indent*13-markerWidth;
+    const blockFont=block.heading?bold:font;
+    const fontSize=block.heading?10:9;
+    const lineHeight=Math.max(11,10.5*block.spacing);
+    const lines=wrapText(block.text,maxWidth,blockFont,fontSize);
     let offset=0;
     while(offset<lines.length){
-      const available=Math.max(1,Math.floor((y-bottomLimit-10)/12));
-      if(available<1||y<bottomLimit+18){startContinuation('Scope of Work — Continued');continue;}
+      const available=Math.max(1,Math.floor((y-bottomLimit-10)/lineHeight));
+      if(available<1||y<bottomLimit+18){startContinuation('Scope of Work - Continued');continue;}
       const chunk=lines.slice(offset,offset+available);
-      if(isBullet&&offset===0)page.drawCircle({x:margin+4,y:y-3,size:1.8,color:green});
-      drawWrapped(page,chunk,x,y,font,9,12,black);
-      y-=chunk.length*12+5;
+      if(block.marker==='bullet'&&offset===0)page.drawCircle({x:x-9,y:y-3,size:1.8,color:green});
+      if(block.marker==='number'&&offset===0)page.drawText(`${block.number||1}.`,{x:x-12,y:y-3,size:7,font:bold,color:green});
+      drawWrapped(page,chunk,x,y,blockFont,fontSize,lineHeight,black);
+      y-=chunk.length*lineHeight+5;
       offset+=chunk.length;
-      if(offset<lines.length)startContinuation('Scope of Work — Continued');
+      if(offset<lines.length)startContinuation('Scope of Work - Continued');
     }
   }
   y-=8;
 
   const drawBomColumnHeader=()=>{
-    if(y<bottomLimit+32)startContinuation('Bill of Materials — Continued');
+    if(y<bottomLimit+32)startContinuation('Bill of Materials - Continued');
     page.drawRectangle({x:margin,y:y-2,width:contentWidth,height:20,color:odGreen});
     page.drawText('DESCRIPTION',{x:margin+8,y:y+4,size:7,font:bold,color:white});
     const qty='QTY';const qtyW=bold.widthOfTextAtSize(qty,7);
@@ -684,18 +705,17 @@ export async function buildQuotePdfBytes(input: QuotePdfInput) {
     if(y<250)startContinuation('Bill of Materials');
     sectionBar(page,'Bill of Materials');
     drawBomColumnHeader();
-    const baseBomLines=input.quote.lines.filter((line)=>!line.alternateId);
+    const baseBomLines=input.quote.lines;
     const hasHeaders=input.quote.groups.length>0;
     const baseSections=hasHeaders
       ? [...input.quote.groups.map((group)=>({id:group.id,name:group.name,lines:baseBomLines.filter((line)=>(line.groupId||'')===group.id)})),{id:'',name:'UNGROUPED',lines:baseBomLines.filter((line)=>!input.quote.groups.some((group)=>group.id===(line.groupId||'')))}].filter((group)=>group.lines.length)
       : [{id:'flat',name:'',lines:baseBomLines}];
-    const alternateSections=input.alternates.map((alternate)=>({id:`alternate-${alternate.id}`,name:`${alternate.type==='deduct'?'DEDUCT':'ADD'} ALTERNATE — ${alternate.name}`,lines:input.quote.lines.filter((line)=>line.alternateId===alternate.id)})).filter((section)=>section.lines.length);
-    const sections=[...baseSections,...alternateSections];
+    const sections=baseSections;
     for(const group of sections){
-      if(hasHeaders||group.id.startsWith('alternate-')){
+      if(hasHeaders){
         const groupLines=wrapText(safe(group.name||'UNGROUPED').toUpperCase(),contentWidth-16,bold,8);
         const groupHeight=Math.max(22,groupLines.length*10+8);
-        if(y-groupHeight<bottomLimit+10){startContinuation('Bill of Materials — Continued');drawBomColumnHeader();}
+        if(y-groupHeight<bottomLimit+10){startContinuation('Bill of Materials - Continued');drawBomColumnHeader();}
         page.drawRectangle({x:margin,y:y-groupHeight+4,width:contentWidth,height:groupHeight,color:paleGray,borderColor:border,borderWidth:.35});
         page.drawRectangle({x:margin,y:y-groupHeight+4,width:4,height:groupHeight,color:blueGreen});
         drawWrapped(page,groupLines,margin+10,y-7,bold,8,10,black);y-=groupHeight+2;
@@ -704,7 +724,7 @@ export async function buildQuotePdfBytes(input: QuotePdfInput) {
         const descriptionLines=wrapText(line.description||'Item',contentWidth-70,font,8.7);
         let offset=0;let firstChunk=true;
         while(offset<descriptionLines.length){
-          if(y<bottomLimit+25){startContinuation('Bill of Materials — Continued');drawBomColumnHeader();}
+          if(y<bottomLimit+25){startContinuation('Bill of Materials - Continued');drawBomColumnHeader();}
           const available=Math.max(1,Math.floor((y-bottomLimit-5)/11));
           const chunk=descriptionLines.slice(offset,offset+available);
           const rowHeight=Math.max(22,chunk.length*11+7);
@@ -712,7 +732,7 @@ export async function buildQuotePdfBytes(input: QuotePdfInput) {
           if(firstChunk){const qtyText=String(line.qty);const qSize=fitSizeOnly(qtyText,9,45,6,true);const qW=bold.widthOfTextAtSize(qtyText,qSize);page.drawText(qtyText,{x:pageWidth-margin-8-qW,y:y-10,size:qSize,font:bold,color:black});}
           page.drawLine({start:{x:margin,y:y-rowHeight+3},end:{x:pageWidth-margin,y:y-rowHeight+3},thickness:.35,color:border});
           y-=rowHeight;offset+=chunk.length;firstChunk=false;
-          if(offset<descriptionLines.length){startContinuation('Bill of Materials — Continued');drawBomColumnHeader();}
+          if(offset<descriptionLines.length){startContinuation('Bill of Materials - Continued');drawBomColumnHeader();}
         }
       }
       y-=4;
@@ -720,12 +740,12 @@ export async function buildQuotePdfBytes(input: QuotePdfInput) {
     y-=6;
   }
 
-  // Pricing summary follows the proposal content, using the visual hierarchy of a conventional estimate.
-  if(y<215)startContinuation('Proposal Summary');
-  sectionBar(page,'Pricing Summary');
+  // Base price remains separate from all optional alternate deltas.
+  if(y<265)startContinuation('Proposal Summary');
+  sectionBar(page,'Base Bid Pricing Summary');
   const summaryWidth=280;
   const summaryX=pageWidth-margin-summaryWidth;
-  const rows:[string,number][]=[['Material Total',input.totals.material],['Labor Total',input.totals.labor],['Tax',input.totals.tax]];
+  const rows:[string,number][]=detailedPricing?[['Material Total',input.totals.material],['Labor Total',input.totals.labor],['Other / Non-Taxable',input.totals.other],['Tax',input.totals.tax],['Bond',input.totals.bond]]:[];
   for(const [label,value] of rows){
     page.drawText(label,{x:summaryX,y,size:8.7,font:bold,color:black});
     const amount=quoteMoney(value);const amountSize=fitSizeOnly(amount,9.5,115,7,true);const amountWidth=bold.widthOfTextAtSize(amount,amountSize);
@@ -737,20 +757,48 @@ export async function buildQuotePdfBytes(input: QuotePdfInput) {
   const total=quoteMoney(input.totals.total);const totalSize=fitSizeOnly(total,13,135,8,true);const totalWidth=bold.widthOfTextAtSize(total,totalSize);
   page.drawText(total,{x:pageWidth-margin-5-totalWidth,y:y-11,size:totalSize,font:bold,color:white});
   y-=52;
+
+  if(input.breakouts.length){
+    if(y<170)startContinuation('Pricing Breakouts');
+    sectionBar(page,'Base Bid Pricing Breakouts');
+    const columns=detailedPricing?[margin,margin+210,margin+298,margin+386,margin+466]:[margin,pageWidth-margin-92];
+    const breakoutHeaders=detailedPricing?['BREAKOUT','MATERIAL','LABOR','OTHER / FEES','TOTAL']:['BREAKOUT','TOTAL PRICE'];
+    const drawBreakoutHeader=()=>{page.drawRectangle({x:margin,y:y-3,width:contentWidth,height:20,color:odGreen});breakoutHeaders.forEach((label,index)=>page.drawText(label,{x:columns[index]+(index?0:7),y:y+3,size:6.2,font:bold,color:white}));y-=25;};
+    drawBreakoutHeader();
+    for(const breakout of input.breakouts){
+      const nameLines=wrapText(safe(breakout.name),196,bold,7.6);
+      const descriptionLines=breakout.description?wrapText(safe(breakout.description),196,font,6.2):[];
+      const height=Math.max(27,nameLines.length*9+descriptionLines.length*8+7);
+      if(y-height<bottomLimit+8){startContinuation('Pricing Breakouts - Continued');drawBreakoutHeader();}
+      drawWrapped(page,nameLines,columns[0]+7,y-8,bold,7.6,9,black);
+      if(descriptionLines.length)drawWrapped(page,descriptionLines,columns[0]+7,y-8-nameLines.length*9,font,6.2,8,muted);
+      const breakoutValues=detailedPricing?[breakout.material,breakout.labor,breakout.other,breakout.total]:[breakout.total];
+      breakoutValues.forEach((value,index)=>{const isTotal=!detailedPricing||index===3;const amount=quoteMoney(value);const size=fitSizeOnly(amount,7.2,76,5.6,isTotal);page.drawText(amount,{x:columns[index+1],y:y-8,size,font:isTotal?bold:font,color:isTotal?green:black});});
+      page.drawLine({start:{x:margin,y:y-height+3},end:{x:pageWidth-margin,y:y-height+3},thickness:.35,color:border});y-=height;
+    }
+    y-=12;
+  }
+
   if(input.alternates.length){
-    if(y<150)startContinuation('Alternates');
-    sectionBar(page,'Add / Deduct Alternates');
+    if(y<160)startContinuation('Pricing Alternates');
+    sectionBar(page,'Pricing Alternates');
     for(const alternate of input.alternates){
-      if(y<bottomLimit+42)startContinuation('Alternates — Continued');
-      const signed=(value:number)=>`${value<0?'- ':'+ '}${quoteMoney(Math.abs(value))}`;
-      page.drawText(`${alternate.type==='deduct'?'DEDUCT':'ADD'} — ${safe(alternate.name)}`,{x:margin,y,size:8.5,font:bold,color:black});
-      y-=14;
-      page.drawText(`Material ${signed(alternate.material)}   |   Labor ${signed(alternate.labor)}   |   Alternate Total ${signed(alternate.total)}`,{x:margin+8,y,size:7.5,font:bold,color:alternate.type==='deduct'?rgb(.55,.16,.14):green});
-      y-=21;
+      if(y<bottomLimit+75)startContinuation('Pricing Alternates - Continued');
+      const signed=(value:number)=>value<-.005?`-${quoteMoney(Math.abs(value))}`:value>.005?`+${quoteMoney(value)}`:quoteMoney(0);
+      const classificationColor=alternate.classification==='DEDUCT'?rgb(.55,.16,.14):alternate.classification==='ADD'?green:muted;
+      const awardText=alternate.awarded?'  |  AWARDED':'';
+      page.drawRectangle({x:margin,y:y-17,width:contentWidth,height:25,color:paleGray,borderColor:border,borderWidth:.4});
+      page.drawRectangle({x:margin,y:y-17,width:4,height:25,color:classificationColor});
+      const header=`${alternate.classification} - ${safe(alternate.name)}${awardText}`;page.drawText(header,{x:margin+10,y:y-7,size:8.5,font:bold,color:black});y-=31;
+      const scopeBlocks=htmlToQuoteBlocks(alternate.scopeHtml||'');
+      if(scopeBlocks.length){page.drawText('ALTERNATE SCOPE',{x:margin+8,y,size:6.2,font:bold,color:muted});y-=11;for(const block of scopeBlocks){const markerOffset=block.marker==='none'?0:12;const indent=block.indent*11+markerOffset;const blockFont=block.heading?bold:font;const lineHeight=Math.max(9,8*block.spacing);const lines=wrapText(block.text,contentWidth-20-indent,blockFont,7.3);for(let offset=0;offset<lines.length;){if(y<bottomLimit+30)startContinuation('Pricing Alternates - Continued');const available=Math.max(1,Math.floor((y-bottomLimit-22)/lineHeight));const chunk=lines.slice(offset,offset+available);if(block.marker==='bullet'&&offset===0)page.drawCircle({x:margin+13+block.indent*11,y:y-2,size:1.3,color:green});if(block.marker==='number'&&offset===0)page.drawText(`${block.number||1}.`,{x:margin+8+block.indent*11,y:y-2,size:6.5,font:bold,color:green});drawWrapped(page,chunk,margin+8+indent,y,blockFont,7.3,lineHeight,black);y-=chunk.length*lineHeight+3;offset+=chunk.length;}}}
+      if(y<bottomLimit+35)startContinuation('Pricing Alternates - Continued');
+      const detail=detailedPricing?`Material ${signed(alternate.material)}   |   Labor ${signed(alternate.labor)}   |   Alternate Total ${signed(alternate.total)}`:`Alternate Total ${signed(alternate.total)}`;
+      page.drawText(detail,{x:margin+8,y,size:7.5,font:bold,color:classificationColor});y-=24;
     }
   }
   const terms=wrapText('This proposal reflects the approved ScopeLogic quote and the Scope of Work stated above. Any change in scope, quantities, assumptions, or project conditions may require a revised proposal.',contentWidth,font,7.2);
-  if(y-terms.length*10<bottomLimit)startContinuation('Proposal Summary — Continued');
+  if(y-terms.length*10<bottomLimit)startContinuation('Proposal Summary - Continued');
   drawWrapped(page,terms,margin,y,font,7.2,10,muted);
 
   // Footer is added to the first page last because compact pages receive it when created.
