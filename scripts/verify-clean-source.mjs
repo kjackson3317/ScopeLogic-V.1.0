@@ -95,6 +95,12 @@ for (const requiredText of ['formatQuoteNumber', 'createRevision', 'createChange
 for (const requiredText of ['quotePdfPricingDisplay', 'Customer Pricing Display', 'Detailed pricing', 'Total price only']) {
   if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5.5 proposal pricing visibility: ${requiredText}`);
 }
+for (const requiredText of ['breakoutAllocations', 'Breakout Pricing', 'Quantity Allocation Workspace', 'Apply Percentages to Selected', 'Copy First Pattern', 'Unassigned Qty', 'Base + Awarded Alternates']) {
+  if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5.6 breakout allocation behavior: ${requiredText}`);
+}
+for (const removedText of ['className="alternate-assignment"', 'className="breakout-assignment"', '<th>BOM</th><th>Breakout</th>']) {
+  if (workspace.includes(removedText)) violations.push(`app/workspace.tsx: obsolete RC5.5.4 BOM-row dropdown remains: ${removedText}`);
+}
 for (const requiredText of ['Download Full Workspace', 'Import Full Workspace', 'Create Restore Point', 'Restore Center', 'Browser fallback quarantined']) {
   if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5.2 data protection: ${requiredText}`);
 }
@@ -129,6 +135,7 @@ for (const requiredText of ["storage.from('project-files')", 'createSignedUrl', 
 for (const requiredText of ['workspace_backups', 'Automatic workspace checkpoint', 'Cloud revision conflict', 'knownCloudRevision']) {
   if (!cloudWorkspace.includes(requiredText)) violations.push(`lib/cloud-workspace.ts: missing RC5.5.2 data protection: ${requiredText}`);
 }
+if (!cloudWorkspace.includes('breakoutAllocations?: Record<string, number>')) violations.push('lib/cloud-workspace.ts: RC5.5.6 breakout allocation field is missing');
 
 const pdfGenerator = await readFile(join(root, 'app', 'pdf-generator.ts'), 'utf8');
 for (const requiredText of ['recommendationSummary', 'checklistItemFor', 'drawChecklistSection', "columnIndex === 2", 'SYSTEM_ORDER', "headers: ['RFI No.', 'Systems', 'Question']", "headers: ['SLR', 'Systems', 'Scope Item', 'Scope Concern', 'Recommended Bid Basis by System', 'Source Reference']"]) {
@@ -156,7 +163,7 @@ if (/title: 'Formal RFI'[\s\S]{0,220}headers:\s*\[[^\]]*Answer/.test(pdfGenerato
 }
 
 const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-if (packageJson.version !== '1.0.0-rc.5.5.5') violations.push('package.json: version must be 1.0.0-rc.5.5.5');
+if (packageJson.version !== '1.0.0-rc.5.5.6') violations.push('package.json: version must be 1.0.0-rc.5.5.6');
 if (packageJson.dependencies?.resend || packageJson.devDependencies?.resend) violations.push('package.json: Resend dependency must be removed');
 if (packageJson.dependencies?.exceljs !== '4.4.0') violations.push('package.json: ExcelJS 4.4.0 is required for browser XLSX import/export.');
 if (packageJson.dependencies?.['pdfjs-dist'] !== '4.10.38') violations.push('package.json: PDF.js 4.10.38 is required for Drawing Take Off.');
