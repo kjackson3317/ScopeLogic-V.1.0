@@ -114,9 +114,9 @@ function configFor(kind: PdfKind): PdfConfig {
   };
   if (kind === 'rfi') return {
     title: 'Formal RFI',
-    headers: ['RFI No.', 'Systems', 'Question'],
-    ratios: [0.14, 0.23, 0.63],
-    values: ({ issue }) => [issue.rfi, systemNames(issue), issue.rfiQuestion || issue.concern],
+    headers: ['RFI No.', 'Systems', 'Question', 'Document References'],
+    ratios: [0.1, 0.18, 0.48, 0.24],
+    values: ({ issue }) => [issue.rfi, systemNames(issue), issue.rfiQuestion || issue.concern, issue.reference],
   };
   if (kind === 'checklist') return {
     title: 'Contractor Response Checklist',
@@ -352,456 +352,4 @@ async function appendDeliverable(
     const issue = row.issue;
     const fill = rowIndex % 2 ? white : alternate;
     page.drawRectangle({ x: margin, y: y - rowHeight, width: contentWidth, height: rowHeight, color: fill });
-    page.drawLine({ start: { x: margin, y }, end: { x: margin + contentWidth, y }, thickness: 0.45, color: border });
-    page.drawLine({ start: { x: margin, y: y - rowHeight }, end: { x: margin + contentWidth, y: y - rowHeight }, thickness: 0.45, color: border });
-    xPositions.forEach((x) => page.drawLine({ start: { x, y }, end: { x, y: y - rowHeight }, thickness: 0.45, color: border }));
-
-    linesByCell.forEach((lines, columnIndex) => {
-      const cellX = xPositions[columnIndex];
-      const cellWidth = widths[columnIndex];
-      const isChecklistField = kind === 'checklist' && (columnIndex === 2 || columnIndex === 3);
-      if (isChecklistField && firstFragment && form) {
-        if (columnIndex === 2) {
-          const fieldKey = safe(row.section || row.system || 'row').replace(/[^a-zA-Z0-9]+/g, '_');
-          const dropdown = form.createDropdown(`${formPrefix}_${fieldKey}_response_${rowIndex + 1}`);
-          const options = ['Select response...', 'Included', 'Excluded', 'Included as Alternate', 'Clarification Required', 'Not Applicable'];
-          dropdown.addOptions(options);
-          dropdown.select('Select response...');
-          // addToPage generates the field's /DA entry. setFontSize must run
-          // afterwards or pdf-lib throws: No /DA (default appearance) entry found.
-          dropdown.addToPage(page, {
-            x: cellX + 5,
-            y: y - rowHeight + 6,
-            width: cellWidth - 10,
-            height: rowHeight - 12,
-            borderWidth: 0.6,
-            borderColor: mediumGreen,
-            backgroundColor: white,
-            textColor: black,
-            font,
-          });
-          dropdown.setFontSize(6);
-          dropdown.updateAppearances(font);
-        } else {
-          const fieldKey = safe(row.section || row.system || 'row').replace(/[^a-zA-Z0-9]+/g, '_');
-          const field = form.createTextField(`${formPrefix}_${fieldKey}_reason_${rowIndex + 1}`);
-          field.enableMultiline();
-          // As with dropdowns, add the widget first so pdf-lib creates /DA.
-          field.addToPage(page, {
-            x: cellX + 5,
-            y: y - rowHeight + 6,
-            width: cellWidth - 10,
-            height: rowHeight - 12,
-            borderWidth: 0.6,
-            borderColor: mediumGreen,
-            backgroundColor: white,
-            textColor: black,
-            font,
-          });
-          field.setFontSize(6);
-          field.updateAppearances(font);
-        }
-      } else if (isChecklistField && !firstFragment) {
-        page.drawText('Continued', { x: cellX + 4, y: y - 13, size: 6, font, color: muted });
-      } else {
-        drawWrapped(page, lines, cellX + 4, y - 11, font, fontSize, lineHeight, black);
-      }
-    });
-    y -= rowHeight;
-  };
-
-  addPage();
-
-  rows.forEach((row, rowIndex) => {
-    if (kind === 'checklist' && row.section && row.section !== activeChecklistSection) {
-      const nextSection = row.section;
-      if (y - 56 < footerLimit) {
-        activeChecklistSection = '';
-        addPage();
-      }
-      activeChecklistSection = nextSection;
-      drawChecklistSection(activeChecklistSection);
-    }
-    const values = config.values(row);
-    const allLines = values.map((value, columnIndex) => wrapText(value, widths[columnIndex] - 8, font, fontSize));
-    const offsets = allLines.map(() => 0);
-    let firstFragment = true;
-
-    while (offsets.some((offset, index) => offset < allLines[index].length)) {
-      const minimumRowHeight = kind === 'checklist' && firstFragment ? 34 : 28;
-      if (y - minimumRowHeight < footerLimit) addPage();
-      const availableHeight = y - footerLimit;
-      const linesFit = Math.max(1, Math.floor((availableHeight - 8) / lineHeight));
-      const remainingMax = Math.max(...allLines.map((lines, index) => lines.length - offsets[index]));
-      const take = Math.min(remainingMax, linesFit);
-      const fragmentLines = allLines.map((lines, index) => lines.slice(offsets[index], offsets[index] + take));
-      const usedLineCount = Math.max(1, ...fragmentLines.map((lines) => lines.length));
-      const rowHeight = Math.max(minimumRowHeight, usedLineCount * lineHeight + 8);
-
-      drawRowFragment(row, rowIndex, fragmentLines, rowHeight, firstFragment);
-      fragmentLines.forEach((lines, index) => {
-        offsets[index] += lines.length;
-      });
-      firstFragment = false;
-      if (offsets.some((offset, index) => offset < allLines[index].length)) addPage();
-    }
-  });
-
-  if (!rows.length) {
-    page.drawRectangle({ x: margin, y: y - 44, width: contentWidth, height: 44, color: alternate, borderColor: border, borderWidth: 0.45 });
-    page.drawText('No submitted entries are assigned to this deliverable.', { x: margin + 8, y: y - 25, size: 8, font, color: muted });
-  }
-
-  createdPages.forEach((target, index) => {
-    const footerText = `ScopeLogic LLC | Confidential | ${safe(project.name)} | ${config.title} | Page ${index + 1} of ${createdPages.length}`;
-    target.drawLine({ start: { x: margin, y: footerY + 10 }, end: { x: target.getWidth() - margin, y: footerY + 10 }, thickness: 0.35, color: border });
-    const footerFit = fitText(footerText, font, 6.25, target.getWidth() - margin * 2, 5);
-    target.drawText(footerFit.text, { x: margin, y: footerY, size: footerFit.size, font, color: muted });
-  });
-
-  if (form) form.updateFieldAppearances(font);
-}
-
-export async function buildPdfBytes(kind: PdfKind, project: PdfProject, issues: PdfIssue[]) {
-  const document = await PDFDocument.create();
-  const brand = await embedBrand(document, await loadBrandAssets());
-  await appendDeliverable(document, kind, project, issues, brand, kind);
-  return document.save();
-}
-
-export async function buildReleasePackageBytes(project: PdfProject, issues: PdfIssue[], selectedKinds: PdfKind[] = ['sow', 'clarifications', 'rfi', 'checklist', 'snippets'], releaseNotes = '', releaseNumber = 1) {
-  const output = await PDFDocument.create();
-  const font = await output.embedFont(StandardFonts.Helvetica);
-  const bold = await output.embedFont(StandardFonts.HelveticaBold);
-  const brand = await embedBrand(output, await loadBrandAssets());
-  const page = output.addPage([612, 792]);
-  const { width, height } = page.getSize();
-  const green = rgb(0.14, 0.19, 0.09);
-  const mediumGreen = rgb(0.28, 0.36, 0.14);
-  const lightGreen = rgb(0.95, 0.97, 0.93);
-  const muted = rgb(0.35, 0.4, 0.35);
-  const black = rgb(0.08, 0.1, 0.08);
-
-  const logoSize = brand.full.scaleToFit(360, 250);
-  page.drawImage(brand.full, {
-    x: (width - logoSize.width) / 2,
-    y: height - 300,
-    width: logoSize.width,
-    height: logoSize.height,
-  });
-  page.drawLine({ start: { x: 48, y: height - 325 }, end: { x: width - 48, y: height - 325 }, thickness: 2.2, color: green });
-  page.drawText('OFFICIAL DELIVERABLE RELEASE', { x: 48, y: height - 365, size: 11, font: bold, color: mediumGreen });
-  const projectFit = fitText(project.name || 'ScopeLogic Project', bold, 24, width - 96, 15);
-  page.drawText(projectFit.text, { x: 48, y: height - 405, size: projectFit.size, font: bold, color: black });
-  const clientFit = fitText(project.client || 'GC / Client not entered', font, 12, width - 96, 8);
-  page.drawText(clientFit.text, { x: 48, y: height - 433, size: clientFit.size, font, color: muted });
-
-  page.drawRectangle({ x: 48, y: height - 545, width: width - 96, height: 82, color: lightGreen, borderColor: mediumGreen, borderWidth: 0.6 });
-  page.drawText('RELEASE NUMBER', { x: 64, y: height - 490, size: 7, font: bold, color: muted });
-  page.drawText(`Release ${String(Math.max(1, releaseNumber)).padStart(3, '0')}`, { x: 64, y: height - 520, size: 16, font: bold, color: black });
-  page.drawText('DOCUMENT REVISION', { x: 245, y: height - 490, size: 7, font: bold, color: muted });
-  page.drawText(project.revision || 'Rev 0', { x: 245, y: height - 520, size: 15, font: bold, color: black });
-  page.drawText('VERSION DATE', { x: 410, y: height - 490, size: 7, font: bold, color: muted });
-  page.drawText(project.versionDate || 'Not set', { x: 410, y: height - 520, size: 11, font: bold, color: black });
-
-  page.drawText('Included Deliverables', { x: 48, y: height - 585, size: 12, font: bold, color: black });
-  const titles = selectedKinds.map((kind) => configFor(kind).title);
-  titles.forEach((title, index) => {
-    const itemY = height - 616 - index * 25;
-    page.drawRectangle({ x: 50, y: itemY - 3, width: 9, height: 9, color: mediumGreen });
-    const titleFit = fitText(title, font, 9, 220, 7);
-    page.drawText(titleFit.text, { x: 70, y: itemY, size: titleFit.size, font, color: black });
-  });
-  if (safe(releaseNotes).trim()) {
-    const noteX = 332;
-    const noteTop = height - 585;
-    page.drawText('Release Note', { x: noteX, y: noteTop, size: 8, font: bold, color: mediumGreen });
-    const noteLines = wrapText(releaseNotes, width - noteX - 48, font, 8).slice(0, 10);
-    drawWrapped(page, noteLines, noteX, noteTop - 17, font, 8, 11, black);
-  }
-  page.drawLine({ start: { x: 48, y: 62 }, end: { x: width - 48, y: 62 }, thickness: 0.5, color: mediumGreen });
-  page.drawText('Prepared by ScopeLogic LLC | Confidential', { x: 48, y: 42, size: 7, font, color: muted });
-
-  for (const kind of selectedKinds) {
-    await appendDeliverable(output, kind, project, issues, brand, `release_${kind}`);
-  }
-  return output.save();
-}
-
-export type QuotePdfMode = 'full-bom' | 'summary-only';
-export type QuotePdfPricingDisplay = 'detailed' | 'total-only';
-export type QuotePdfInput = {
-  mode: QuotePdfMode;
-  pricingDisplay?: QuotePdfPricingDisplay;
-  project: PdfProject;
-  quote: {
-    number: string;
-    name: string;
-    groups: { id: string; name: string }[];
-    lines: { groupId: string; description: string; qty: number }[];
-  };
-  scope: { includedHtml: string; excludedHtml: string };
-  totals: { material: number; labor: number; other: number; tax: number; bond: number; total: number };
-  breakouts: { id: string; name: string; description: string; material: number; labor: number; other: number; total: number }[];
-  alternates: { id: string; name: string; scopeHtml: string; awarded: boolean; classification: 'ADD' | 'DEDUCT' | 'NO COST'; material: number; labor: number; total: number }[];
-};
-
-function htmlToQuoteText(value: string) {
-  return safe(String(value || '')
-    .replace(/<\s*br\s*\/?\s*>/gi, '\n')
-    .replace(/<\/(p|div|h[1-6]|li)>/gi, '\n')
-    .replace(/<li[^>]*>/gi, '- ')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/\n{3,}/g, '\n\n')
-    .trim());
-}
-
-type QuoteTextBlock = { text: string; indent: number; marker: 'bullet' | 'number' | 'none'; number?: number; spacing: number; heading: boolean };
-function htmlToQuoteBlocks(value: string): QuoteTextBlock[] {
-  const fallback=()=>htmlToQuoteText(value).split(/\n/).map((text)=>({text,indent:0,marker:/^[-*]\s+/.test(text)?'bullet' as const:'none' as const,spacing:1.15,heading:false})).map((block)=>({...block,text:block.marker==='bullet'?block.text.replace(/^[-*]\s+/,''):block.text}));
-  if(typeof DOMParser==='undefined')return fallback();
-  const body=new DOMParser().parseFromString(String(value||''),'text/html').body;
-  const blocks:QuoteTextBlock[]=[];
-  const directText=(element:Element)=>{let text='';for(const child of Array.from(element.childNodes)){if(child.nodeType===Node.TEXT_NODE)text+=child.textContent||'';else if(child instanceof Element&&!['UL','OL'].includes(child.tagName))text+=child.tagName==='BR'?'\n':child.textContent||'';}return text.replace(/\s+/g,' ').trim();};
-  const spacingFor=(element:Element)=>{const parsed=parseFloat((element as HTMLElement).style.lineHeight||'');return Number.isFinite(parsed)?Math.max(1,Math.min(2,parsed)):1.15;};
-  const walkList=(list:Element,indent:number)=>{let number=1;for(const child of Array.from(list.children)){if(child.tagName!=='LI')continue;const text=directText(child);if(text)blocks.push({text,indent,marker:list.tagName==='OL'?'number':'bullet',number:list.tagName==='OL'?number:undefined,spacing:spacingFor(child),heading:false});for(const nested of Array.from(child.children).filter((item)=>['UL','OL'].includes(item.tagName)))walkList(nested,indent+1);number+=1;}};
-  const walk=(element:Element)=>{if(['UL','OL'].includes(element.tagName)){walkList(element,0);return;}const text=directText(element);const heading=/^H[1-6]$/.test(element.tagName);if(text)blocks.push({text,indent:0,marker:'none',spacing:spacingFor(element),heading});for(const child of Array.from(element.children).filter((item)=>['UL','OL'].includes(item.tagName)))walkList(child,0);};
-  for(const child of Array.from(body.children))walk(child);
-  return blocks.length?blocks:fallback();
-}
-
-function quoteMoney(value: number) {
-  const n = Number.isFinite(value) ? value : 0;
-  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-export async function buildQuotePdfBytes(input: QuotePdfInput) {
-  const document = await PDFDocument.create();
-  const font = await document.embedFont(StandardFonts.Helvetica);
-  const bold = await document.embedFont(StandardFonts.HelveticaBold);
-  const brand = await embedBrand(document, await loadBrandAssets());
-
-  const odGreen = rgb(0.15, 0.19, 0.09);
-  const green = rgb(0.28, 0.36, 0.14);
-  const blueGreen = rgb(0.30, 0.46, 0.43);
-  const paleBlueGreen = rgb(0.91, 0.95, 0.94);
-  const paleGray = rgb(0.965, 0.97, 0.96);
-  const border = rgb(0.68, 0.73, 0.69);
-  const muted = rgb(0.34, 0.39, 0.34);
-  const black = rgb(0.07, 0.09, 0.07);
-  const white = rgb(1, 1, 1);
-  const pageWidth = 612;
-  const pageHeight = 792;
-  const margin = 38;
-  const bottomLimit = 62;
-  const contentWidth = pageWidth - margin * 2;
-  const detailedPricing = input.pricingDisplay !== 'total-only';
-
-  const fitSizeOnly = (text:string, preferred:number, maxWidth:number, minimum=6, useBold=false) => {
-    const target=useBold?bold:font;
-    let size=preferred;
-    const value=safe(text);
-    while(size>minimum&&target.widthOfTextAtSize(value,size)>maxWidth)size-=0.25;
-    return size;
-  };
-  const drawFooter=(page:PDFPage,pageNumber:number)=>{
-    page.drawLine({start:{x:margin,y:47},end:{x:pageWidth-margin,y:47},thickness:.45,color:border});
-    page.drawText('ScopeLogic LLC  |  Identify | Clarify | Rectify',{x:margin,y:31,size:6.5,font:bold,color:muted});
-    const number=`Page ${pageNumber}`;const w=font.widthOfTextAtSize(number,6.5);
-    page.drawText(number,{x:pageWidth-margin-w,y:31,size:6.5,font,color:muted});
-  };
-  let pageNumber=0;
-  const addCompactPage=(title:string)=>{
-    const page=document.addPage([pageWidth,pageHeight]);pageNumber+=1;
-    page.drawRectangle({x:0,y:pageHeight-10,width:pageWidth,height:10,color:odGreen});
-    const word=brand.wordmark.scaleToFit(150,24);page.drawImage(brand.wordmark,{x:margin,y:pageHeight-45,width:word.width,height:word.height});
-    const titleSafe=safe(title).toUpperCase();const size=fitSizeOnly(titleSafe,15,250,9,true);const w=bold.widthOfTextAtSize(titleSafe,size);
-    page.drawText(titleSafe,{x:pageWidth-margin-w,y:pageHeight-40,size,font:bold,color:black});
-    page.drawLine({start:{x:margin,y:pageHeight-59},end:{x:pageWidth-margin,y:pageHeight-59},thickness:1.3,color:blueGreen});
-    drawFooter(page,pageNumber);
-    return {page,y:pageHeight-82};
-  };
-
-  const firstPage=document.addPage([pageWidth,pageHeight]);pageNumber+=1;
-  firstPage.drawRectangle({x:0,y:pageHeight-12,width:pageWidth,height:12,color:odGreen});
-  const fullLogo=brand.full.scaleToFit(200,90);firstPage.drawImage(brand.full,{x:margin,y:pageHeight-122,width:fullLogo.width,height:fullLogo.height});
-  firstPage.drawText('PROJECT PROPOSAL',{x:pageWidth-margin-190,y:pageHeight-61,size:18,font:bold,color:black});
-  const proposalNo=safe(input.quote.number||'Not set');
-  firstPage.drawText(`Quote ${proposalNo}`,{x:pageWidth-margin-190,y:pageHeight-81,size:9,font:bold,color:green});
-  firstPage.drawLine({start:{x:margin,y:pageHeight-132},end:{x:pageWidth-margin,y:pageHeight-132},thickness:1.5,color:blueGreen});
-
-  const infoTop=pageHeight-158;
-  const columnGap=24;
-  const columnWidth=(contentWidth-columnGap)/2;
-  const drawInfoColumn=(x:number,title:string,rows:[string,string][])=>{
-    firstPage.drawText(title,{x,y:infoTop,size:7,font:bold,color:green});
-    let y=infoTop-23;
-    for(const [label,value] of rows){
-      firstPage.drawText(label.toUpperCase(),{x,y:y+8,size:5.8,font:bold,color:muted});
-      const lines=wrapText(value||'Not set',columnWidth,font,9.3);
-      const shown=lines.slice(0,2);
-      drawWrapped(firstPage,shown,x,y-5,font,9.3,11.5,black);
-      const lineY=y-9-(shown.length-1)*11.5;
-      firstPage.drawLine({start:{x,y:lineY},end:{x:x+columnWidth,y:lineY},thickness:.5,color:border});
-      y=lineY-19;
-    }
-  };
-  drawInfoColumn(margin,'CUSTOMER / PROJECT',[[ 'Customer',input.project.client||'Not entered' ],[ 'Project',input.project.name||'ScopeLogic Project' ]]);
-  drawInfoColumn(margin+columnWidth+columnGap,'QUOTE INFORMATION',[[ 'Quote Name',input.quote.name||'Quote' ],[ 'Revision / Date',`${input.project.revision||'Rev 0'}  |  ${input.project.versionDate||'Not set'}` ]]);
-
-  let page=firstPage;
-  let y=pageHeight-310;
-  const sectionBar=(target:PDFPage,title:string)=>{
-    target.drawRectangle({x:margin,y:y-2,width:contentWidth,height:20,color:paleBlueGreen,borderColor:blueGreen,borderWidth:.6});
-    target.drawText(title.toUpperCase(),{x:margin+8,y:y+4,size:7,font:bold,color:black});
-    y-=31;
-  };
-  const startContinuation=(title:string)=>{const next=addCompactPage(title);page=next.page;y=next.y;};
-
-  // Scope of Work flows as one proposal section. Long content continues without clipping.
-  sectionBar(page,'Scope of Work');
-  const scopeBlocks=htmlToQuoteBlocks([input.scope.includedHtml,input.scope.excludedHtml].filter((value)=>String(value||'').trim()).join('<p><br></p>'));
-  if(!scopeBlocks.length)scopeBlocks.push({text:'No Scope of Work content entered.',indent:0,marker:'none',spacing:1.15,heading:false});
-  for(const block of scopeBlocks){
-    if(!block.text.trim()){y-=7;if(y<bottomLimit+20)startContinuation('Scope of Work - Continued');continue;}
-    const markerWidth=block.marker==='none'?0:14;
-    const x=margin+block.indent*13+markerWidth;
-    const maxWidth=contentWidth-block.indent*13-markerWidth;
-    const blockFont=block.heading?bold:font;
-    const fontSize=block.heading?10:9;
-    const lineHeight=Math.max(11,10.5*block.spacing);
-    const lines=wrapText(block.text,maxWidth,blockFont,fontSize);
-    let offset=0;
-    while(offset<lines.length){
-      const available=Math.max(1,Math.floor((y-bottomLimit-10)/lineHeight));
-      if(available<1||y<bottomLimit+18){startContinuation('Scope of Work - Continued');continue;}
-      const chunk=lines.slice(offset,offset+available);
-      if(block.marker==='bullet'&&offset===0)page.drawCircle({x:x-9,y:y-3,size:1.8,color:green});
-      if(block.marker==='number'&&offset===0)page.drawText(`${block.number||1}.`,{x:x-12,y:y-3,size:7,font:bold,color:green});
-      drawWrapped(page,chunk,x,y,blockFont,fontSize,lineHeight,black);
-      y-=chunk.length*lineHeight+5;
-      offset+=chunk.length;
-      if(offset<lines.length)startContinuation('Scope of Work - Continued');
-    }
-  }
-  y-=8;
-
-  const drawBomColumnHeader=()=>{
-    if(y<bottomLimit+32)startContinuation('Bill of Materials - Continued');
-    page.drawRectangle({x:margin,y:y-2,width:contentWidth,height:20,color:odGreen});
-    page.drawText('DESCRIPTION',{x:margin+8,y:y+4,size:7,font:bold,color:white});
-    const qty='QTY';const qtyW=bold.widthOfTextAtSize(qty,7);
-    page.drawText(qty,{x:pageWidth-margin-8-qtyW,y:y+4,size:7,font:bold,color:white});
-    y-=26;
-  };
-
-  if(input.mode==='full-bom'){
-    if(y<250)startContinuation('Bill of Materials');
-    sectionBar(page,'Bill of Materials');
-    drawBomColumnHeader();
-    const baseBomLines=input.quote.lines;
-    const hasHeaders=input.quote.groups.length>0;
-    const baseSections=hasHeaders
-      ? [...input.quote.groups.map((group)=>({id:group.id,name:group.name,lines:baseBomLines.filter((line)=>(line.groupId||'')===group.id)})),{id:'',name:'UNGROUPED',lines:baseBomLines.filter((line)=>!input.quote.groups.some((group)=>group.id===(line.groupId||'')))}].filter((group)=>group.lines.length)
-      : [{id:'flat',name:'',lines:baseBomLines}];
-    const sections=baseSections;
-    for(const group of sections){
-      if(hasHeaders){
-        const groupLines=wrapText(safe(group.name||'UNGROUPED').toUpperCase(),contentWidth-16,bold,8);
-        const groupHeight=Math.max(22,groupLines.length*10+8);
-        if(y-groupHeight<bottomLimit+10){startContinuation('Bill of Materials - Continued');drawBomColumnHeader();}
-        page.drawRectangle({x:margin,y:y-groupHeight+4,width:contentWidth,height:groupHeight,color:paleGray,borderColor:border,borderWidth:.35});
-        page.drawRectangle({x:margin,y:y-groupHeight+4,width:4,height:groupHeight,color:blueGreen});
-        drawWrapped(page,groupLines,margin+10,y-7,bold,8,10,black);y-=groupHeight+2;
-      }
-      for(const line of group.lines){
-        const descriptionLines=wrapText(line.description||'Item',contentWidth-70,font,8.7);
-        let offset=0;let firstChunk=true;
-        while(offset<descriptionLines.length){
-          if(y<bottomLimit+25){startContinuation('Bill of Materials - Continued');drawBomColumnHeader();}
-          const available=Math.max(1,Math.floor((y-bottomLimit-5)/11));
-          const chunk=descriptionLines.slice(offset,offset+available);
-          const rowHeight=Math.max(22,chunk.length*11+7);
-          drawWrapped(page,chunk,margin+8,y-9,font,8.7,11,black);
-          if(firstChunk){const qtyText=String(line.qty);const qSize=fitSizeOnly(qtyText,9,45,6,true);const qW=bold.widthOfTextAtSize(qtyText,qSize);page.drawText(qtyText,{x:pageWidth-margin-8-qW,y:y-10,size:qSize,font:bold,color:black});}
-          page.drawLine({start:{x:margin,y:y-rowHeight+3},end:{x:pageWidth-margin,y:y-rowHeight+3},thickness:.35,color:border});
-          y-=rowHeight;offset+=chunk.length;firstChunk=false;
-          if(offset<descriptionLines.length){startContinuation('Bill of Materials - Continued');drawBomColumnHeader();}
-        }
-      }
-      y-=4;
-    }
-    y-=6;
-  }
-
-  // Base price remains separate from all optional alternate deltas.
-  if(y<265)startContinuation('Proposal Summary');
-  sectionBar(page,'Base Bid Pricing Summary');
-  const summaryWidth=280;
-  const summaryX=pageWidth-margin-summaryWidth;
-  const rows:[string,number][]=detailedPricing?[['Material Total',input.totals.material],['Labor Total',input.totals.labor],['Other / Non-Taxable',input.totals.other],['Tax',input.totals.tax],['Bond',input.totals.bond]]:[];
-  for(const [label,value] of rows){
-    page.drawText(label,{x:summaryX,y,size:8.7,font:bold,color:black});
-    const amount=quoteMoney(value);const amountSize=fitSizeOnly(amount,9.5,115,7,true);const amountWidth=bold.widthOfTextAtSize(amount,amountSize);
-    page.drawText(amount,{x:pageWidth-margin-4-amountWidth,y,size:amountSize,font:bold,color:black});
-    page.drawLine({start:{x:summaryX,y:y-8},end:{x:pageWidth-margin,y:y-8},thickness:.45,color:border});y-=25;
-  }
-  page.drawRectangle({x:summaryX-6,y:y-21,width:summaryWidth+6,height:35,color:odGreen});
-  page.drawText('TOTAL PRICE',{x:summaryX+4,y:y-8,size:9,font:bold,color:white});
-  const total=quoteMoney(input.totals.total);const totalSize=fitSizeOnly(total,13,135,8,true);const totalWidth=bold.widthOfTextAtSize(total,totalSize);
-  page.drawText(total,{x:pageWidth-margin-5-totalWidth,y:y-11,size:totalSize,font:bold,color:white});
-  y-=52;
-
-  if(input.breakouts.length){
-    if(y<170)startContinuation('Pricing Breakouts');
-    sectionBar(page,'Base Bid Pricing Breakouts');
-    const columns=detailedPricing?[margin,margin+210,margin+298,margin+386,margin+466]:[margin,pageWidth-margin-92];
-    const breakoutHeaders=detailedPricing?['BREAKOUT','MATERIAL','LABOR','OTHER / FEES','TOTAL']:['BREAKOUT','TOTAL PRICE'];
-    const drawBreakoutHeader=()=>{page.drawRectangle({x:margin,y:y-3,width:contentWidth,height:20,color:odGreen});breakoutHeaders.forEach((label,index)=>page.drawText(label,{x:columns[index]+(index?0:7),y:y+3,size:6.2,font:bold,color:white}));y-=25;};
-    drawBreakoutHeader();
-    for(const breakout of input.breakouts){
-      const nameLines=wrapText(safe(breakout.name),196,bold,7.6);
-      const descriptionLines=breakout.description?wrapText(safe(breakout.description),196,font,6.2):[];
-      const height=Math.max(27,nameLines.length*9+descriptionLines.length*8+7);
-      if(y-height<bottomLimit+8){startContinuation('Pricing Breakouts - Continued');drawBreakoutHeader();}
-      drawWrapped(page,nameLines,columns[0]+7,y-8,bold,7.6,9,black);
-      if(descriptionLines.length)drawWrapped(page,descriptionLines,columns[0]+7,y-8-nameLines.length*9,font,6.2,8,muted);
-      const breakoutValues=detailedPricing?[breakout.material,breakout.labor,breakout.other,breakout.total]:[breakout.total];
-      breakoutValues.forEach((value,index)=>{const isTotal=!detailedPricing||index===3;const amount=quoteMoney(value);const size=fitSizeOnly(amount,7.2,76,5.6,isTotal);page.drawText(amount,{x:columns[index+1],y:y-8,size,font:isTotal?bold:font,color:isTotal?green:black});});
-      page.drawLine({start:{x:margin,y:y-height+3},end:{x:pageWidth-margin,y:y-height+3},thickness:.35,color:border});y-=height;
-    }
-    y-=12;
-  }
-
-  if(input.alternates.length){
-    if(y<160)startContinuation('Pricing Alternates');
-    sectionBar(page,'Pricing Alternates');
-    for(const alternate of input.alternates){
-      if(y<bottomLimit+75)startContinuation('Pricing Alternates - Continued');
-      const signed=(value:number)=>value<-.005?`-${quoteMoney(Math.abs(value))}`:value>.005?`+${quoteMoney(value)}`:quoteMoney(0);
-      const classificationColor=alternate.classification==='DEDUCT'?rgb(.55,.16,.14):alternate.classification==='ADD'?green:muted;
-      const awardText=alternate.awarded?'  |  AWARDED':'';
-      page.drawRectangle({x:margin,y:y-17,width:contentWidth,height:25,color:paleGray,borderColor:border,borderWidth:.4});
-      page.drawRectangle({x:margin,y:y-17,width:4,height:25,color:classificationColor});
-      const header=`${alternate.classification} - ${safe(alternate.name)}${awardText}`;page.drawText(header,{x:margin+10,y:y-7,size:8.5,font:bold,color:black});y-=31;
-      const scopeBlocks=htmlToQuoteBlocks(alternate.scopeHtml||'');
-      if(scopeBlocks.length){page.drawText('ALTERNATE SCOPE',{x:margin+8,y,size:6.2,font:bold,color:muted});y-=11;for(const block of scopeBlocks){const markerOffset=block.marker==='none'?0:12;const indent=block.indent*11+markerOffset;const blockFont=block.heading?bold:font;const lineHeight=Math.max(9,8*block.spacing);const lines=wrapText(block.text,contentWidth-20-indent,blockFont,7.3);for(let offset=0;offset<lines.length;){if(y<bottomLimit+30)startContinuation('Pricing Alternates - Continued');const available=Math.max(1,Math.floor((y-bottomLimit-22)/lineHeight));const chunk=lines.slice(offset,offset+available);if(block.marker==='bullet'&&offset===0)page.drawCircle({x:margin+13+block.indent*11,y:y-2,size:1.3,color:green});if(block.marker==='number'&&offset===0)page.drawText(`${block.number||1}.`,{x:margin+8+block.indent*11,y:y-2,size:6.5,font:bold,color:green});drawWrapped(page,chunk,margin+8+indent,y,blockFont,7.3,lineHeight,black);y-=chunk.length*lineHeight+3;offset+=chunk.length;}}}
-      if(y<bottomLimit+35)startContinuation('Pricing Alternates - Continued');
-      const detail=detailedPricing?`Material ${signed(alternate.material)}   |   Labor ${signed(alternate.labor)}   |   Alternate Total ${signed(alternate.total)}`:`Alternate Total ${signed(alternate.total)}`;
-      page.drawText(detail,{x:margin+8,y,size:7.5,font:bold,color:classificationColor});y-=24;
-    }
-  }
-  const terms=wrapText('This proposal reflects the approved ScopeLogic quote and the Scope of Work stated above. Any change in scope, quantities, assumptions, or project conditions may require a revised proposal.',contentWidth,font,7.2);
-  if(y-terms.length*10<bottomLimit)startContinuation('Proposal Summary - Continued');
-  drawWrapped(page,terms,margin,y,font,7.2,10,muted);
-
-  // Footer is added to the first page last because compact pages receive it when created.
-  drawFooter(firstPage,1);
-  return document.save();
-}
+    page.drawLine({ start: { x: margin, y }, enãŽ¼¶‰žËkºwµçtÉˆ À¸äÄ°€À¸äÔ°€À¸äÐ¤ì(€½¹ÍÐÁ…±•É…ä€ôÉˆ À¸äØÔ°€À¸äÜ°€À¸äØ¤ì(€½¹ÍÐ‰½É‘•È€ôÉˆ À¸Øà°€À¸ÜÌ°€À¸Øä¤ì(€½¹ÍÐµÕÑ•€ôÉˆ À¸ÌÐ°€À¸Ìä°€À¸ÌÐ¤ì(€½¹ÍÐ‰±…¬€ôÉˆ À¸ÀÜ°€À¸Àä°€À¸ÀÜ¤ì(€½¹ÍÐÝ¡¥Ñ”€ôÉˆ Ä°€Ä°€Ä¤ì(€½¹ÍÐÁ…•]¥‘Ñ €ô€ØÄÈì(€½¹ÍÐÁ…•!•¥¡Ð€ô€ÜäÈì(€½¹ÍÐµ…É¥¸€ô€Ìàì(€½¹ÍÐ‰½ÑÑ½µ1¥µ¥Ð€ô€ØÈì(€½¹ÍÐ½¹Ñ•¹Ñ]¥‘Ñ €ôÁ…•]¥‘Ñ €´µ…É¥¸€¨€Èì(€½¹ÍÐ‘•Ñ…¥±•‘AÉ¥¥¹œ€ô¥¹ÁÕÐ¹ÁÉ¥¥¹¥ÍÁ±…ä€„ôô€Ñ½Ñ…°µ½¹±äœì((€½¹ÍÐ™¥ÑM¥é•=¹±ä€ô€¡Ñ•áÐéÍÑÉ¥¹œ°ÁÉ•™•ÉÉ•é¹Õµ‰•È°µ…á]¥‘Ñ é¹Õµ‰•È°µ¥¹¥µÕ´ôØ°ÕÍ•	½±õ™…±Í”¤€ôøì(€€€½¹ÍÐÑ…É•ÐõÕÍ•	½±ý‰½±é™½¹Ðì(€€€±•ÐÍ¥é”õÁÉ•™•ÉÉ•ì(€€€½¹ÍÐÙ…±Õ”õÍ…™”¡Ñ•áÐ¤ì(€€€Ý¡¥±”¡Í¥é”ùµ¥¹¥µÕ´˜™Ñ…É•Ð¹Ý¥‘Ñ¡=™Q•áÑÑM¥é”¡Ù…±Õ”±Í¥é”¤ùµ…á]¥‘Ñ ¥Í¥é”´ôÀ¸ÈÔì(€€€É•ÑÕÉ¸Í¥é”ì(€ôì(€½¹ÍÐ‘É…Ý½½Ñ•Èô¡Á…”éAA…”±Á…•9Õµ‰•Èé¹Õµ‰•È¤ôùì(€€€Á…”¹‘É…Ý1¥¹”¡íÍÑ…ÉÐéíàéµ…É¥¸±äèÐÝô±•¹éíàéÁ…•]¥‘Ñ µµ…É¥¸±äèÐÝô±Ñ¡¥­¹•ÍÌè¸ÐÔ±½±½Èé‰½É‘•Éô¤ì(€€€Á…”¹‘É…ÝQ•áÐ M½Á•1½¥Œ11€ð€%‘•¹Ñ¥™äð±…É¥™äðI•Ñ¥™äœ±íàéµ…É¥¸±äèÌÄ±Í¥é”èØ¸Ô±™½¹Ðé‰½±±½±½ÈéµÕÑ•‘ô¤ì(€€€½¹ÍÐ¹Õµ‰•ÈõA…”€‘íÁ…•9Õµ‰•Éõ€í½¹ÍÐÜõ™½¹Ð¹Ý¥‘Ñ¡=™Q•áÑÑM¥é”¡¹Õµ‰•È°Ø¸Ô¤ì(€€€Á…”¹‘É…ÝQ•áÐ¡¹Õµ‰•È±íàéÁ…•]¥‘Ñ µµ…É¥¸µÜ±äèÌÄ±Í¥é”èØ¸Ô±™½¹Ð±½±½ÈéµÕÑ•‘ô¤ì(€ôì(€±•ÐÁ…•9Õµ‰•ÈôÀì(€½¹ÍÐ…‘‘½µÁ…ÑA…”ô¡Ñ¥Ñ±”éÍÑÉ¥¹œ¤ôùì(€€€½¹ÍÐÁ…”õ‘½Õµ•¹Ð¹…‘‘A…”¡mÁ…•]¥‘Ñ ±Á…•!•¥¡Ñt¤íÁ…•9Õµ‰•È¬ôÄì(€€€Á…”¹‘É…ÝI•Ñ…¹±”¡íàèÀ±äéÁ…•!•¥¡Ð´ÄÀ±Ý¥‘Ñ éÁ…•]¥‘Ñ ±¡•¥¡ÐèÄÀ±½±½Èé½‘É••¹ô¤ì(€€€½¹ÍÐÝ½Éõ‰É…¹¹Ý½É‘µ…É¬¹Í…±•Q½¥Ð ÄÔÀ°ÈÐ¤íÁ…”¹‘É…Ý%µ…”¡‰É…¹¹Ý½É‘µ…É¬±íàéµ…É¥¸±äéÁ…•!•¥¡Ð´ÐÔ±Ý¥‘Ñ éÝ½É¹Ý¥‘Ñ ±¡•¥¡ÐéÝ½É¹¡•¥¡Ñô¤ì(€€€½¹ÍÐÑ¥Ñ±•M…™”õÍ…™”¡Ñ¥Ñ±”¤¹Ñ½UÁÁ•É…Í” ¤í½¹ÍÐÍ¥é”õ™¥ÑM¥é•=¹±ä¡Ñ¥Ñ±•M…™”°ÄÔ°ÈÔÀ°ä±ÑÉÕ”¤í½¹ÍÐÜõ‰½±¹Ý¥‘Ñ¡=™Q•áÑÑM¥é”¡Ñ¥Ñ±•M…™”±Í¥é”¤ì(€€€Á…”¹‘É…ÝQ•áÐ¡Ñ¥Ñ±•M…™”±íàéÁ…•]¥‘Ñ µµ…É¥¸µÜ±äéÁ…•!•¥¡Ð´ÐÀ±Í¥é”±™½¹Ðé‰½±±½±½Èé‰±…­ô¤ì(€€€Á…”¹‘É…Ý1¥¹”¡íÍÑ…ÉÐéíàéµ…É¥¸±äéÁ…•!•¥¡Ð´Ôåô±•¹éíàéÁ…•]¥‘Ñ µµ…É¥¸±äéÁ…•!•¥¡Ð´Ôåô±Ñ¡¥­¹•ÍÌèÄ¸Ì±½±½Èé‰±Õ•É••¹ô¤ì(€€€‘É…Ý½½Ñ•È¡Á…”±Á…•9Õµ‰•È¤ì(€€€É•ÑÕÉ¸íÁ…”±äéÁ…•!•¥¡Ð´àÉôì(€ôì((€½¹ÍÐ™¥ÉÍÑA…”õ‘½Õµ•¹Ð¹…‘‘A…”¡mÁ…•]¥‘Ñ ±Á…•!•¥¡Ñt¤íÁ…•9Õµ‰•È¬ôÄì(€™¥ÉÍÑA…”¹‘É…ÝI•Ñ…¹±”¡íàèÀ±äéÁ…•!•¥¡Ð´ÄÈ±Ý¥‘Ñ éÁ…•]¥‘Ñ ±¡•¥¡ÐèÄÈ±½±½Èé½‘É••¹ô¤ì(€½¹ÍÐ™Õ±±1½¼õ‰É…¹¹™Õ±°¹Í…±•Q½¥Ð ÈÀÀ°äÀ¤í™¥ÉÍÑA…”¹‘É…Ý%µ…”¡‰É…¹¹™Õ±°±íàéµ…É¥¸±äéÁ…•!•¥¡Ð´ÄÈÈ±Ý¥‘Ñ é™Õ±±1½¼¹Ý¥‘Ñ ±¡•¥¡Ðé™Õ±±1½¼¹¡•¥¡Ñô¤ì(€™¥ÉÍÑA…”¹‘É…ÝQ•áÐ AI=)PAI=A=M0œ±íàéÁ…•]¥‘Ñ µµ…É¥¸´ÄäÀ±äéÁ…•!•¥¡Ð´ØÄ±Í¥é”èÄà±™½¹Ðé‰½±±½±½Èé‰±…­ô¤ì(€½¹ÍÐÁÉ½Á½Í…±9¼õÍ…™”¡¥¹ÁÕÐ¹ÅÕ½Ñ”¹¹Õµ‰•Éñð9½ÐÍ•Ðœ¤ì(€™¥ÉÍÑA…”¹‘É…ÝQ•áÐ¡EÕ½Ñ”€‘íÁÉ½Á½Í…±9½õ€±íàéÁ…•]¥‘Ñ µµ…É¥¸´ÄäÀ±äéÁ…•!•¥¡Ð´àÄ±Í¥é”èä±™½¹Ðé‰½±±½±½ÈéÉ••¹ô¤ì(€™¥ÉÍÑA…”¹‘É…Ý1¥¹”¡íÍÑ…ÉÐéíàéµ…É¥¸±äéÁ…•!•¥¡Ð´ÄÌÉô±•¹éíàéÁ…•]¥‘Ñ µµ…É¥¸±äéÁ…•!•¥¡Ð´ÄÌÉô±Ñ¡¥­¹•ÍÌèÄ¸Ô±½±½Èé‰±Õ•É••¹ô¤ì((€½¹ÍÐ¥¹™½Q½ÀõÁ…•!•¥¡Ð´ÄÔàì(€½¹ÍÐ½±Õµ¹…ÀôÈÐì(€½¹ÍÐ½±Õµ¹]¥‘Ñ ô¡½¹Ñ•¹Ñ]¥‘Ñ µ½±Õµ¹…À¤¼Èì(€½¹ÍÐ‘É…Ý%¹™½½±Õµ¸ô¡àé¹Õµ‰•È±Ñ¥Ñ±”éÍÑÉ¥¹œ±É½ÝÌémÍÑÉ¥¹œ±ÍÑÉ¥¹umt¤ôùì(€€€™¥ÉÍÑA…”¹‘É…ÝQ•áÐ¡Ñ¥Ñ±”±íà±äé¥¹™½Q½À±Í¥é”èÜ±™½¹Ðé‰½±±½±½ÈéÉ••¹ô¤ì(€€€±•Ðäõ¥¹™½Q½À´ÈÌì(€€€™½È¡½¹ÍÐm±…‰•°±Ù…±Õ•t½˜É½ÝÌ¥ì(€€€€€™¥ÉÍÑA…”¹‘É…ÝQ•áÐ¡±…‰•°¹Ñ½UÁÁ•É…Í” ¤±íà±äéä¬à±Í¥é”èÔ¸à±™½¹Ðé‰½±±½±½ÈéµÕÑ•‘ô¤ì(€€€€€½¹ÍÐ±¥¹•ÌõÝÉ…ÁQ•áÐ¡Ù…±Õ•ñð9½ÐÍ•Ðœ±½±Õµ¹]¥‘Ñ ±™½¹Ð°ä¸Ì¤ì(€€€€€½¹ÍÐÍ¡½Ý¸õ±¥¹•Ì¹Í±¥” À°È¤ì(€€€€€‘É…Ý]É…ÁÁ•¡™¥ÉÍÑA…”±Í¡½Ý¸±à±ä´Ô±™½¹Ð°ä¸Ì°ÄÄ¸Ô±‰±…¬¤ì(€€€€€½¹ÍÐ±¥¹•dõä´ä´¡Í¡½Ý¸¹±•¹Ñ ´Ä¤¨ÄÄ¸Ôì(€€€€€™¥ÉÍÑA…”¹‘É…Ý1¥¹”¡íÍÑ…ÉÐéíà±äé±¥¹•eô±•¹éíàéà­½±Õµ¹]¥‘Ñ ±äé±¥¹•eô±Ñ¡¥­¹•ÍÌè¸Ô±½±½Èé‰½É‘•Éô¤ì(€€€€€äõ±¥¹•d´Ääì(€€€ô(€ôì(€‘É…Ý%¹™½½±Õµ¸¡µ…É¥¸°UMQ=5H€¼AI=)Pœ±ml€ÕÍÑ½µ•Èœ±¥¹ÁÕÐ¹ÁÉ½©•Ð¹±¥•¹Ññð9½Ð•¹Ñ•É•œt±l€AÉ½©•Ðœ±¥¹ÁÕÐ¹ÁÉ½©•Ð¹¹…µ•ñðM½Á•1½¥ŒAÉ½©•Ðœut¤ì(€‘É…Ý%¹™½½±Õµ¸¡µ…É¥¸­½±Õµ¹]¥‘Ñ ­½±Õµ¹…À°EU=Q%9=I5Q%=8œ±ml€EÕ½Ñ”9…µ”œ±¥¹ÁÕÐ¹ÅÕ½Ñ”¹¹…µ•ñðEÕ½Ñ”œt±l€I•Ù¥Í¥½¸€¼…Ñ”œ±€‘í¥¹ÁÕÐ¹ÁÉ½©•Ð¹É•Ù¥Í¥½¹ñðI•Ø€Àô€ð€€‘í¥¹ÁÕÐ¹ÁÉ½©•Ð¹Ù•ÉÍ¥½¹…Ñ•ñð9½ÐÍ•Ðõ€ut¤ì((€±•ÐÁ…”õ™¥ÉÍÑA…”ì(€±•ÐäõÁ…•!•¥¡Ð´ÌÄÀì(€½¹ÍÐÍ•Ñ¥½¹	…Èô¡Ñ…É•ÐéAA…”±Ñ¥Ñ±”éÍÑÉ¥¹œ¤ôùì(€€€Ñ…É•Ð¹‘É…ÝI•Ñ…¹±”¡íàéµ…É¥¸±äéä´È±Ý¥‘Ñ é½¹Ñ•¹Ñ]¥‘Ñ ±¡•¥¡ÐèÈÀ±½±½ÈéÁ…±•	±Õ•É••¸±‰½É‘•É½±½Èé‰±Õ•É••¸±‰½É‘•É]¥‘Ñ è¸Ùô¤ì(€€€Ñ…É•Ð¹‘É…ÝQ•áÐ¡Ñ¥Ñ±”¹Ñ½UÁÁ•É…Í” ¤±íàéµ…É¥¸¬à±äéä¬Ð±Í¥é”èÜ±™½¹Ðé‰½±±½±½Èé‰±…­ô¤ì(€€€ä´ôÌÄì(€ôì(€½¹ÍÐÍÑ…ÉÑ½¹Ñ¥¹Õ…Ñ¥½¸ô¡Ñ¥Ñ±”éÍÑÉ¥¹œ¤ôùí½¹ÍÐ¹•áÐõ…‘‘½µÁ…ÑA…”¡Ñ¥Ñ±”¤íÁ…”õ¹•áÐ¹Á…”íäõ¹•áÐ¹äíôì((€€¼¼M½Á”½˜]½É¬™±½ÝÌ…Ì½¹”ÁÉ½Á½Í…°Í•Ñ¥½¸¸1½¹œ½¹Ñ•¹Ð½¹Ñ¥¹Õ•ÌÝ¥Ñ¡½ÕÐ±¥ÁÁ¥¹œ¸(€Í•Ñ¥½¹	…È¡Á…”°M½Á”½˜]½É¬œ¤ì(€½¹ÍÐÍ½Á•	±½­Ìõ¡Ñµ±Q½EÕ½Ñ•	±½­Ì¡m¥¹ÁÕÐ¹Í½Á”¹¥¹±Õ‘•‘!Ñµ°±¥¹ÁÕÐ¹Í½Á”¹•á±Õ‘•‘!Ñµ±t¹™¥±Ñ•È ¡Ù…±Õ”¤ôùMÑÉ¥¹œ¡Ù…±Õ•ñðœœ¤¹ÑÉ¥´ ¤¤¹©½¥¸ œñÀøñ‰Èøð½Àøœ¤¤ì(€¥˜ …Í½Á•	±½­Ì¹±•¹Ñ ¥Í½Á•	±½­Ì¹ÁÕÍ ¡íÑ•áÐè9¼M½Á”½˜]½É¬½¹Ñ•¹Ð•¹Ñ•É•¸œ±¥¹‘•¹ÐèÀ±µ…É­•Èè¹½¹”œ±ÍÁ…¥¹œèÄ¸ÄÔ±¡•…‘¥¹œé™…±Í•ô¤ì(€™½È¡½¹ÍÐ‰±½¬½˜Í½Á•	±½­Ì¥ì(€€€¥˜ …‰±½¬¹Ñ•áÐ¹ÑÉ¥´ ¤¥íä´ôÜí¥˜¡äñ‰½ÑÑ½µ1¥µ¥Ð¬ÈÀ¥ÍÑ…ÉÑ½¹Ñ¥¹Õ…Ñ¥½¸ M½Á”½˜]½É¬€´½¹Ñ¥¹Õ•œ¤í½¹Ñ¥¹Õ”íô(€€€½¹ÍÐµ…É­•É]¥‘Ñ õ‰±½¬¹µ…É­•Èôôô¹½¹”œüÀèÄÐì(€€€½¹ÍÐàõµ…É¥¸­‰±½¬¹¥¹‘•¹Ð¨ÄÌ­µ…É­•É]¥‘Ñ ì(€€€½¹ÍÐµ…á]¥‘Ñ õ½¹Ñ•¹Ñ]¥‘Ñ µ‰±½¬¹¥¹‘•¹Ð¨ÄÌµµ…É­•É]¥‘Ñ ì(€€€½¹ÍÐ‰±½­½¹Ðõ‰±½¬¹¡•…‘¥¹œý‰½±é™½¹Ðì(€€€½¹ÍÐ™½¹ÑM¥é”õ‰±½¬¹¡•…‘¥¹œüÄÀèäì(€€€½¹ÍÐ±¥¹•!•¥¡Ðõ5…Ñ ¹µ…à ÄÄ°ÄÀ¸Ô©‰±½¬¹ÍÁ…¥¹œ¤ì(€€€½¹ÍÐ±¥¹•ÌõÝÉ…ÁQ•áÐ¡‰±½¬¹Ñ•áÐ±µ…á]¥‘Ñ ±‰±½­½¹Ð±™½¹ÑM¥é”¤ì(€€€±•Ð½™™Í•ÐôÀì(€€€Ý¡¥±”¡½™™Í•Ðñ±¥¹•Ì¹±•¹Ñ ¥ì(€€€€€½¹ÍÐ…Ù…¥±…‰±”õ5…Ñ ¹µ…à Ä±5…Ñ ¹™±½½È ¡äµ‰½ÑÑ½µ1¥µ¥Ð´ÄÀ¤½±¥¹•!•¥¡Ð¤¤ì(€€€€€¥˜¡…Ù…¥±…‰±”ðÅññäñ‰½ÑÑ½µ1¥µ¥Ð¬Äà¥íÍÑ…ÉÑ½¹Ñ¥¹Õ…Ñ¥½¸ M½Á”½˜]½É¬€´½¹Ñ¥¹Õ•œ¤í½¹Ñ¥¹Õ”íô(€€€€€½¹ÍÐ¡Õ¹¬õ±¥¹•Ì¹Í±¥”¡½™™Í•Ð±½™™Í•Ð­…Ù…¥±…‰±”¤ì(€€€€€¥˜¡‰±½¬¹µ…É­•Èôôô‰Õ±±•Ðœ˜™½™™Í•ÐôôôÀ¥Á…”¹‘É…Ý¥É±”¡íàéà´ä±äéä´Ì±Í¥é”èÄ¸à±½±½ÈéÉ••¹ô¤ì(€€€€€¥˜¡‰±½¬¹µ…É­•Èôôô¹Õµ‰•Èœ˜™½™™Í•ÐôôôÀ¥Á…”¹‘É…ÝQ•áÐ¡€‘í‰±½¬¹¹Õµ‰•ÉñðÅô¹€±íàéà´ÄÈ±äéä´Ì±Í¥é”èÜ±™½¹Ðé‰½±±½±½ÈéÉ••¹ô¤ì(€€€€€‘É…Ý]É…ÁÁ•¡Á…”±¡Õ¹¬±à±ä±‰±½­½¹Ð±™½¹ÑM¥é”±±¥¹•!•¥¡Ð±‰±…¬¤ì(€€€€€ä´õ¡Õ¹¬¹±•¹Ñ ©±¥¹•!•¥¡Ð¬Ôì(€€€€€½™™Í•Ð¬õ¡Õ¹¬¹±•¹Ñ ì(€€€€€¥˜¡½™™Í•Ðñ±¥¹•Ì¹±•¹Ñ ¥ÍÑ…ÉÑ½¹Ñ¥¹Õ…Ñ¥½¸ M½Á”½˜]½É¬€´½¹Ñ¥¹Õ•œ¤ì(€€€ô(€ô(€ä´ôàì((€½¹ÍÐ‘É…Ý	½µ½±Õµ¹!•…‘•Èô ¤ôùì(€€€¥˜¡äñ‰½ÑÑ½µ1¥µ¥Ð¬ÌÈ¥ÍÑ…ÉÑ½¹Ñ¥¹Õ…Ñ¥½¸ 	¥±°½˜5…Ñ•É¥…±Ì€´½¹Ñ¥¹Õ•œ¤ì(€€€Á…”¹‘É…ÝI•Ñ…¹±”¡íàéµ…É¥¸±äéä´È±Ý¥‘Ñ é½¹Ñ•¹Ñ]¥‘Ñ ±¡•¥¡ÐèÈÀ±½±½Èé½‘É••¹ô¤ì(€€€Á…”¹‘É…ÝQ•áÐ MI%AQ%=8œ±íàéµ…É¥¸¬à±äéä¬Ð±Í¥é”èÜ±™½¹Ðé‰½±±½±½ÈéÝ¡¥Ñ•ô¤ì(€€€½¹ÍÐÅÑäôEQdœí½¹ÍÐÅÑå\õ‰½±¹Ý¥‘Ñ¡=™Q•áÑÑM¥é”¡ÅÑä°Ü¤ì(€€€Á…”¹‘É…ÝQ•áÐ¡ÅÑä±íàéÁ…•]¥‘Ñ µµ…É¥¸´àµÅÑå\±äéä¬Ð±Í¥é”èÜ±™½¹Ðé‰½±±½±½ÈéÝ¡¥Ñ•ô¤ì(€€€ä´ôÈØì(€ôì((€¥˜¡¥¹ÁÕÐ¹µ½‘”ôôô™Õ±°µ‰½´œ¥ì(€€€¥˜¡äðÈÔÀ¥ÍÑ…ÉÑ½¹Ñ¥¹Õ…Ñ¥½¸ 	¥±°½˜5…Ñ•É¥…±Ìœ¤ì(€€€Í•Ñ¥½¹	…È¡Á…”°	¥±°½˜5…Ñ•É¥…±Ìœ¤ì(€€€‘É…Ý	½µ½±Õµ¹!•…‘•È ¤ì(€€€½¹ÍÐ‰…Í•	½µ1¥¹•Ìõ¥¹ÁÕÐ¹ÅÕ½Ñ”¹±¥¹•Ìì(€€€½¹ÍÐ¡…Í!•…‘•ÉÌõ¥¹ÁÕÐ¹ÅÕ½Ñ”¹É½ÕÁÌ¹±•¹Ñ øÀì(€€€½¹ÍÐ‰…Í•M•Ñ¥½¹Ìõ¡…Í!•…‘•ÉÌ(€€€€€€ül¸¸¹¥¹ÁÕÐ¹ÅÕ½Ñ”¹É½ÕÁÌ¹µ…À ¡É½ÕÀ¤ôø¡í¥éÉ½ÕÀ¹¥±¹…µ”éÉ½ÕÀ¹¹…µ”±±¥¹•Ìé‰…Í•	½µ1¥¹•Ì¹™¥±Ñ•È ¡±¥¹”¤ôø¡±¥¹”¹É½ÕÁ%‘ñðœœ¤ôôõÉ½ÕÀ¹¥¥ô¤¤±í¥èœœ±¹…µ”èU9I=UAœ±±¥¹•Ìé‰…Í•	½µ1¥¹•Ì¹™¥±Ñ•È ¡±¥¹”¤ôø…¥¹ÁÕÐ¹ÅÕ½Ñ”¹É½ÕÁÌ¹Í½µ” ¡É½ÕÀ¤ôùÉ½ÕÀ¹¥ôôô¡±¥¹”¹É½ÕÁ%‘ñðœœ¤¤¥õt¹™¥±Ñ•È ¡É½ÕÀ¤ôùÉ½ÕÀ¹±¥¹•Ì¹±•¹Ñ ¤(€€€€€€èmí¥è™±…Ðœ±¹…µ”èœœ±±¥¹•Ìé‰…Í•	½µ1¥¹•Íõtì(€€€½¹ÍÐÍ•Ñ¥½¹Ìõ‰…Í•M•Ñ¥½¹Ìì(€€€™½È¡½¹ÍÐÉ½ÕÀ½˜Í•Ñ¥½¹Ì¥ì(€€€€€¥˜¡¡…Í!•…‘•ÉÌ¥ì(€€€€€€€½¹ÍÐÉ½ÕÁ1¥¹•ÌõÝÉ…ÁQ•áÐ¡Í…™”¡É½ÕÀ¹¹…µ•ñðU9I=UAœ¤¹Ñ½UÁÁ•É…Í” ¤±½¹Ñ•¹Ñ]¥‘Ñ ´ÄØ±‰½±°à¤ì(€€€€€€€½¹ÍÐÉ½ÕÁ!•¥¡Ðõ5…Ñ ¹µ…à ÈÈ±É½ÕÁ1¥¹•Ì¹±•¹Ñ ¨ÄÀ¬à¤ì(€€€€€€€¥˜¡äµÉ½ÕÁ!•¥¡Ðñ‰½ÑÑ½µ1¥µ¥Ð¬ÄÀ¥íÍÑ…ÉÑ½¹Ñ¥¹Õ…Ñ¥½¸ 	¥±°½˜5…Ñ•É¥…±Ì€´½¹Ñ¥¹Õ•œ¤í‘É…Ý	½µ½±Õµ¹!•…‘•È ¤íô(€€€€€€€Á…”¹‘É…ÝI•Ñ…¹±”¡íàéµ…É¥¸±äéäµÉ½ÕÁ!•¥¡Ð¬Ð±Ý¥‘Ñ é½¹Ñ•¹Ñ]¥‘Ñ ±¡•¥¡ÐéÉ½ÕÁ!•¥¡Ð±½±½ÈéÁ…±•É…ä±‰½É‘•É½±½Èé‰½É‘•È±‰½É‘•É]¥‘Ñ è¸ÌÕô¤ì(€€€€€€€Á…”¹‘É…ÝI•Ñ…¹±”¡íàéµ…É¥¸±äéäµÉ½ÕÁ!•¥¡Ð¬Ð±Ý¥‘Ñ èÐ±¡•¥¡ÐéÉ½ÕÁ!•¥¡Ð±½±½Èé‰±Õ•É••¹ô¤ì(€€€€€€€‘É…Ý]É…ÁÁ•¡Á…”±É½ÕÁ1¥¹•Ì±µ…É¥¸¬ÄÀ±ä´Ü±‰½±°à°ÄÀ±‰±…¬¤íä´õÉ½ÕÁ!•¥¡Ð¬Èì(€€€€€ô(€€€€€™½È¡½¹ÍÐ±¥¹”½˜É½ÕÀ¹±¥¹•Ì¥ì(€€€€€€€½¹ÍÐ‘•ÍÉ¥ÁÑ¥½¹1¥¹•ÌõÝÉ…ÁQ•áÐ¡±¥¹”¹‘•ÍÉ¥ÁÑ¥½¹ñð%Ñ•´œ±½¹Ñ•¹Ñ]¥‘Ñ ´ÜÀ±™½¹Ð°à¸Ü¤ì(€€€€€€€±•Ð½™™Í•ÐôÀí±•Ð™¥ÉÍÑ¡Õ¹¬õÑÉÕ”ì(€€€€€€€Ý¡¥±”¡½™™Í•Ðñ‘•ÍÉ¥ÁÑ¥½¹1¥¹•Ì¹±•¹Ñ ¥ì(€€€€€€€€€¥˜¡äñ‰½ÑÑ½µ1¥µ¥Ð¬ÈÔ¥íÍÑ…ÉÑ½¹Ñ¥¹Õ…Ñ¥½¸ 	¥±°½˜5…Ñ•É¥…±Ì€´½¹Ñ¥¹Õ•œ¤í‘É…Ý	½µ½±Õµ¹!•…‘•È ¤íô(€€€€€€€€€½¹ÍÐ…Ù…¥±…‰±”õ5…Ñ ¹µ…à Ä±5…Ñ ¹™±½½È ¡äµ‰½ÑÑ½µ1¥µ¥Ð´Ô¤¼ÄÄ¤¤ì(€€€€€€€€€½¹ÍÐ¡Õ¹¬õ‘•ÍÉ¥ÁÑ¥½¹1¥¹•Ì¹Í±¥”¡½™™Í•Ð±½™™Í•Ð­…Ù…¥±…‰±”¤ì(€€€€€€€€€½¹ÍÐÉ½Ý!•¥¡Ðõ5…Ñ ¹µ…à ÈÈ±¡Õ¹¬¹±•¹Ñ ¨ÄÄ¬Ü¤ì(€€€€€€€€€‘É…Ý]É…ÁÁ•¡Á…”±¡Õ¹¬±µ…É¥¸¬à±ä´ä±™½¹Ð°à¸Ü°ÄÄ±‰±…¬¤ì(€€€€€€€€€¥˜¡™¥ÉÍÑ¡Õ¹¬¥í½¹ÍÐÅÑåQ•áÐõMÑÉ¥¹œ¡±¥¹”¹ÅÑä¤í½¹ÍÐÅM¥é”õ™¥ÑM¥é•=¹±ä¡ÅÑåQ•áÐ°ä°ÐÔ°Ø±ÑÉÕ”¤í½¹ÍÐÅ\õ‰½±¹Ý¥‘Ñ¡=™Q•áÑÑM¥é”¡ÅÑåQ•áÐ±ÅM¥é”¤íÁ…”¹‘É…ÝQ•áÐ¡ÅÑåQ•áÐ±íàéÁ…•]¥‘Ñ µµ…É¥¸´àµÅ\±äéä´ÄÀ±Í¥é”éÅM¥é”±™½¹Ðé‰½±±½±½Èé‰±…­ô¤íô(€€€€€€€€€Á…”¹‘É…Ý1¥¹”¡íÍÑ…ÉÐéíàéµ…É¥¸±äéäµÉ½Ý!•¥¡Ð¬Íô±•¹éíàéÁ…•]¥‘Ñ µµ…É¥¸±äéäµÉ½Ý!•¥¡Ð¬Íô±Ñ¡¥­¹•ÍÌè¸ÌÔ±½±½Èé‰½É‘•Éô¤ì(€€€€€€€€€ä´õÉ½Ý!•¥¡Ðí½™™Í•Ð¬õ¡Õ¹¬¹±•¹Ñ í™¥ÉÍÑ¡Õ¹¬õ™…±Í”ì(€€€€€€€€€¥˜¡½™™Í•Ðñ‘•ÍÉ¥ÁÑ¥½¹1¥¹•Ì¹±•¹Ñ ¥íÍÑ…ÉÑ½¹Ñ¥¹Õ…Ñ¥½¸ 	¥±°½˜5…Ñ•É¥…±Ì€´½¹Ñ¥¹Õ•œ¤í‘É…Ý	½µ½±Õµ¹!•…‘•È ¤íô(€€€€€€€ô(€€€€€ô(€€€€€ä´ôÐì(€€€ô(€€€ä´ôØì(€ô((€€¼¼	…Í”ÁÉ¥”É•µ…¥¹ÌÍ•Á…É…Ñ”™É½´…±°½ÁÑ¥½¹…°…±Ñ•É¹…Ñ”‘•±Ñ…Ì¸(€¥˜¡äðÈØÔ¥ÍÑ…ÉÑ½¹Ñ¥¹Õ…Ñ¥½¸ AÉ½Á½Í…°MÕµµ…Éäœ¤ì(€Í•Ñ¥½¹	…È¡Á…”°	…Í”	¥AÉ¥¥¹œMÕµµ…Éäœ¤ì(€½¹ÍÐÍÕµµ…Éå]¥‘Ñ ôÈàÀì(€½¹ÍÐÍÕµµ…Éå`õÁ…•]¥‘Ñ µµ…É¥¸µÍÕµµ…Éå]¥‘Ñ ì(€½¹ÍÐÉ½ÝÌémÍÑÉ¥¹œ±¹Õµ‰•Éumtõ‘•Ñ…¥±•‘AÉ¥¥¹œýml5…Ñ•É¥…°Q½Ñ…°œ±¥¹ÁÕÐ¹Ñ½Ñ…±Ì¹µ…Ñ•É¥…±t±l1…‰½ÈQ½Ñ…°œ±¥¹ÁÕÐ¹Ñ½Ñ…±Ì¹±…‰½Ét±l=Ñ¡•È€¼9½¸µQ…á…‰±”œ±¥¹ÁÕÐ¹Ñ½Ñ…±Ì¹½Ñ¡•Ét±lQ…àœ±¥¹ÁÕÐ¹Ñ½Ñ…±Ì¹Ñ…át±l	½¹œ±¥¹ÁÕÐ¹Ñ½Ñ…±Ì¹‰½¹‘utémtì(€™½È¡½¹ÍÐm±…‰•°±Ù…±Õ•t½˜É½ÝÌ¥ì(€€€Á…”¹‘É…ÝQ•áÐ¡±…‰•°±íàéÍÕµµ…Éå`±ä±Í¥é”èà¸Ü±™½¹Ðé‰½±±½±½Èé‰±…­ô¤ì(€€€½¹ÍÐ…µ½Õ¹ÐõÅÕ½Ñ•5½¹•ä¡Ù…±Õ”¤í½¹ÍÐ…µ½Õ¹ÑM¥é”õ™¥ÑM¥é•=¹±ä¡…µ½Õ¹Ð°ä¸Ô°ÄÄÔ°Ü±ÑÉÕ”¤í½¹ÍÐ…µ½Õ¹Ñ]¥‘Ñ õ‰½±¹Ý¥‘Ñ¡=™Q•áÑÑM¥é”¡…µ½Õ¹Ð±…µ½Õ¹ÑM¥é”¤ì(€€€Á…”¹‘É…ÝQ•áÐ¡…µ½Õ¹Ð±íàéÁ…•]¥‘Ñ µµ…É¥¸´Ðµ…µ½Õ¹Ñ]¥‘Ñ ±ä±Í¥é”é…µ½Õ¹ÑM¥é”±™½¹Ðé‰½±±½±½Èé‰±…­ô¤ì(€€€Á…”¹‘É…Ý1¥¹”¡íÍÑ…ÉÐéíàéÍÕµµ…Éå`±äéä´áô±•¹éíàéÁ…•]¥‘Ñ µµ…É¥¸±äéä´áô±Ñ¡¥­¹•ÍÌè¸ÐÔ±½±½Èé‰½É‘•Éô¤íä´ôÈÔì(€ô(€Á…”¹‘É…ÝI•Ñ…¹±”¡íàéÍÕµµ…Éå`´Ø±äéä´ÈÄ±Ý¥‘Ñ éÍÕµµ…Éå]¥‘Ñ ¬Ø±¡•¥¡ÐèÌÔ±½±½Èé½‘É••¹ô¤ì(€Á…”¹‘É…ÝQ•áÐ Q=Q0AI%œ±íàéÍÕµµ…Éå`¬Ð±äéä´à±Í¥é”èä±™½¹Ðé‰½±±½±½ÈéÝ¡¥Ñ•ô¤ì(€½¹ÍÐÑ½Ñ…°õÅÕ½Ñ•5½¹•ä¡¥¹ÁÕÐ¹Ñ½Ñ…±Ì¹Ñ½Ñ…°¤í½¹ÍÐÑ½Ñ…±M¥é”õ™¥ÑM¥é•=¹±ä¡Ñ½Ñ…°°ÄÌ°ÄÌÔ°à±ÑÉÕ”¤í½¹ÍÐÑ½Ñ…±]¥‘Ñ õ‰½±¹Ý¥‘Ñ¡=™Q•áÑÑM¥é”¡Ñ½Ñ…°±Ñ½Ñ…±M¥é”¤ì(€Á…”¹‘É…ÝQ•áÐ¡Ñ½Ñ…°±íàéÁ…•]¥‘Ñ µµ…É¥¸´ÔµÑ½Ñ…±]¥‘Ñ ±äéä´ÄÄ±Í¥é”éÑ½Ñ…±M¥é”±™½¹Ðé‰½±±½±½ÈéÝ¡¥Ñ•ô¤ì(€ä´ôÔÈì((€¥˜¡¥¹ÁÕÐ¹‰É•…­½ÕÑÌ¹±•¹Ñ ¥ì(€€€¥˜¡äðÄÜÀ¥ÍÑ…ÉÑ½¹Ñ¥¹Õ…Ñ¥½¸ AÉ¥¥¹œ	É•…­½ÕÑÌœ¤ì(€€€Í•Ñ¥½¹	…È¡Á…”°	…Í”	¥AÉ¥¥¹œ	É•…­½ÕÑÌœ¤ì(€€€½¹ÍÐ½±Õµ¹Ìõ‘•Ñ…¥±•‘AÉ¥¥¹œýmµ…É¥¸±µ…É¥¸¬ÈÄÀ±µ…É¥¸¬Èäà±µ…É¥¸¬ÌàØ±µ…É¥¸¬ÐØÙtémµ…É¥¸±Á…•]¥‘Ñ µµ…É¥¸´äÉtì(€€€½¹ÍÐ‰É•…­½ÕÑ!•…‘•ÉÌõ‘•Ñ…¥±•‘AÉ¥¥¹œýl	I-=UPœ°5QI%0œ°1	=Hœ°=Q!H€¼Lœ°Q=Q0tél	I-=UPœ°Q=Q0AI%tì(€€€½¹ÍÐ‘É…Ý	É•…­½ÕÑ!•…‘•Èô ¤ôùíÁ…”¹‘É…ÝI•Ñ…¹±”¡íàéµ…É¥¸±äéä´Ì±Ý¥‘Ñ é½¹Ñ•¹Ñ]¥‘Ñ ±¡•¥¡ÐèÈÀ±½±½Èé½‘É••¹ô¤í‰É•…­½ÕÑ!•…‘•ÉÌ¹™½É…  ¡±…‰•°±¥¹‘•à¤ôùÁ…”¹‘É…ÝQ•áÐ¡±…‰•°±íàé½±Õµ¹Ím¥¹‘•át¬¡¥¹‘•àüÀèÜ¤±äéä¬Ì±Í¥é”èØ¸È±™½¹Ðé‰½±±½±½ÈéÝ¡¥Ñ•ô¤¤íä´ôÈÔíôì(€€€‘É…Ý	É•…­½ÕÑ!•…‘•È ¤ì(€€€™½È¡½¹ÍÐ‰É•…­½ÕÐ½˜¥¹ÁÕÐ¹‰É•…­½ÕÑÌ¥ì(€€€€€½¹ÍÐ¹…µ•1¥¹•ÌõÝÉ…ÁQ•áÐ¡Í…™”¡‰É•…­½ÕÐ¹¹…µ”¤°ÄäØ±‰½±°Ü¸Ø¤ì(€€€€€½¹ÍÐ‘•ÍÉ¥ÁÑ¥½¹1¥¹•Ìõ‰É•…­½ÕÐ¹‘•ÍÉ¥ÁÑ¥½¸ýÝÉ…ÁQ•áÐ¡Í…™”¡‰É•…­½ÕÐ¹‘•ÍÉ¥ÁÑ¥½¸¤°ÄäØ±™½¹Ð°Ø¸È¤émtì(€€€€€½¹ÍÐ¡•¥¡Ðõ5…Ñ ¹µ…à ÈÜ±¹…µ•1¥¹•Ì¹±•¹Ñ ¨ä­‘•ÍÉ¥ÁÑ¥½¹1¥¹•Ì¹±•¹Ñ ¨à¬Ü¤ì(€€€€€¥˜¡äµ¡•¥¡Ðñ‰½ÑÑ½µ1¥µ¥Ð¬à¥íÍÑ…ÉÑ½¹Ñ¥¹Õ…Ñ¥½¸ AÉ¥¥¹œ	É•…­½ÕÑÌ€´½¹Ñ¥¹Õ•œ¤í‘É…Ý	É•…­½ÕÑ!•…‘•È ¤íô(€€€€€‘É…Ý]É…ÁÁ•¡Á…”±¹…µ•1¥¹•Ì±½±Õµ¹ÍlÁt¬Ü±ä´à±‰½±°Ü¸Ø°ä±‰±…¬¤ì(€€€€€¥˜¡‘•ÍÉ¥ÁÑ¥½¹1¥¹•Ì¹±•¹Ñ ¥‘É…Ý]É…ÁÁ•¡Á…”±‘•ÍÉ¥ÁÑ¥½¹1¥¹•Ì±½±Õµ¹ÍlÁt¬Ü±ä´àµ¹…µ•1¥¹•Ì¹±•¹Ñ ¨ä±™½¹Ð°Ø¸È°à±µÕÑ•¤ì(€€€€€½¹ÍÐ‰É•…­½ÕÑY…±Õ•Ìõ‘•Ñ…¥±•‘AÉ¥¥¹œým‰É•…­½ÕÐ¹µ…Ñ•É¥…°±‰É•…­½ÕÐ¹±…‰½È±‰É•…­½ÕÐ¹½Ñ¡•È±‰É•…­½ÕÐ¹Ñ½Ñ…±tém‰É•…­½ÕÐ¹Ñ½Ñ…±tì(€€€€€‰É•…­½ÕÑY…±Õ•Ì¹™½É…  ¡Ù…±Õ”±¥¹‘•à¤ôùí½¹ÍÐ¥ÍQ½Ñ…°ô…‘•Ñ…¥±•‘AÉ¥¥¹ññ¥¹‘•àôôôÌí½¹ÍÐ…µ½Õ¹ÐõÅÕ½Ñ•5½¹•ä¡Ù…±Õ”¤í½¹ÍÐÍ¥é”õ™¥ÑM¥é•=¹±ä¡…µ½Õ¹Ð°Ü¸È°ÜØ°Ô¸Ø±¥ÍQ½Ñ…°¤íÁ…”¹‘É…ÝQ•áÐ¡…µ½Õ¹Ð±íàé½±Õµ¹Ím¥¹‘•à¬Åt±äéä´à±Í¥é”±™½¹Ðé¥ÍQ½Ñ…°ý‰½±é™½¹Ð±½±½Èé¥ÍQ½Ñ…°ýÉ••¸é‰±…­ô¤íô¤ì(€€€€€Á…”¹‘É…Ý1¥¹”¡íÍÑ…ÉÐéíàéµ…É¥¸±äéäµ¡•¥¡Ð¬Íô±•¹éíàéÁ…•]¥‘Ñ µµ…É¥¸±äéäµ¡•¥¡Ð¬Íô±Ñ¡¥­¹•ÍÌè¸ÌÔ±½±½Èé‰½É‘•Éô¤íä´õ¡•¥¡Ðì(€€€ô(€€€ä´ôÄÈì(€ô((€¥˜¡¥¹ÁÕÐ¹…±Ñ•É¹…Ñ•Ì¹±•¹Ñ ¥ì(€€€¥˜¡äðÄØÀ¥ÍÑ…ÉÑ½¹Ñ¥¹Õ…Ñ¥½¸ AÉ¥¥¹œ±Ñ•É¹…Ñ•Ìœ¤ì(€€€Í•Ñ¥½¹	…È¡Á…”°AÉ¥¥¹œ±Ñ•É¹…Ñ•Ìœ¤ì(€€€™½È¡½¹ÍÐ…±Ñ•É¹…Ñ”½˜¥¹ÁÕÐ¹…±Ñ•É¹…Ñ•Ì¥ì(€€€€€¥˜¡äñ‰½ÑÑ½µ1¥µ¥Ð¬ÜÔ¥ÍÑ…ÉÑ½¹Ñ¥¹Õ…Ñ¥½¸ AÉ¥¥¹œ±Ñ•É¹…Ñ•Ì€´½¹Ñ¥¹Õ•œ¤ì(€€€€€½¹ÍÐÍ¥¹•ô¡Ù…±Õ”é¹Õµ‰•È¤ôùÙ…±Õ”ð´¸ÀÀÔý€´‘íÅÕ½Ñ•5½¹•ä¡5…Ñ ¹…‰Ì¡Ù…±Õ”¤¥õ€éÙ…±Õ”ø¸ÀÀÔý€¬‘íÅÕ½Ñ•5½¹•ä¡Ù…±Õ”¥õ€éÅÕ½Ñ•5½¹•ä À¤ì(€€€€€½¹ÍÐ±…ÍÍ¥™¥…Ñ¥½¹½±½Èõ…±Ñ•É¹…Ñ”¹±…ÍÍ¥™¥…Ñ¥½¸ôôôUPœýÉˆ ¸ÔÔ°¸ÄØ°¸ÄÐ¤é…±Ñ•É¹…Ñ”¹±…ÍÍ¥™¥…Ñ¥½¸ôôôœýÉ••¸éµÕÑ•ì(€€€€€½¹ÍÐ…Ý…É‘Q•áÐõ…±Ñ•É¹…Ñ”¹…Ý…É‘•üœ€ð€]Iœèœœì(€€€€€Á…”¹‘É…ÝI•Ñ…¹±”¡íàéµ…É¥¸±äéä´ÄÜ±Ý¥‘Ñ é½¹Ñ•¹Ñ]¥‘Ñ ±¡•¥¡ÐèÈÔ±½±½ÈéÁ…±•É…ä±‰½É‘•É½±½Èé‰½É‘•È±‰½É‘•É]¥‘Ñ è¸Ñô¤ì(€€€€€Á…”¹‘É…ÝI•Ñ…¹±”¡íàéµ…É¥¸±äéä´ÄÜ±Ý¥‘Ñ èÐ±¡•¥¡ÐèÈÔ±½±½Èé±…ÍÍ¥™¥…Ñ¥½¹½±½Éô¤ì(€€€€€½¹ÍÐ¡•…‘•Èõ€‘í…±Ñ•É¹…Ñ”¹±…ÍÍ¥™¥…Ñ¥½¹ô€´€‘íÍ…™”¡…±Ñ•É¹…Ñ”¹¹…µ”¥ô‘í…Ý…É‘Q•áÑõ€íÁ…”¹‘É…ÝQ•áÐ¡¡•…‘•È±íàéµ…É¥¸¬ÄÀ±äéä´Ü±Í¥é”èà¸Ô±™½¹Ðé‰½±±½±½Èé‰±…­ô¤íä´ôÌÄì(€€€€€½¹ÍÐÍ½Á•	±½­Ìõ¡Ñµ±Q½EÕ½Ñ•	±½­Ì¡…±Ñ•É¹…Ñ”¹Í½Á•!Ñµ±ñðœœ¤ì(€€€€€¥˜¡Í½Á•	±½­Ì¹±•¹Ñ ¥íÁ…”¹‘É…ÝQ•áÐ 1QI9QM=Aœ±íàéµ…É¥¸¬à±ä±Í¥é”èØ¸È±™½¹Ðé‰½±±½±½ÈéµÕÑ•‘ô¤íä´ôÄÄí™½È¡½¹ÍÐ‰±½¬½˜Í½Á•	±½­Ì¥í½¹ÍÐµ…É­•É=™™Í•Ðõ‰±½¬¹µ…É­•Èôôô¹½¹”œüÀèÄÈí½¹ÍÐ¥¹‘•¹Ðõ‰±½¬¹¥¹‘•¹Ð¨ÄÄ­µ…É­•É=™™Í•Ðí½¹ÍÐ‰±½­½¹Ðõ‰±½¬¹¡•…‘¥¹œý‰½±é™½¹Ðí½¹ÍÐ±¥¹•!•¥¡Ðõ5…Ñ ¹µ…à ä°à©‰±½¬¹ÍÁ…¥¹œ¤í½¹ÍÐ±¥¹•ÌõÝÉ…ÁQ•áÐ¡‰±½¬¹Ñ•áÐ±½¹Ñ•¹Ñ]¥‘Ñ ´ÈÀµ¥¹‘•¹Ð±‰±½­½¹Ð°Ü¸Ì¤í™½È¡±•Ð½™™Í•ÐôÀí½™™Í•Ðñ±¥¹•Ì¹±•¹Ñ ì¥í¥˜¡äñ‰½ÑÑ½µ1¥µ¥Ð¬ÌÀ¥ÍÑ…ÉÑ½¹Ñ¥¹Õ…Ñ¥½¸ AÉ¥¥¹œ±Ñ•É¹…Ñ•Ì€´½¹Ñ¥¹Õ•œ¤í½¹ÍÐ…Ù…¥±…‰±”õ5…Ñ ¹µ…à Ä±5…Ñ ¹™±½½È ¡äµ‰½ÑÑ½µ1¥µ¥Ð´ÈÈ¤½±¥¹•!•¥¡Ð¤¤í½¹ÍÐ¡Õ¹¬õ±¥¹•Ì¹Í±¥”¡½™™Í•Ð±½™™Í•Ð­…Ù…¥±…‰±”¤í¥˜¡‰±½¬¹µ…É­•Èôôô‰Õ±±•Ðœ˜™½™™Í•ÐôôôÀ¥Á…”¹‘É…Ý¥É±”¡íàéµ…É¥¸¬ÄÌ­‰±½¬¹¥¹‘•¹Ð¨ÄÄ±äéä´È±Í¥é”èÄ¸Ì±½±½ÈéÉ••¹ô¤í¥˜¡‰±½¬¹µ…É­•Èôôô¹Õµ‰•Èœ˜™½™™Í•ÐôôôÀ¥Á…”¹‘É…ÝQ•áÐ¡€‘í‰±½¬¹¹Õµ‰•ÉñðÅô¹€±íàéµ…É¥¸¬à­‰±½¬¹¥¹‘•¹Ð¨ÄÄ±äéä´È±Í¥é”èØ¸Ô±™½¹Ðé‰½±±½±½ÈéÉ••¹ô¤í‘É…Ý]É…ÁÁ•¡Á…”±¡Õ¹¬±µ…É¥¸¬à­¥¹‘•¹Ð±ä±‰±½­½¹Ð°Ü¸Ì±±¥¹•!•¥¡Ð±‰±…¬¤íä´õ¡Õ¹¬¹±•¹Ñ ©±¥¹•!•¥¡Ð¬Ìí½™™Í•Ð¬õ¡Õ¹¬¹±•¹Ñ íõõô(€€€€€¥˜¡äñ‰½ÑÑ½µ1¥µ¥Ð¬ÌÔ¥ÍÑ…ÉÑ½¹Ñ¥¹Õ…Ñ¥½¸ AÉ¥¥¹œ±Ñ•É¹…Ñ•Ì€´½¹Ñ¥¹Õ•œ¤ì(€€€€€½¹ÍÐ‘•Ñ…¥°õ‘•Ñ…¥±•‘AÉ¥¥¹œý5…Ñ•É¥…°€‘íÍ¥¹•¡…±Ñ•É¹…Ñ”¹µ…Ñ•É¥…°¥ô€€ð€€1…‰½È€‘íÍ¥¹•¡…±Ñ•É¹…Ñ”¹±…‰½È¥ô€€ð€€±Ñ•É¹…Ñ”Q½Ñ…°€‘íÍ¥¹•¡…±Ñ•É¹…Ñ”¹Ñ½Ñ…°¥õ€é±Ñ•É¹…Ñ”Q½Ñ…°€‘íÍ¥¹•¡…±Ñ•É¹…Ñ”¹Ñ½Ñ…°¥õ€ì(€€€€€Á…”¹‘É…ÝQ•áÐ¡‘•Ñ…¥°±íàéµ…É¥¸¬à±ä±Í¥é”èÜ¸Ô±™½¹Ðé‰½±±½±½Èé±…ÍÍ¥™¥…Ñ¥½¹½±½Éô¤íä´ôÈÐì(€€€ô(€ô(€½¹ÍÐÑ•ÉµÌõÝÉ…ÁQ•áÐ Q¡¥ÌÁÉ½Á½Í…°É•™±•ÑÌÑ¡”…ÁÁÉ½Ù•M½Á•1½¥ŒÅÕ½Ñ”…¹Ñ¡”M½Á”½˜]½É¬ÍÑ…Ñ•…‰½Ù”¸¹ä¡…¹”¥¸Í½Á”°ÅÕ…¹Ñ¥Ñ¥•Ì°…ÍÍÕµÁÑ¥½¹Ì°½ÈÁÉ½©•Ð½¹‘¥Ñ¥½¹Ìµ…äÉ•ÅÕ¥É”„É•Ù¥Í•ÁÉ½Á½Í…°¸œ±½¹Ñ•¹Ñ]¥‘Ñ ±™½¹Ð°Ü¸È¤ì(€¥˜¡äµÑ•ÉµÌ¹±•¹Ñ ¨ÄÀñ‰½ÑÑ½µ1¥µ¥Ð¥ÍÑ…ÉÑ½¹Ñ¥¹Õ…Ñ¥½¸ AÉ½Á½Í…°MÕµµ…Éä€´½¹Ñ¥¹Õ•œ¤ì(€‘É…Ý]É…ÁÁ•¡Á…”±Ñ•ÉµÌ±µ…É¥¸±ä±™½¹Ð°Ü¸È°ÄÀ±µÕÑ•¤ì((€€¼¼½½Ñ•È¥Ì…‘‘•Ñ¼Ñ¡”™¥ÉÍÐÁ…”±…ÍÐ‰•…ÕÍ”½µÁ…ÐÁ…•ÌÉ••¥Ù”¥ÐÝ¡•¸É•…Ñ•¸(€‘É…Ý½½Ñ•È¡™¥ÉÍÑA…”°Ä¤ì(€É•ÑÕÉ¸‘½Õµ•¹Ð¹Í…Ù” ¤ì)ô

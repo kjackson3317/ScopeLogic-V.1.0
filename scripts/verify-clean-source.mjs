@@ -89,7 +89,7 @@ for (const requiredText of ['parts-db-filter-grid', 'Part Number / partial part 
 for (const requiredText of ['bomPdfSelectOpen', 'Select Items to Show on Proposal', 'quote-switcher-bar', 'desktopNavCollapsed', 'Source Type(s)', 'Not Mentioned in Contract Documents', 'alphaNumericCompare']) {
   if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5.2 inherited behavior: ${requiredText}`);
 }
-for (const requiredText of ['formatQuoteNumber', 'createRevision', 'createChangeOrder', 'duplicateQuote', 'Copy Existing Quote', 'saveCurrentAsTemplate', 'quote-bom-tabs', 'Purchasing BOM', 'breakoutSummaries', 'materialMarkupOverride', 'shippingMarkup', 'otherCostsMarkup', 'summary-notes-fill', 'Short Alternate Scope of Work']) {
+for (const requiredText of ['formatQuoteNumber', 'createRevision', 'createChangeOrder', 'duplicateQuote', 'Copy Existing Quote', 'saveCurrentAsTemplate', 'quote-bom-tabs', 'Purchasing BOM', 'breakoutSummaries', 'materialMarkupOverride', 'shippingMarkup', 'otherCostsMarkup', 'internal-notes-bottom', 'Short Alternate Scope of Work']) {
   if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5.4 quote behavior: ${requiredText}`);
 }
 for (const requiredText of ['quotePdfPricingDisplay', 'Customer Pricing Display', 'Detailed pricing', 'Total price only']) {
@@ -97,6 +97,28 @@ for (const requiredText of ['quotePdfPricingDisplay', 'Customer Pricing Display'
 }
 for (const requiredText of ['breakoutAllocations', 'Breakout Pricing', 'Quantity Allocation Workspace', 'Apply Percentages to Selected', 'Copy First Pattern', 'Unassigned Qty', 'Base + Awarded Alternates']) {
   if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5.6 breakout allocation behavior: ${requiredText}`);
+}
+for (const requiredText of ['resolvedProjectCreatedAt', 'Newest Created First', 'Quote Numbers', 'project-quote-numbers', 'quotesByProject={quotesByProject}']) {
+  if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing next-release Project Library behavior: ${requiredText}`);
+}
+for (const requiredText of ["id!=='project-management'", 'project-manager-summary-row', 'Project manager hours', 'Quote-level hours only']) {
+  if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing quote-level Project Manager behavior: ${requiredText}`);
+}
+for (const requiredText of ['commissionMode', 'commissionPercent', 'commissionAmount', 'commission-summary-card', 'Percent of Pre-Tax Price', 'Custom Dollar Amount', 'Net Profit After Commission', 'Quote total less tax']) {
+  if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing internal quote commission behavior: ${requiredText}`);
+}
+for (const requiredText of ['miscMaterialPercent', 'miscMaterialMarkup', 'shippingPercent', 'miscLaborPercent', 'materialHandlingHours', 'overtimeHours', 'liftMoney', 'liftMarkup', 'parkingMoney', 'parkingMarkup', 'connexRental', 'connexRentalMarkup', 'permitMoney', 'permitMarkup', 'Misc Material Adder', 'Shipping', 'Misc Labor Adder', 'Material Handling', 'Overtime', 'Lift Money', 'Parking Money', 'Connex Rental', 'Permit', 'Non-Taxable Job Costs']) {
+  if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5.7 quote summary behavior: ${requiredText}`);
+}
+for (const removedSummaryControl of ['className="summary-field"><span>Terms</span>', '<span>Admin Notes</span><textarea value={quote.adminNotes']) {
+  if (workspace.includes(removedSummaryControl)) violations.push(`app/workspace.tsx: removed summary control remains: ${removedSummaryControl}`);
+}
+const globalStyles = await readFile(join(root, 'app', 'globals.css'), 'utf8');
+if (!globalStyles.includes('.quote-items-table th:nth-child(8),.quote-items-table td:nth-child(8)') || !globalStyles.includes('width:62px!important')) {
+  violations.push('app/globals.css: compact BOM material markup column is missing');
+}
+for (const requiredText of ['.quote-summary-side-card', '.summary-side-row', '.internal-notes-bottom']) {
+  if (!globalStyles.includes(requiredText)) violations.push(`app/globals.css: missing RC5.5.7 summary layout style: ${requiredText}`);
 }
 for (const removedText of ['className="alternate-assignment"', 'className="breakout-assignment"', '<th>BOM</th><th>Breakout</th>']) {
   if (workspace.includes(removedText)) violations.push(`app/workspace.tsx: obsolete RC5.5.4 BOM-row dropdown remains: ${removedText}`);
@@ -136,9 +158,14 @@ for (const requiredText of ['workspace_backups', 'Automatic workspace checkpoint
   if (!cloudWorkspace.includes(requiredText)) violations.push(`lib/cloud-workspace.ts: missing RC5.5.2 data protection: ${requiredText}`);
 }
 if (!cloudWorkspace.includes('breakoutAllocations?: Record<string, number>')) violations.push('lib/cloud-workspace.ts: RC5.5.6 breakout allocation field is missing');
+if (!cloudWorkspace.includes('createdAt: text(row.created_at)')) violations.push('lib/cloud-workspace.ts: Project Library creation-date mapping is missing');
+if (!cloudWorkspace.includes("commissionMode?: 'percentage' | 'custom'")) violations.push('lib/cloud-workspace.ts: internal commission fields are missing');
+for (const requiredText of ['shippingPercent?: number', 'miscMaterialPercent?: number', 'miscLaborPercent?: number', 'materialHandlingHours?: number', 'overtimeHours?: number', 'liftMoney?: number', 'parkingMoney?: number', 'connexRental?: number', 'permitMoney?: number']) {
+  if (!cloudWorkspace.includes(requiredText)) violations.push(`lib/cloud-workspace.ts: missing RC5.5.7 quote summary field: ${requiredText}`);
+}
 
 const pdfGenerator = await readFile(join(root, 'app', 'pdf-generator.ts'), 'utf8');
-for (const requiredText of ['recommendationSummary', 'checklistItemFor', 'drawChecklistSection', "columnIndex === 2", 'SYSTEM_ORDER', "headers: ['RFI No.', 'Systems', 'Question']", "headers: ['SLR', 'Systems', 'Scope Item', 'Scope Concern', 'Recommended Bid Basis by System', 'Source Reference']"]) {
+for (const requiredText of ['recommendationSummary', 'checklistItemFor', 'drawChecklistSection', "columnIndex === 2", 'SYSTEM_ORDER', "headers: ['RFI No.', 'Systems', 'Question', 'Document References']", "values: ({ issue }) => [issue.rfi, systemNames(issue), issue.rfiQuestion || issue.concern, issue.reference]", "headers: ['SLR', 'Systems', 'Scope Item', 'Scope Concern', 'Recommended Bid Basis by System', 'Source Reference']"]) {
   if (!pdfGenerator.includes(requiredText)) violations.push(`app/pdf-generator.ts: missing RC4 PDF behavior: ${requiredText}`);
 }
 
@@ -163,7 +190,7 @@ if (/title: 'Formal RFI'[\s\S]{0,220}headers:\s*\[[^\]]*Answer/.test(pdfGenerato
 }
 
 const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-if (packageJson.version !== '1.0.0-rc.5.5.6') violations.push('package.json: version must be 1.0.0-rc.5.5.6');
+if (packageJson.version !== '1.0.0-rc.5.5.7') violations.push('package.json: version must be 1.0.0-rc.5.5.7');
 if (packageJson.dependencies?.resend || packageJson.devDependencies?.resend) violations.push('package.json: Resend dependency must be removed');
 if (packageJson.dependencies?.exceljs !== '4.4.0') violations.push('package.json: ExcelJS 4.4.0 is required for browser XLSX import/export.');
 if (packageJson.dependencies?.['pdfjs-dist'] !== '4.10.38') violations.push('package.json: PDF.js 4.10.38 is required for Drawing Take Off.');
