@@ -9,9 +9,11 @@ alter table public.release_packages
   add column if not exists issued_at timestamptz,
   add column if not exists issued_by uuid references auth.users(id);
 
+alter table public.release_packages disable trigger protect_release_package_immutability_update;
 update public.release_packages
 set document_key = coalesce(document_key, 'project-package')
 where document_key is null;
+alter table public.release_packages enable trigger protect_release_package_immutability_update;
 
 alter table public.release_packages alter column document_key set not null;
 
@@ -20,6 +22,8 @@ create unique index if not exists release_packages_document_release_number_uidx
   on public.release_packages(project_id, document_key, release_number);
 create index if not exists release_packages_document_history_idx
   on public.release_packages(project_id, document_key, release_number desc);
+create index if not exists release_packages_generated_by_idx on public.release_packages(generated_by);
+create index if not exists release_packages_issued_by_idx on public.release_packages(issued_by);
 
 create table if not exists public.release_quote_revisions (
   id uuid primary key default gen_random_uuid(),
@@ -37,6 +41,7 @@ create table if not exists public.release_quote_revisions (
 );
 
 alter table public.release_quote_revisions enable row level security;
+create index if not exists release_quote_revisions_owner_idx on public.release_quote_revisions(owner_id);
 create policy "Owners read release quote revisions" on public.release_quote_revisions
   for select to authenticated using ((select auth.uid()) = owner_id);
 revoke insert, update, delete on public.release_quote_revisions from authenticated;
@@ -97,6 +102,7 @@ begin
 end;
 $$;
 revoke all on function public.create_scopelogic_proposal_release(text,text,text,text,text,integer,date,text,text,jsonb,text,jsonb) from public;
+revoke all on function public.create_scopelogic_proposal_release(text,text,text,text,text,integer,date,text,text,jsonb,text,jsonb) from anon;
 grant execute on function public.create_scopelogic_proposal_release(text,text,text,text,text,integer,date,text,text,jsonb,text,jsonb) to authenticated;
 
 notify pgrst, 'reload schema';
