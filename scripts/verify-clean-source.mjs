@@ -49,7 +49,7 @@ for (const requiredText of [
   'renameProjectFile',
   'System Status',
   'Export Current Project Backup',
-  'Release History',
+  'Official Document Histories',
   'sidebar-backdrop',
   'Quote Template Builder',
   'Travel Time Calculator',
@@ -108,7 +108,10 @@ for (const requiredText of ['commissionMode', 'commissionPercent', 'commissionAm
   if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing internal quote commission behavior: ${requiredText}`);
 }
 for (const requiredText of ['miscMaterialPercent', 'miscMaterialMarkup', 'shippingPercent', 'miscLaborPercent', 'materialHandlingHours', 'overtimeHours', 'liftMoney', 'liftMarkup', 'parkingMoney', 'parkingMarkup', 'connexRental', 'connexRentalMarkup', 'permitMoney', 'permitMarkup', 'Misc Material Adder', 'Shipping', 'Misc Labor Adder', 'Material Handling', 'Overtime', 'Lift Money', 'Parking Money', 'Connex Rental', 'Permit', 'Non-Taxable Job Costs']) {
-  if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5.7 quote summary behavior: ${requiredText}`);
+  if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5.7 inherited quote summary behavior: ${requiredText}`);
+}
+for (const requiredText of ['ProjectCalendar', 'Important Dates', 'breakoutAllocationMode', 'allocationPercent', 'Total Labor Hours', 'General Conditions Allocation', 'Document References', "rate.id==='installation'", 'return `Q-${root}${changeOrder}${revision}`', 'ScopeLogic Help', 'Search ScopeLogic Help']) {
+  if (!workspace.includes(requiredText)) violations.push(`app/workspace.tsx: missing RC5.5.8 behavior: ${requiredText}`);
 }
 for (const removedSummaryControl of ['className="summary-field"><span>Terms</span>', '<span>Admin Notes</span><textarea value={quote.adminNotes']) {
   if (workspace.includes(removedSummaryControl)) violations.push(`app/workspace.tsx: removed summary control remains: ${removedSummaryControl}`);
@@ -140,9 +143,13 @@ if (!workspace.includes('checklistItems: Record<string, string>')) {
 }
 
 const drawingTakeoff = await readFile(join(root, 'app', 'drawing-takeoff.tsx'), 'utf8');
-for (const requiredText of ['PDF Drawing Take Off', 'Sync Counts to Take Off', "import('pdfjs-dist')", 'Calibrate', 'Snippet / SLR', 'Linked Take Off Rule', "source: 'drawing'"]) {
+for (const requiredText of ['PDF Drawing Take Off', 'Sync Counts to Take Off', "import('pdfjs-dist')", 'Calibrate', 'Linked Take Off Rule', "source: 'drawing'", 'onWheel', 'isPanning']) {
   if (!drawingTakeoff.includes(requiredText)) violations.push(`app/drawing-takeoff.tsx: missing ${requiredText}`);
 }
+for (const requiredText of ['MIN_SCALE = .08', 'MAX_SCALE = 6', 'Fit Page', 'Fit Width', 'Focus Drawing', 'drawing-workspace-stack', 'drawing-tools-dock', 'drawing-summary-dock', 'drawing-stage', 'Space to pan temporarily', 'MAX_RASTER_PIXELS', 'ratioX = (area.scrollLeft + x)']) {
+  if (!drawingTakeoff.includes(requiredText) && !globalStyles.includes(requiredText)) violations.push(`Drawing workspace: missing RC5.5.9 behavior ${requiredText}`);
+}
+if (drawingTakeoff.includes('Snippet / SLR')) violations.push('app/drawing-takeoff.tsx: removed Snippet Register control remains');
 if (drawingTakeoff.includes('starterTools') || drawingTakeoff.includes("localStorage.setItem('sl-tools'")) violations.push('app/drawing-takeoff.tsx: standalone prototype defaults/localStorage must not remain in RC5.4');
 
 const zipSupport = await readFile(join(root, 'lib', 'zip.ts'), 'utf8');
@@ -158,6 +165,7 @@ for (const requiredText of ['workspace_backups', 'Automatic workspace checkpoint
   if (!cloudWorkspace.includes(requiredText)) violations.push(`lib/cloud-workspace.ts: missing RC5.5.2 data protection: ${requiredText}`);
 }
 if (!cloudWorkspace.includes('breakoutAllocations?: Record<string, number>')) violations.push('lib/cloud-workspace.ts: RC5.5.6 breakout allocation field is missing');
+if (!cloudWorkspace.includes("breakoutAllocationMode?: 'auto' | 'manual'") || !cloudWorkspace.includes('allocationPercent?: number | null')) violations.push('lib/cloud-workspace.ts: RC5.5.8 breakout allocation fields are missing');
 if (!cloudWorkspace.includes('createdAt: text(row.created_at)')) violations.push('lib/cloud-workspace.ts: Project Library creation-date mapping is missing');
 if (!cloudWorkspace.includes("commissionMode?: 'percentage' | 'custom'")) violations.push('lib/cloud-workspace.ts: internal commission fields are missing');
 for (const requiredText of ['shippingPercent?: number', 'miscMaterialPercent?: number', 'miscLaborPercent?: number', 'materialHandlingHours?: number', 'overtimeHours?: number', 'liftMoney?: number', 'parkingMoney?: number', 'connexRental?: number', 'permitMoney?: number']) {
@@ -190,7 +198,7 @@ if (/title: 'Formal RFI'[\s\S]{0,220}headers:\s*\[[^\]]*Answer/.test(pdfGenerato
 }
 
 const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-if (packageJson.version !== '1.0.0-rc.5.5.7') violations.push('package.json: version must be 1.0.0-rc.5.5.7');
+if (packageJson.version !== '1.0.0-rc.5.6.0') violations.push('package.json: version must be 1.0.0-rc.5.6.0');
 if (packageJson.dependencies?.resend || packageJson.devDependencies?.resend) violations.push('package.json: Resend dependency must be removed');
 if (packageJson.dependencies?.exceljs !== '4.4.0') violations.push('package.json: ExcelJS 4.4.0 is required for browser XLSX import/export.');
 if (packageJson.dependencies?.['pdfjs-dist'] !== '4.10.38') violations.push('package.json: PDF.js 4.10.38 is required for Drawing Take Off.');
@@ -242,3 +250,4 @@ if (violations.length) {
 }
 
 console.log(`ScopeLogic source verification passed (${sourceFiles.length} source files checked).`);
+

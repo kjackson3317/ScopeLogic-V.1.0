@@ -134,11 +134,11 @@ export type LaborRate = { id: string; name: string; costPerHour: number; markup?
 export type DifficultyMultiplier = { id: string; name: string; multiplier: number; active: boolean };
 export type PartRecord = { id: string; manufacturer: string; partNumber: string; description: string; system: string; category: string; bomSection?: string; unitCost: number; materialMarkup: number; engineeringMinutes: number; installationMinutes: number; programmingMinutes: number; testingMinutes: number; laborMinutes?: Record<string, number>; cableType?: string; cableFeet?: number; vendor: string; updatedAt: string; active: boolean };
 export type QuoteGroup = { id: string; name: string };
-export type QuoteLine = { id: string; partId: string; manufacturer: string; partNumber: string; description: string; system: string; bomSection?: string; groupId?: string; breakoutId?: string; breakoutAllocations?: Record<string, number>; alternateId?: string; showOnBom?: boolean; qty: number; unitCost: number; materialMarkup: number; materialMarkupOverride?: number | null; engineeringMinutes: number; installationMinutes: number; programmingMinutes: number; testingMinutes: number; laborMinutes?: Record<string, number>; cableType?: string; cableFeet?: number; adHoc?: boolean };
+export type QuoteLine = { id: string; partId: string; manufacturer: string; partNumber: string; description: string; system: string; bomSection?: string; groupId?: string; breakoutId?: string; breakoutAllocations?: Record<string, number>; alternateId?: string; showOnBom?: boolean; qty: number; unitCost: number; unitCostOverride?: boolean; materialMarkup: number; materialMarkupOverride?: number | null; engineeringMinutes: number; installationMinutes: number; programmingMinutes: number; testingMinutes: number; laborMinutes?: Record<string, number>; cableType?: string; cableFeet?: number; adHoc?: boolean };
 export type TravelCalculator = { crewSize: number; roundTripHours: number; days: number; hotelNights: number; roomRate: number; perDiemRate: number; laborRateId: string };
-export type QuoteBreakout = { id: string; name: string; description?: string; showOnProposal?: boolean; order?: number };
+export type QuoteBreakout = { id: string; name: string; description?: string; showOnProposal?: boolean; order?: number; allocationPercent?: number | null };
 export type QuoteAlternate = { id: string; name: string; scopeHtml?: string; awarded?: boolean; type?: 'add' | 'deduct' };
-export type Quote = { id: string; number: string; name: string; status: string; taxRate: number; bondRate: number; shipping: number; shippingPercent?: number; shippingMarkup?: number; miscMaterialPercent?: number; miscMaterialMarkup?: number; otherCosts: number; otherCostsMarkup?: number; liftMoney?: number; liftMarkup?: number; parkingMoney?: number; parkingMarkup?: number; connexRental?: number; connexRentalMarkup?: number; permitMoney?: number; permitMarkup?: number; lines: QuoteLine[]; groups?: QuoteGroup[]; breakouts?: QuoteBreakout[]; alternates?: QuoteAlternate[]; createdAt: string; updatedAt: string; difficultyId?: string; globalMaterialMarkup?: number; laborMarkups?: Record<string, number>; projectManagementHours?: number; miscLaborPercent?: number; materialHandlingHours?: number; overtimeHours?: number; commissionMode?: 'percentage' | 'custom'; commissionPercent?: number; commissionAmount?: number; travelHours?: Record<string, number>; travel?: TravelCalculator; laborAdjustments?: Record<string, number>; jobMaterialDiscount?: number; perDiemTravel?: number; terms?: string; internalNotes?: string; adminNotes?: string; engineeringNotRequired?: boolean; quoteKind?: 'base' | 'change-order'; quoteYear?: number; rootSequence?: number; changeOrderNumber?: number; revisionNumber?: number; parentQuoteId?: string; locked?: boolean };
+export type Quote = { id: string; number: string; name: string; status: string; taxRate: number; bondRate: number; shipping: number; shippingPercent?: number; shippingMarkup?: number; miscMaterialPercent?: number; miscMaterialMarkup?: number; otherCosts: number; otherCostsMarkup?: number; liftMoney?: number; liftMarkup?: number; parkingMoney?: number; parkingMarkup?: number; connexRental?: number; connexRentalMarkup?: number; permitMoney?: number; permitMarkup?: number; lines: QuoteLine[]; groups?: QuoteGroup[]; breakouts?: QuoteBreakout[]; breakoutAllocationMode?: 'auto' | 'manual'; alternates?: QuoteAlternate[]; createdAt: string; updatedAt: string; difficultyId?: string; globalMaterialMarkup?: number; laborMarkups?: Record<string, number>; laborRateSnapshot?: LaborRate[]; projectManagementHours?: number; miscLaborPercent?: number; materialHandlingHours?: number; overtimeHours?: number; commissionMode?: 'percentage' | 'custom'; commissionPercent?: number; commissionAmount?: number; travelHours?: Record<string, number>; travel?: TravelCalculator; laborAdjustments?: Record<string, number>; jobMaterialDiscount?: number; perDiemTravel?: number; terms?: string; internalNotes?: string; adminNotes?: string; engineeringNotRequired?: boolean; quoteKind?: 'base' | 'change-order'; quoteYear?: number; rootSequence?: number; changeOrderNumber?: number; revisionNumber?: number; parentQuoteId?: string; locked?: boolean; includeInProjectTotal?: boolean; revisionReason?: string; revisionScopeOfWork?: ScopeOfWorkDoc; lockedAt?: string; generatedReleaseId?: string; pricingRefresh?: { refreshedAt: string; material: boolean; labor: boolean; previousMaterial: number; currentMaterial: number; previousLabor: number; currentLabor: number; previousTotal: number; currentTotal: number; itemChanges: { partId: string; partNumber: string; previousCost: number; currentCost: number; override: boolean; decision: 'kept-override' | 'database' }[] } };
 export type QuoteTemplate = { id: string; name: string; description: string; system: string; globalMaterialMarkup: number; difficultyId?: string; laborMarkups?: Record<string, number>; groups?: QuoteGroup[]; lines: QuoteLine[]; createdAt: string; updatedAt: string };
 export type TakeoffCalculationMode = 'multiply' | 'capacity' | 'cable-length';
 export type TakeoffRounding = 'up' | 'down';
@@ -167,6 +167,12 @@ export type OfficialRelease = {
   supersededAt: string;
   contentSha256: string;
   deliverables: string[];
+  documentKey?: string;
+  documentType?: string;
+  proposalMode?: string;
+  quoteRevisionNumber?: number;
+  issuedAt?: string;
+  snapshotData?: Record<string, unknown>;
 };
 
 export type WorkspaceSnapshot = {
@@ -933,7 +939,7 @@ export async function listOfficialReleases(projectLegacyId: string): Promise<Off
   if (!projectResult.data?.id) return [];
 
   const releaseResult = requireResult(await supabase.from('release_packages')
-    .select('id, revision, version_date, lifecycle_status, release_notes, filename, storage_path, released_at, superseded_at, release_number, content_sha256')
+    .select('id, revision, version_date, lifecycle_status, release_notes, filename, storage_path, released_at, superseded_at, release_number, content_sha256, document_key, document_type, proposal_mode, quote_revision_number, issued_at, snapshot_data')
     .eq('owner_id', user.id)
     .eq('project_id', projectResult.data.id)
     .order('release_number', { ascending: false }), 'Read official releases');
@@ -960,6 +966,12 @@ export async function listOfficialReleases(projectLegacyId: string): Promise<Off
     supersededAt: text(row.superseded_at),
     contentSha256: text(row.content_sha256),
     deliverables: deliverablesByRelease.get(row.id) || [],
+    documentKey: text(row.document_key) || 'project-package',
+    documentType: text(row.document_type) || 'project-package',
+    proposalMode: text(row.proposal_mode),
+    quoteRevisionNumber: row.quote_revision_number == null ? undefined : Number(row.quote_revision_number),
+    issuedAt: text(row.issued_at),
+    snapshotData: (row.snapshot_data || {}) as Record<string, unknown>,
   }));
 }
 
@@ -996,3 +1008,24 @@ export async function saveOfficialRelease(projectLegacyId: string, projectRevisi
     throw error;
   }
 }
+
+export async function saveProposalRelease(input: { projectLegacyId: string; documentKey: string; documentType: string; proposalMode: string; revision: string; quoteRevisionNumber?: number; versionDate: string; filename: string; pdf: Blob; snapshotData: unknown; quoteRevisions: unknown[] }) {
+  const supabase = createClient();
+  const user = await currentUser(supabase);
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const safeName = input.filename.replace(/[^a-zA-Z0-9._-]+/g, '_');
+  const safeDocument = input.documentKey.replace(/[^a-zA-Z0-9._-]+/g, '_');
+  const storagePath = `${user.id}/${input.projectLegacyId}/proposals/${safeDocument}/${timestamp}_${safeName}`;
+  requireResult(await supabase.storage.from('project-files').upload(storagePath, input.pdf, { upsert: false, contentType: 'application/pdf', cacheControl: '3600' }), 'Store official proposal');
+  try {
+    const digest = await crypto.subtle.digest('SHA-256', await input.pdf.arrayBuffer());
+    const sha256 = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    const result = requireResult(await supabase.rpc('create_scopelogic_proposal_release', { p_project_legacy_id: input.projectLegacyId, p_document_key: input.documentKey, p_document_type: input.documentType, p_proposal_mode: input.proposalMode, p_revision: input.revision, p_quote_revision_number: input.quoteRevisionNumber ?? null, p_version_date: input.versionDate || null, p_filename: input.filename, p_storage_path: storagePath, p_snapshot_data: input.snapshotData || {}, p_content_sha256: sha256, p_quote_revisions: input.quoteRevisions || [] }), 'Record official proposal');
+    const record = Array.isArray(result.data) ? result.data[0] : result.data;
+    return { storagePath, releaseNumber: Number(record?.release_number || 0), releaseId: text(record?.release_id), sha256 };
+  } catch (error) {
+    await supabase.storage.from('project-files').remove([storagePath]);
+    throw error;
+  }
+}
+
