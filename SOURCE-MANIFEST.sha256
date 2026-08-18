@@ -1,4 +1,5 @@
 3082cf9cda5aacca1dc42bba7b8851cd3f6dbba50b42580d131155484a2c7066  .env.example
+8acd61c3fd25828b7a956c5a8582d2146fd06a08f5a0feb8b2c2e95619b4aa11  .env.production
 f631307ef6a0ebd52d9948a7fbe541f6e3418353b5af956a2e57b1d5d5f1293b  .gitignore
 cdc281c17e7d4c1aae34ca049ca5e32191caf2adfbdfc65125d7606b21a78687  app/auth/callback/route.ts
 67bc112a7e3aabf23b03a8247078c07ea71ae6153f22f08637faf8bc0aad42f0  app/auth/confirm/route.ts
