@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont, type PDFImage } from 'pdf-lib';
 
-export type PdfKind = 'sow' | 'clarifications' | 'rfi' | 'checklist' | 'snippets';
+export type PdfKind = 'sow' | 'clarifications' | 'rfi' | 'checklist';
 
 export type PdfProject = {
   name: string;
@@ -118,17 +118,11 @@ function configFor(kind: PdfKind): PdfConfig {
     ratios: [0.1, 0.18, 0.48, 0.24],
     values: ({ issue }) => [issue.rfi, systemNames(issue), issue.rfiQuestion || issue.concern, issue.reference],
   };
-  if (kind === 'checklist') return {
+  return {
     title: 'Contractor Response Checklist',
     headers: ['SLR', 'Checklist Scope Item', 'Response', 'Reason'],
     ratios: [0.08, 0.39, 0.2, 0.33],
     values: ({ issue, system }) => [issue.id, checklistItemFor(issue, system || systemKeys(issue)[0]), '', ''],
-  };
-  return {
-    title: 'Snippet Register',
-    headers: ['Snippet No.', 'SLR', 'Systems', 'Source Reference', 'Caption'],
-    ratios: [0.09, 0.07, 0.16, 0.26, 0.42],
-    values: ({ issue }) => [issue.snippet, issue.id, systemNames(issue), issue.reference, issue.title],
   };
 }
 
@@ -146,7 +140,7 @@ function rowsFor(kind: PdfKind, issues: PdfIssue[]): PdfRow[] {
       .filter((issue) => systemKeys(issue).includes(system) && checklistItemFor(issue, system).trim())
       .map((issue) => ({ issue, system, section: displaySystem(issue, system) })));
   }
-  return issues.filter((issue) => issue.snippet).map((issue) => ({ issue }));
+  return [];
 }
 
 function exactWidths(ratios: number[], total: number) {
@@ -469,7 +463,7 @@ export async function buildPdfBytes(kind: PdfKind, project: PdfProject, issues: 
   return document.save();
 }
 
-export async function buildReleasePackageBytes(project: PdfProject, issues: PdfIssue[], selectedKinds: PdfKind[] = ['sow', 'clarifications', 'rfi', 'checklist', 'snippets'], releaseNotes = '', releaseNumber = 1) {
+export async function buildReleasePackageBytes(project: PdfProject, issues: PdfIssue[], selectedKinds: PdfKind[] = ['sow', 'clarifications', 'rfi', 'checklist'], releaseNotes = '', releaseNumber = 1) {
   const output = await PDFDocument.create();
   const font = await output.embedFont(StandardFonts.Helvetica);
   const bold = await output.embedFont(StandardFonts.HelveticaBold);
@@ -805,3 +799,109 @@ export async function buildQuotePdfBytes(input: QuotePdfInput) {
   drawFooter(firstPage,1);
   return document.save();
 }
+
+export type ProposalPdfMode = 'individual' | 'combined-itemized' | 'combined-lump-sum';
+export type ProposalPdfSystem = {
+  id: string;
+  name: string;
+  number: string;
+  revision: number;
+  totals: { material: number; labor: number; other: number; tax: number; bond: number; total: number };
+  alternates: { name: string; scopeHtml?: string; classification: 'ADD' | 'DEDUCT' | 'NO COST'; total: number }[];
+  scopeHtml: string;
+  groups: { id: string; name: string }[];
+  lines: { groupId: string; description: string; qty: number; unitPrice?: number }[];
+};
+export type ProposalPdfInput = {
+  mode: ProposalPdfMode;
+  project: { name: string; client: string; versionDate: string };
+  documentRevision: number;
+  systems: ProposalPdfSystem[];
+  display: { showBom: boolean; showLaborBreakdown: boolean; showUnitPricing: boolean };
+  commercialLanguage?: string;
+};
+
+/** Builds every customer proposal in the fixed order Cover -> Pricing/Alternates -> SOW -> optional BOM. */
+export async function buildProposalPdfBytes(input: ProposalPdfInput) {
+  if (!input.systems.length) throw new Error('At least one included system is required.');
+  const document = await PDFDocument.create();
+  const [font, bold] = await Promise.all([document.embedFont(StandardFonts.Helvetica), document.embedFont(StandardFonts.HelveticaBold)]);
+  const brand = await embedBrand(document, await loadBrandAssets());
+  const size: [number, number] = [612, 792];
+  const margin = 54;
+  const width = size[0] - margin * 2;
+  const bottom = 54;
+  const green = rgb(.04, .40, .29);
+  const navy = rgb(.05, .17, .22);
+  const muted = rgb(.37, .43, .42);
+  const border = rgb(.82, .86, .85);
+  const pale = rgb(.94, .97, .96);
+  let pageNumber = 0;
+
+  const header = (page: PDFPage, title: string) => {
+    pageNumber += 1;
+    const word = brand.wordmark.scaleToFit(155, 25);
+    page.drawImage(brand.wordmark, { x: margin, y: 744, width: word.width, height: word.height });
+    page.drawText(title.toUpperCase(), { x: margin, y: 710, size: 16, font: bold, color: navy });
+    page.drawLine({ start: { x: margin, y: 700 }, end: { x: 612 - margin, y: 700 }, thickness: 1, color: green });
+    page.drawText(`${input.project.name}  |  Rev ${input.documentRevision}`, { x: margin, y: 25, size: 7, font, color: muted });
+    page.drawText(String(pageNumber), { x: 548, y: 25, size: 7, font, color: muted });
+  };
+  const addPage = (title: string) => { const page = document.addPage(size); header(page, title); return page; };
+  const money = (value: number) => quoteMoney(value);
+  const signed = (value: number) => value < -.005 ? `-${money(Math.abs(value))}` : value > .005 ? `+${money(value)}` : money(0);
+
+  // Cover page is intentionally independent from pricing and scope.
+  const cover = document.addPage(size); pageNumber += 1;
+  const logo = brand.full.scaleToFit(275, 135); cover.drawImage(brand.full, { x: (612 - logo.width) / 2, y: 565, width: logo.width, height: logo.height });
+  cover.drawText('PROJECT PROPOSAL', { x: 0, y: 470, size: 27, font: bold, color: navy, maxWidth: 612, lineHeight: 30 });
+  cover.drawLine({ start: { x: 105, y: 448 }, end: { x: 507, y: 448 }, thickness: 2, color: green });
+  const coverRows: [string, string][] = [['PROJECT', input.project.name], ['CUSTOMER', input.project.client || 'Not entered'], ['PROPOSAL MODE', input.mode === 'individual' ? input.systems[0].name : input.mode === 'combined-itemized' ? 'Combined — Itemized by System' : 'Combined — Lump Sum'], ['REVISION / DATE', `Rev ${input.documentRevision}  |  ${input.project.versionDate || 'Not set'}`]];
+  let coverY = 395;
+  for (const [label, value] of coverRows) { cover.drawText(label, { x: 120, y: coverY, size: 7, font: bold, color: green }); cover.drawText(value, { x: 220, y: coverY - 2, size: 11, font: bold, color: navy }); coverY -= 45; }
+  cover.drawText('ScopeLogic', { x: margin, y: 25, size: 7, font, color: muted }); cover.drawText('1', { x: 548, y: 25, size: 7, font, color: muted });
+
+  // Pricing and alternates always follow the cover.
+  let page = addPage('Pricing & Alternates');
+  let y = 665;
+  const combinedTotal = input.systems.reduce((sum, system) => sum + system.totals.total, 0);
+  const drawPriceRow = (label: string, amount: number, strong = false) => {
+    if (y < bottom + 40) { page = addPage('Pricing & Alternates — Continued'); y = 665; }
+    page.drawRectangle({ x: margin, y: y - 18, width, height: 30, color: strong ? green : pale, borderColor: border, borderWidth: .5 });
+    page.drawText(label, { x: margin + 10, y: y - 7, size: strong ? 10 : 9, font: bold, color: strong ? rgb(1, 1, 1) : navy });
+    const value = money(amount); page.drawText(value, { x: 612 - margin - 10 - bold.widthOfTextAtSize(value, strong ? 11 : 9), y: y - 8, size: strong ? 11 : 9, font: bold, color: strong ? rgb(1, 1, 1) : navy }); y -= 38;
+  };
+  if (input.mode === 'combined-itemized') input.systems.forEach((system) => drawPriceRow(`${system.name}  ·  ${system.number} Rev ${system.revision}`, system.totals.total));
+  if (input.mode === 'individual' && input.display.showLaborBreakdown) {
+    const system = input.systems[0]; drawPriceRow('Material', system.totals.material); drawPriceRow('Labor (including Project Manager)', system.totals.labor); drawPriceRow('Other / Fees', system.totals.other + system.totals.tax + system.totals.bond);
+  }
+  drawPriceRow(input.mode === 'individual' ? 'TOTAL PRICE' : 'TOTAL PROJECT PRICE', combinedTotal, true);
+  y -= 8;
+  const alternates = input.systems.flatMap((system) => system.alternates.map((alternate) => ({ system: system.name, ...alternate })));
+  if (alternates.length) {
+    page.drawText('ADD / DEDUCT ALTERNATES', { x: margin, y, size: 10, font: bold, color: green }); y -= 24;
+    for (const alternate of alternates) { if (y < bottom + 55) { page = addPage('Pricing & Alternates — Continued'); y = 665; } page.drawText(`${alternate.system} — ${alternate.classification}: ${alternate.name}`, { x: margin + 8, y, size: 8.5, font: bold, color: navy }); const amount = signed(alternate.total); page.drawText(amount, { x: 612 - margin - bold.widthOfTextAtSize(amount, 8.5), y, size: 8.5, font: bold, color: alternate.classification === 'DEDUCT' ? rgb(.58, .14, .12) : green }); y -= 20; }
+  } else { page.drawText('No add/deduct alternates included.', { x: margin, y, size: 8.5, font, color: muted }); }
+  if (input.commercialLanguage?.trim()) { y -= 28; const lines = wrapText(input.commercialLanguage, width, font, 8); drawWrapped(page, lines, margin, y, font, 8, 11, navy); }
+
+  // SOW is a standalone section after all pricing; systems are not attached beneath price rows.
+  for (const system of input.systems) {
+    page = addPage(input.mode === 'individual' ? 'Scope of Work' : `Scope of Work — ${system.name}`); y = 665;
+    page.drawText(`${system.name}  ·  ${system.number} Rev ${system.revision}`, { x: margin, y, size: 9, font: bold, color: green }); y -= 28;
+    const blocks = htmlToQuoteBlocks(system.scopeHtml);
+    if (!blocks.length) blocks.push({ text: 'No Scope of Work content entered.', indent: 0, marker: 'none', spacing: 1.15, heading: false });
+    for (const block of blocks) {
+      const markerWidth = block.marker === 'none' ? 0 : 14; const x = margin + block.indent * 13 + markerWidth; const blockFont = block.heading ? bold : font; const fontSize = block.heading ? 10 : 9; const lineHeight = 12;
+      const lines = wrapText(block.text, width - block.indent * 13 - markerWidth, blockFont, fontSize);
+      for (let offset = 0; offset < lines.length;) { if (y < bottom + 25) { page = addPage(`Scope of Work — ${system.name} — Continued`); y = 665; } const available = Math.max(1, Math.floor((y - bottom) / lineHeight)); const chunk = lines.slice(offset, offset + available); if (offset === 0 && block.marker === 'bullet') page.drawCircle({ x: x - 9, y: y - 3, size: 1.7, color: green }); if (offset === 0 && block.marker === 'number') page.drawText(`${block.number || 1}.`, { x: x - 13, y: y - 3, size: 7, font: bold, color: green }); drawWrapped(page, chunk, x, y, blockFont, fontSize, lineHeight, navy); y -= chunk.length * lineHeight + 6; offset += chunk.length; }
+    }
+  }
+
+  if (input.display.showBom) for (const system of input.systems) {
+    page = addPage(`Bill of Materials — ${system.name}`); y = 665;
+    const groups = system.groups.length ? [...system.groups, { id: '', name: 'UNGROUPED' }] : [{ id: '', name: '' }];
+    for (const group of groups) { const lines = system.lines.filter((line) => (line.groupId || '') === group.id); if (!lines.length) continue; if (group.name) { if (y < bottom + 40) { page = addPage(`Bill of Materials — ${system.name} — Continued`); y = 665; } page.drawRectangle({ x: margin, y: y - 15, width, height: 24, color: pale }); page.drawText(group.name.toUpperCase(), { x: margin + 8, y: y - 7, size: 8, font: bold, color: green }); y -= 34; } for (const line of lines) { if (y < bottom + 30) { page = addPage(`Bill of Materials — ${system.name} — Continued`); y = 665; } const description = safe(line.description || 'Item'); page.drawText(description.slice(0, 78), { x: margin + 6, y, size: 8, font, color: navy }); let right = `Qty ${line.qty}`; if (input.display.showUnitPricing && Number.isFinite(line.unitPrice)) right += `  ·  ${money(line.unitPrice || 0)} ea.`; page.drawText(right, { x: 612 - margin - font.widthOfTextAtSize(right, 8), y, size: 8, font, color: navy }); page.drawLine({ start: { x: margin, y: y - 7 }, end: { x: 612 - margin, y: y - 7 }, thickness: .35, color: border }); y -= 24; } }
+  }
+  return document.save();
+}
+
