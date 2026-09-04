@@ -4,6 +4,20 @@ import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '../../lib/supabase/client';
 
+function friendlyLoginError(cause: unknown) {
+  const message = cause instanceof Error ? cause.message : String(cause || '');
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes('invalid login credentials')) return 'The email address or password is incorrect.';
+  if (normalized.includes('email not confirmed')) return 'This account has not completed email verification yet.';
+  if (normalized.includes('failed to fetch') || normalized.includes('network') || normalized.includes('fetch')) {
+    return 'ScopeLogic cannot reach its authentication service. Check your internet connection and try again. If the problem continues, the ScopeLogic backend may be temporarily unavailable.';
+  }
+  if (normalized.includes('rate limit')) return 'Too many sign-in attempts were made. Wait briefly and try again.';
+  if (normalized.includes('jwt') || normalized.includes('session')) return 'Your ScopeLogic session is no longer valid. Sign in again to continue.';
+  return message || 'Sign-in failed. Please try again.';
+}
+
 export default function LoginForm({ nextPath, initialError }: { nextPath: string; initialError: string }) {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -22,7 +36,7 @@ export default function LoginForm({ nextPath, initialError }: { nextPath: string
       router.replace(nextPath || '/');
       router.refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Sign-in failed.');
+      setError(friendlyLoginError(cause));
     } finally {
       setLoading(false);
     }
