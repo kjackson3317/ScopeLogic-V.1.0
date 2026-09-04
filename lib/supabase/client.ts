@@ -23,19 +23,20 @@ export function createClient() {
       if (result.error || !actualUser) return result;
 
       if (!identityPromise) {
-        identityPromise = client
-          .from('profiles')
-          .select('workspace_owner_id, role')
-          .eq('id', actualUser.id)
-          .maybeSingle()
-          .then(({ data, error }) => {
-            if (error || !data) return null;
-            return {
-              actualUserId: actualUser.id,
-              workspaceOwnerId: String(data.workspace_owner_id || actualUser.id),
-              role: String(data.role || 'user'),
-            };
-          });
+        identityPromise = Promise.resolve(
+          client
+            .from('profiles')
+            .select('workspace_owner_id, role')
+            .eq('id', actualUser.id)
+            .maybeSingle(),
+        ).then(({ data, error }) => {
+          if (error || !data) return null;
+          return {
+            actualUserId: actualUser.id,
+            workspaceOwnerId: String(data.workspace_owner_id || actualUser.id),
+            role: String(data.role || 'user'),
+          };
+        });
       }
 
       const identity = await identityPromise;
