@@ -1,7 +1,22 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
-const PUBLIC_PATHS = ['/login', '/forgot-password', '/update-password', '/set-password', '/auth/callback', '/auth/confirm'];
+const PUBLIC_PATHS = ['/login', '/forgot-password', '/update-password', '/set-password', '/auth/callback', '/auth/confirm', '/api/health'];
+const BRAND_PREFIX = '/brand/scopelogic-';
+const TRANSPARENT_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+function transparentPng() {
+  const binary = atob(TRANSPARENT_PNG_BASE64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return new NextResponse(bytes, {
+    status: 200,
+    headers: {
+      'content-type': 'image/png',
+      'cache-control': 'private, no-store, max-age=0',
+    },
+  });
+}
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -26,6 +41,16 @@ export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isPublic = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
   const isApi = pathname.startsWith('/api/');
+
+  if (pathname.startsWith(BRAND_PREFIX) && user?.sub) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.sub)
+      .maybeSingle();
+    const role = String(profile?.role || 'user');
+    if (!['administrator', 'manager'].includes(role)) return transparentPng();
+  }
 
   if (!user && !isPublic && !isApi) {
     const loginUrl = request.nextUrl.clone();
