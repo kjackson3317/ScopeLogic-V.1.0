@@ -31,5 +31,27 @@ export default async function HomePage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
-  return <Workspace userEmail={user.email || 'Signed-in user'} userId={user.id} />;
+
+  return <>
+    <a
+      href="/master-projects"
+      style={{
+        position: 'fixed',
+        right: 18,
+        bottom: 18,
+        zIndex: 4000,
+        padding: '10px 14px',
+        borderRadius: 999,
+        background: '#59612b',
+        color: '#fff',
+        fontWeight: 800,
+        fontSize: 13,
+        textDecoration: 'none',
+        boxShadow: '0 5px 18px rgba(0,0,0,.18)',
+      }}
+    >
+      Master Projects
+    </a>
+    <Workspace userEmail={user.email || 'Signed-in user'} userId={user.id} />
+  </>;
 }
