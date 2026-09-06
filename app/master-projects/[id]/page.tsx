@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { connection } from 'next/server';
 import { createClient, isSupabaseConfigured } from '../../../lib/supabase/server';
-import MasterWorkspaceClientV2 from './master-workspace-client-v2';
+import MasterWorkspaceClientV3 from './master-workspace-client-v3';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -21,7 +21,7 @@ export default async function MasterWorkspacePage({ params }: { params: Promise<
     .eq('id', user.id)
     .maybeSingle();
 
-  return <MasterWorkspaceClientV2
+  return <MasterWorkspaceClientV3
     masterProjectId={resolved.id}
     actualUserId={user.id}
     workspaceOwnerId={String(profile?.workspace_owner_id || user.id)}
