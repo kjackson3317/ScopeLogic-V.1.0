@@ -1,7 +1,10 @@
 import { redirect } from 'next/navigation';
 import { connection } from 'next/server';
 import { createClient, isSupabaseConfigured } from '../lib/supabase/server';
+import Workspace from './workspace';
 
+// Authentication depends on request cookies and deployment environment variables.
+// Prevent Next.js from attempting to prerender this protected page during build.
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -20,10 +23,13 @@ function ConfigurationRequired() {
 }
 
 export default async function HomePage() {
+  // Next.js 16: wait for a real request before reading deployment environment values.
   await connection();
+
   if (!isSupabaseConfigured()) return <ConfigurationRequired />;
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
-  redirect('/project-library');
+  return <Workspace userEmail={user.email || 'Signed-in user'} userId={user.id} />;
 }
