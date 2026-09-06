@@ -31,5 +31,6 @@ export default async function HomePage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
+  // RC5.7 intentionally preserves the live workspace; Master Projects are an additive hierarchy.
   return <Workspace userEmail={user.email || 'Signed-in user'} userId={user.id} />;
 }
