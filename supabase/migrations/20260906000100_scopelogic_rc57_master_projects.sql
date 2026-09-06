@@ -1,7 +1,6 @@
 -- ScopeLogic v1.0 RC5.7
 -- Master Project / Client Engagement hierarchy and workspace-aware access.
--- Backward compatible with the RC5.6 flat-project application: existing projects remain
--- the engagement records and are backfilled into one Master Project each.
+-- Backward compatible with RC5.6: existing projects remain the engagement records.
 
 create schema if not exists private;
 revoke all on schema private from public;
@@ -92,8 +91,10 @@ create index if not exists projects_master_project_id_idx on public.projects(mas
 create index if not exists master_projects_owner_idx on public.master_projects(owner_id);
 create index if not exists master_projects_created_by_idx on public.master_projects(created_by_user_id);
 
--- One safe Master Project per existing flat project. This preserves every existing
--- project ID, quote, release, document, SLR, contract, and historical relationship.
+-- Backfill one Master Project per existing flat project. Existing project IDs and
+-- all RC5.6 child records remain untouched. master_project_id intentionally stays
+-- nullable so the RC5.6 production UI can continue creating flat projects during
+-- the RC5.7 preview period; the Master Project screen can later link them.
 insert into public.master_projects (
   owner_id, created_by_user_id, legacy_id, name, status, version_date, revision, systems, notes
 )
@@ -118,17 +119,15 @@ where p.master_project_id is null
   and mp.owner_id = p.owner_id
   and mp.legacy_id = 'backfill:' || p.id::text;
 
-alter table public.projects alter column master_project_id set not null;
-
 comment on table public.master_projects is
   'Reusable project baseline shared across one or more confidential Client Engagement records.';
 comment on column public.projects.master_project_id is
   'Parent Master Project. The projects table remains the private Client Engagement record for backward compatibility.';
 comment on column public.projects.engagement_type is
-  'ScopeLogic product selected for this Client Engagement: Product 1, Product 2, Product 3, Product 4, or Quick Review.';
+  'ScopeLogic service selected for this Client Engagement: Product 1, Product 2, Product 3, Product 4, or Quick Review.';
 
--- Shared Master Project source documents. These are deliberately separate from
--- project_documents, which remains private to a Client Engagement.
+-- Shared Master Project source documents. Client-specific documents remain in
+-- project_documents on the Client Engagement.
 create table if not exists public.master_project_documents (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
@@ -152,8 +151,8 @@ create table if not exists public.master_project_documents (
 create index if not exists master_project_documents_master_idx
   on public.master_project_documents(master_project_id);
 
--- Shared baseline findings. GC-specific responses, pricing, and strategy stay in
--- engagement-scoped SLRs/quotes and must never be copied between engagements.
+-- Shared baseline findings. Bidder pricing, recommendations, communications,
+-- responses, and strategy remain engagement-scoped and are never reused between GCs.
 create table if not exists public.master_project_findings (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
@@ -305,7 +304,7 @@ using (
   and not exists (select 1 from public.projects p where p.master_project_id = id)
 );
 
-for select, insert, update, delete on public.master_projects to authenticated;
+grant select, insert, update, delete on public.master_projects to authenticated;
 grant select, insert, update, delete on public.master_project_documents to authenticated;
 grant select, insert, update, delete on public.master_project_findings to authenticated;
 
@@ -334,60 +333,57 @@ with check (
 );
 
 -- ---------------------------------------------------------------------------
--- Workspace-aware RLS for the existing engagement application
+-- Workspace-aware RLS for existing Client Engagement data
 -- ---------------------------------------------------------------------------
 
--- Administrators can see every project in the workspace. Standard users see only
--- the projects assigned to their own library.
 drop policy if exists projects_manage_own on public.projects;
 drop policy if exists projects_workspace_access on public.projects;
 create policy projects_workspace_access on public.projects
 for all to authenticated
 using (
   owner_id = (select private.current_workspace_owner())
-  and (
-    (select private.current_is_workspace_admin())
-    or assigned_user_id = (select auth.uid())
-  )
+  and ((select private.current_is_workspace_admin()) or assigned_user_id = (select auth.uid()))
 )
 with check (
   owner_id = (select private.current_workspace_owner())
   and (
     assigned_user_id = (select auth.uid())
-    or (
-      (select private.current_is_workspace_admin())
-      and (select private.is_workspace_member(assigned_user_id))
-    )
+    or ((select private.current_is_workspace_admin()) and (select private.is_workspace_member(assigned_user_id)))
   )
 );
 
--- Workspace address book and reusable SLR templates are shared libraries.
+-- Address book and reusable SLR templates are workspace-wide libraries.
 drop policy if exists customers_manage_own on public.customers;
+drop policy if exists customers_workspace_access on public.customers;
 create policy customers_workspace_access on public.customers
 for all to authenticated
 using (owner_id = (select private.current_workspace_owner()))
 with check (owner_id = (select private.current_workspace_owner()));
 
 drop policy if exists contacts_manage_own on public.contacts;
+drop policy if exists contacts_workspace_access on public.contacts;
 create policy contacts_workspace_access on public.contacts
 for all to authenticated
 using (owner_id = (select private.current_workspace_owner()))
 with check (owner_id = (select private.current_workspace_owner()));
 
 drop policy if exists slr_templates_manage_own on public.slr_templates;
+drop policy if exists slr_templates_workspace_access on public.slr_templates;
 create policy slr_templates_workspace_access on public.slr_templates
 for all to authenticated
 using (owner_id = (select private.current_workspace_owner()))
 with check (owner_id = (select private.current_workspace_owner()));
 
--- Project-scoped records follow the project assignment boundary.
+-- Project-scoped records follow the assigned Client Engagement.
 drop policy if exists project_systems_manage_own on public.project_systems;
+drop policy if exists project_systems_workspace_access on public.project_systems;
 create policy project_systems_workspace_access on public.project_systems
 for all to authenticated
 using (owner_id = (select private.current_workspace_owner()) and (select private.can_access_project(project_id)))
 with check (owner_id = (select private.current_workspace_owner()) and (select private.can_access_project(project_id)));
 
 drop policy if exists project_contacts_manage_own on public.project_contacts;
+drop policy if exists project_contacts_workspace_access on public.project_contacts;
 create policy project_contacts_workspace_access on public.project_contacts
 for all to authenticated
 using (owner_id = (select private.current_workspace_owner()) and (select private.can_access_project(project_id)))
@@ -398,18 +394,21 @@ with check (
 );
 
 drop policy if exists slr_entries_manage_own_project on public.slr_entries;
+drop policy if exists slr_entries_workspace_access on public.slr_entries;
 create policy slr_entries_workspace_access on public.slr_entries
 for all to authenticated
 using (owner_id = (select private.current_workspace_owner()) and (select private.can_access_project(project_id)))
 with check (owner_id = (select private.current_workspace_owner()) and (select private.can_access_project(project_id)));
 
 drop policy if exists project_documents_manage_own_project on public.project_documents;
+drop policy if exists project_documents_workspace_access on public.project_documents;
 create policy project_documents_workspace_access on public.project_documents
 for all to authenticated
 using (owner_id = (select private.current_workspace_owner()) and (select private.can_access_project(project_id)))
 with check (owner_id = (select private.current_workspace_owner()) and (select private.can_access_project(project_id)));
 
 drop policy if exists calendar_events_manage_own on public.calendar_events;
+drop policy if exists calendar_events_workspace_access on public.calendar_events;
 create policy calendar_events_workspace_access on public.calendar_events
 for all to authenticated
 using (
@@ -422,30 +421,35 @@ with check (
 );
 
 drop policy if exists contracts_manage_own_project on public.contracts;
+drop policy if exists contracts_workspace_access on public.contracts;
 create policy contracts_workspace_access on public.contracts
 for all to authenticated
 using (owner_id = (select private.current_workspace_owner()) and (select private.can_access_project(project_id)))
 with check (owner_id = (select private.current_workspace_owner()) and (select private.can_access_project(project_id)));
 
 drop policy if exists internal_notes_manage_own_project on public.internal_notes;
+drop policy if exists internal_notes_workspace_access on public.internal_notes;
 create policy internal_notes_workspace_access on public.internal_notes
 for all to authenticated
 using (owner_id = (select private.current_workspace_owner()) and (select private.can_access_project(project_id)))
 with check (owner_id = (select private.current_workspace_owner()) and (select private.can_access_project(project_id)));
 
 drop policy if exists export_log_manage_own_project on public.export_log;
+drop policy if exists export_log_workspace_access on public.export_log;
 create policy export_log_workspace_access on public.export_log
 for all to authenticated
 using (owner_id = (select private.current_workspace_owner()) and (select private.can_access_project(project_id)))
 with check (owner_id = (select private.current_workspace_owner()) and (select private.can_access_project(project_id)));
 
 drop policy if exists release_packages_manage_own_project on public.release_packages;
+drop policy if exists release_packages_workspace_access on public.release_packages;
 create policy release_packages_workspace_access on public.release_packages
 for all to authenticated
 using (owner_id = (select private.current_workspace_owner()) and (select private.can_access_project(project_id)))
 with check (owner_id = (select private.current_workspace_owner()) and (select private.can_access_project(project_id)));
 
 drop policy if exists release_deliverables_manage_own on public.release_deliverables;
+drop policy if exists release_deliverables_workspace_access on public.release_deliverables;
 create policy release_deliverables_workspace_access on public.release_deliverables
 for all to authenticated
 using (owner_id = (select private.current_workspace_owner()) and (select private.can_access_release(release_package_id)))
@@ -457,9 +461,7 @@ create policy release_quote_revisions_workspace_read on public.release_quote_rev
 for select to authenticated
 using (owner_id = (select private.current_workspace_owner()) and (select private.can_access_release(release_package_id)));
 
--- The current RC5.7 browser client reads the workspace owner's settings record.
--- This is the shared workspace metadata record; project confidentiality remains in
--- the project-scoped policies above.
+-- RC5.7 currently treats the workspace-owner settings row as shared workspace metadata.
 drop policy if exists user_settings_manage_self on public.user_settings;
 drop policy if exists user_settings_workspace_access on public.user_settings;
 create policy user_settings_workspace_access on public.user_settings
@@ -473,28 +475,28 @@ with check (
   and user_id = (select private.current_workspace_owner())
 );
 
--- Profile visibility: users can read themselves; workspace administrators can read
--- workspace members so projects can be assigned to subordinate libraries.
+-- Users read themselves. Administrators can also read workspace members for assignment.
 drop policy if exists profiles_read_self on public.profiles;
 drop policy if exists profiles_read_workspace on public.profiles;
 create policy profiles_read_workspace on public.profiles
 for select to authenticated
 using (
   id = (select auth.uid())
-  or (
-    (select private.current_is_workspace_admin())
-    and workspace_owner_id = (select private.current_workspace_owner())
-  )
+  or ((select private.current_is_workspace_admin()) and workspace_owner_id = (select private.current_workspace_owner()))
 );
 
 -- ---------------------------------------------------------------------------
--- Private file storage follows the same project-assignment boundary.
+-- Private file storage follows the project-assignment boundary.
 -- ---------------------------------------------------------------------------
 
 drop policy if exists project_files_select_own on storage.objects;
 drop policy if exists project_files_insert_own on storage.objects;
 drop policy if exists project_files_update_own on storage.objects;
 drop policy if exists project_files_delete_own on storage.objects;
+drop policy if exists project_files_select_workspace on storage.objects;
+drop policy if exists project_files_insert_workspace on storage.objects;
+drop policy if exists project_files_update_workspace on storage.objects;
+drop policy if exists project_files_delete_workspace on storage.objects;
 
 create policy project_files_select_workspace on storage.objects
 for select to authenticated
