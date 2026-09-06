@@ -30,7 +30,7 @@ type Engagement = {
 };
 
 type WorkspaceUser = { id: string; email: string; full_name: string; role: string };
-type Customer = { id: string; name: string };
+type Customer = { id: string; company_name: string };
 type Props = { actualUserId: string; workspaceOwnerId: string; role: string; userName: string };
 
 const SYSTEMS = ['Structured Cabling', 'Network Electronics', 'CCTV', 'Access Control', 'Intrusion Detection', 'Video Intercom', 'Audio Visual', 'Paging / Intercom', 'Other'];
@@ -62,7 +62,7 @@ export default function MasterProjectsClient({ actualUserId, workspaceOwnerId, r
     const [masterResult, engagementResult, customerResult, userResult] = await Promise.all([
       supabase.from('master_projects').select('id,name,project_number,location,status,version_date,revision,systems,notes,created_by_user_id').order('name'),
       supabase.from('projects').select('id,master_project_id,legacy_id,name,client_name,status,engagement_label,engagement_type,is_quick_review,assigned_user_id').order('name'),
-      supabase.from('customers').select('id,name').order('name'),
+      supabase.from('customers').select('id,company_name').order('company_name'),
       supabase.from('profiles').select('id,email,full_name,role').order('full_name'),
     ]);
 
@@ -123,7 +123,7 @@ export default function MasterProjectsClient({ actualUserId, workspaceOwnerId, r
   const createEngagement = async () => {
     if (!selected) { setMessage('Select a Master Project first.'); return; }
     const customer = customers.find((item) => item.id === engagementForm.customerId);
-    const clientName = (customer?.name || engagementForm.clientName).trim();
+    const clientName = (customer?.company_name || engagementForm.clientName).trim();
     if (!clientName) { setMessage('Client / GC name is required.'); return; }
     const assignedUserId = isAdmin ? engagementForm.assignedUserId : actualUserId;
     setBusy(true); setMessage('');
@@ -277,7 +277,7 @@ export default function MasterProjectsClient({ actualUserId, workspaceOwnerId, r
       </section></div> : null}
 
       {showNewEngagement && selected ? <div className="mp-modal-backdrop"><section className="mp-modal"><div className="mp-modal-head"><div><div className="mp-eyebrow">{selected.name}</div><h2>New Client Engagement</h2></div><button onClick={() => setShowNewEngagement(false)}>×</button></div>
-        <label>Existing Customer / GC<select value={engagementForm.customerId} onChange={(e) => { const value = e.target.value; const customer = customers.find((item) => item.id === value); setEngagementForm({ ...engagementForm, customerId: value, clientName: customer?.name || engagementForm.clientName }); }}><option value="">Select or enter manually below</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></label>
+        <label>Existing Customer / GC<select value={engagementForm.customerId} onChange={(e) => { const value = e.target.value; const customer = customers.find((item) => item.id === value); setEngagementForm({ ...engagementForm, customerId: value, clientName: customer?.company_name || engagementForm.clientName }); }}><option value="">Select or enter manually below</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.company_name}</option>)}</select></label>
         <label>Client / GC Name<input value={engagementForm.clientName} onChange={(e) => setEngagementForm({ ...engagementForm, clientName: e.target.value, customerId: '' })} /></label>
         <div className="mp-two"><label>ScopeLogic Service<select value={engagementForm.service} onChange={(e) => setEngagementForm({ ...engagementForm, service: e.target.value })}>{SERVICES.map((service) => <option key={service}>{service}</option>)}</select></label><label>Engagement Label<input value={engagementForm.label} onChange={(e) => setEngagementForm({ ...engagementForm, label: e.target.value })} /></label></div>
         {isAdmin ? <label>Assign to Project Library<select value={engagementForm.assignedUserId} onChange={(e) => setEngagementForm({ ...engagementForm, assignedUserId: e.target.value })}>{users.map((user) => <option key={user.id} value={user.id}>{user.full_name || user.email || user.id} {user.role === 'administrator' ? '(Admin)' : ''}</option>)}</select></label> : null}
