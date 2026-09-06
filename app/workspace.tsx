@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { createClient } from '../lib/supabase/client';
 import { bytesToText, createZip, readZip, textToBytes } from '../lib/zip';
 import { buildPdfBytes, buildProposalPdfBytes, buildReleasePackageBytes, type PdfKind, type ProposalPdfMode, type QuotePdfMode, type QuotePdfPricingDisplay } from './pdf-generator';
 import DrawingTakeoffPage, { type DrawingAnnotation, type DrawingMeasurement, type DrawingPageCalibration, type DrawingTakeoffMark, type DrawingTakeoffTool } from './drawing-takeoff';
@@ -50,6 +51,28 @@ type Project = {
   revision: string;
   modified: string;
   contract: ContractDetails;
+};
+
+type MasterEngagementMeta = {
+  id: string;
+  legacyId: string;
+  clientName: string;
+  engagementType: string;
+  engagementLabel: string;
+};
+
+type MasterProjectMeta = {
+  id: string;
+  projectNumber: string;
+  name: string;
+  location: string;
+  status: string;
+  revision: string;
+  systems: string[];
+  createdAt: string;
+  updatedAt: string;
+  isArchived: boolean;
+  engagements: MasterEngagementMeta[];
 };
 
 type ContractDetails = {
@@ -432,6 +455,8 @@ const navDeliverables: [View, string][] = [
   ['checklist', 'Contractor Response Checklist'],
 ];
 
+const ENGAGEMENT_SPECIFIC_VIEWS = new Set<View>(['sow', 'clarifications', 'rfi', 'checklist', 'quotes', 'drawing-takeoff', 'takeoff', 'scope-work', 'releases', 'exports', 'contract']);
+
 const RELEASE_OPTIONS: { kind: PdfKind; label: string }[] = [
   { kind: 'sow', label: 'Recommended SOW Matrix' },
   { kind: 'clarifications', label: 'Clarification Matrix' },
@@ -547,6 +572,9 @@ function hasMeaningfulWorkspace(data: Partial<WorkspaceSnapshot> | null | undefi
 }
 
 export default function Workspace({ userEmail }: { userEmail: string; userId: string }) {
+  const supabase = useMemo(() => createClient(), []);
+  const [masterProjects, setMasterProjects] = useState<MasterProjectMeta[]>([]);
+  const [masterLoadError, setMasterLoadError] = useState('');
   const [view, setView] = useState<View>('projects');
   const [projects, setProjects] = useState<Project[]>([blankProject('p1')]);
   const [projectId, setProjectId] = useState('p1');
@@ -657,6 +685,40 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
       document.removeEventListener('keydown', onKeyDown);
     };
   }, [mobileNav, closeMobileNav]);
+
+  const refreshMasterProjects = useCallback(async () => {
+    setMasterLoadError('');
+    const [masterResult, engagementResult] = await Promise.all([
+      supabase.from('master_projects').select('id,project_number,name,location,status,revision,systems,is_archived,created_at,updated_at').order('created_at', { ascending: false }),
+      supabase.from('projects').select('id,legacy_id,master_project_id,client_name,engagement_type,engagement_label').not('master_project_id', 'is', null),
+    ]);
+    const firstError = masterResult.error || engagementResult.error;
+    if (firstError) {
+      setMasterLoadError(firstError.message);
+      return;
+    }
+    const engagementRows = (engagementResult.data || []) as any[];
+    const next = (masterResult.data || []).map((row: any): MasterProjectMeta => ({
+      id: String(row.id),
+      projectNumber: String(row.project_number || ''),
+      name: String(row.name || ''),
+      location: String(row.location || ''),
+      status: row.is_archived ? 'Archived' : String(row.status || 'Planning'),
+      revision: String(row.revision || 'Rev 0'),
+      systems: Array.isArray(row.systems) ? row.systems.map(String) : [],
+      createdAt: String(row.created_at || ''),
+      updatedAt: String(row.updated_at || row.created_at || ''),
+      isArchived: Boolean(row.is_archived),
+      engagements: engagementRows.filter((item) => String(item.master_project_id || '') === String(row.id)).map((item): MasterEngagementMeta => ({
+        id: String(item.id),
+        legacyId: String(item.legacy_id || ''),
+        clientName: String(item.client_name || ''),
+        engagementType: String(item.engagement_type || 'Client Engagement'),
+        engagementLabel: String(item.engagement_label || ''),
+      })).filter((item) => Boolean(item.legacyId)),
+    }));
+    setMasterProjects(next);
+  }, [supabase]);
 
   const applySnapshot = (data: Partial<WorkspaceSnapshot> | null) => {
     const restoredProjects = ((data?.projects as Project[] | undefined) || [blankProject('p1')]).map((item) => normalizeProject(item));
@@ -781,6 +843,16 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
     localStorage.setItem('scopelogic-r14-8', JSON.stringify(cloudSnapshot));
   }, [hydrated, cloudSnapshot]);
 
+
+  useEffect(() => {
+    if (!hydrated || dataMode !== 'cloud') return;
+    void refreshMasterProjects();
+  }, [hydrated, dataMode, refreshMasterProjects]);
+
+  useEffect(() => {
+    if (view === 'projects' && hydrated && dataMode === 'cloud') void refreshMasterProjects();
+  }, [view, hydrated, dataMode, refreshMasterProjects]);
+
   useEffect(() => {
     if (!hydrated || dataMode !== 'cloud') return;
     if (skipNextCloudSync.current) {
@@ -806,6 +878,10 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
   }, [hydrated, dataMode, cloudSnapshot]);
 
   const project = projects.find((item) => item.id === projectId) || projects[0];
+  const currentMaster = masterProjects.find((master) => master.engagements.some((engagement) => engagement.legacyId === projectId)) || null;
+  const activeMasterId = currentMaster?.id || '';
+  const currentMasterEngagements = currentMaster?.engagements.filter((engagement) => projects.some((item) => item.id === engagement.legacyId)) || [];
+  const isEngagementSpecificView = ENGAGEMENT_SPECIFIC_VIEWS.has(view);
   const issues = issuesByProject[projectId] || [];
   const docs = docsByProject[projectId] || [];
   const internalNotes = notesByProject[projectId] || '';
@@ -903,6 +979,24 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
     setDraft(null);
     setView('setup');
   };
+
+  const openMasterProject = (masterId: string) => {
+    const master = masterProjects.find((item) => item.id === masterId);
+    if (!master) return message('Master Project Unavailable', 'The selected Master Project could not be found.');
+    const available = master.engagements.filter((engagement) => projects.some((item) => item.id === engagement.legacyId));
+    if (!available.length) {
+      message('Client Engagement Required', `${master.projectNumber} — ${master.name} does not have a Client Engagement yet. Add one in Master Project Management before opening the project workspace.`);
+      return;
+    }
+    const nextProjectId = available.some((engagement) => engagement.legacyId === projectId) ? projectId : available[0].legacyId;
+    setProjectId(nextProjectId);
+    setSelectedUid('');
+    setDraft(null);
+    setPdfUrls({});
+    setView('dashboard');
+  };
+
+  const openMasterProjectManager = () => { window.location.href = '/master-projects'; };
 
   const retryCloudSync = async () => {
     setSyncState('saving');
@@ -1269,7 +1363,7 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
       <aside id="scopelogic-sidebar" ref={sidebarRef} className={`sidebar ${mobileNav ? 'show' : ''}`} aria-label="ScopeLogic navigation" aria-modal={mobileNav ? 'true' : undefined} role={mobileNav ? 'dialog' : undefined}>
         <div className="sidebar-mobile-head"><span>Navigation</span><button className="sidebar-close" onClick={closeMobileNav} aria-label="Close navigation menu">Close ×</button></div>
     <div className="brand"><div className="brand-mark"><img src="/brand/scopelogic-logo-mark.png" alt="ScopeLogic" /></div><div><div className="brand-name-box"><img className="brand-wordmark" src="/brand/scopelogic-wordmark.png" alt="ScopeLogic" /></div><span>v1.0 RC5.6.0</span></div></div>
-        <button className="project-switch" onClick={() => navigateTo('projects')}><span>Current project</span><b>{project.name}</b><small>Switch projects</small></button>
+        <button className="project-switch" onClick={() => navigateTo('projects')}><span>Current master project</span><b>{currentMaster?.name || project.name}</b><small>Switch master projects</small></button>
         <Nav label="PROJECT" items={[["projects", "Project Library"], ["calendar", "Calendar"], ["setup", "Project Setup"], ["dashboard", "Dashboard"], ["documents", "Project Documents"], ["notes", "Internal Notes"], ["internal", "ScopeLogic Internal Matrix"]]} view={view} setView={navigateTo} />
         <Nav label="DELIVERABLES" items={navDeliverables} view={view} setView={navigateTo} />
         <Nav label="ESTIMATING" items={[["quotes", "Quote Builder"], ["quote-templates", "Quote Templates"], ["drawing-takeoff", "Drawing Take Off"], ["takeoff", "Take Off Rules"], ["scope-work", "Scope of Work"], ["parts", "Parts Database"], ["labor", "Labor & Pricing"]]} view={view} setView={navigateTo} />
@@ -1281,13 +1375,14 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
         <header className="topbar">
           <button className="mobile-menu" onClick={mobileNav ? closeMobileNav : openMobileNav} aria-expanded={mobileNav} aria-controls="scopelogic-sidebar">Menu</button>
           <button className="desktop-nav-toggle" onClick={() => setDesktopNavCollapsed((value) => !value)} aria-expanded={!desktopNavCollapsed} aria-controls="scopelogic-sidebar">{desktopNavCollapsed ? 'Show Navigation' : 'Collapse Navigation'}</button>
-          <div className="topbar-project"><span>{project.client || 'ScopeLogic project'}</span><b>{project.name}</b></div>
+          <div className="topbar-project"><span>{currentMaster?.projectNumber || project.client || 'ScopeLogic project'}</span><b>{currentMaster?.name || project.name}</b></div>
+          {isEngagementSpecificView && currentMasterEngagements.length > 1 && <div className="topbar-project"><span>Client Engagement</span><select value={projectId} onChange={(event) => { setProjectId(event.target.value); setSelectedUid(''); setDraft(null); setPdfUrls({}); }} style={{ maxWidth: 260, padding: '5px 7px', border: '1px solid #d6d9d1', borderRadius: 6, background: '#fff' }}>{currentMasterEngagements.map((engagement) => <option key={engagement.id} value={engagement.legacyId}>{engagement.clientName || 'Unnamed Client'} — {engagement.engagementLabel || engagement.engagementType}</option>)}</select></div>}
           <span className={`cloud-sync-badge topbar-sync ${dataMode === 'local-fallback' || syncState === 'error' ? 'warn' : syncState === 'saving' ? 'saving' : 'ok'}`} title={syncError || syncLabel}>{syncLabel}</span>
           <div className="top-actions desktop-actions"><button className="secondary" onClick={() => setReleaseSelection({ kinds: [...ALL_RELEASE_KINDS], notes: '' })}>Generate Official Release</button><button className="secondary" onClick={() => navigateTo('documents')}>Documents</button></div>
           <div className="mobile-actions-wrap"><button className="mobile-actions-button" onClick={() => setMobileActions((open) => !open)} aria-expanded={mobileActions}>Actions</button>{mobileActions && <div className="mobile-actions-menu"><button onClick={() => { setMobileActions(false); setReleaseSelection({ kinds: [...ALL_RELEASE_KINDS], notes: '' }); }}>Generate Official Release</button><button onClick={() => navigateTo('documents')}>Project Documents</button></div>}</div>
         </header>
         <div className="page">
-          {view === 'projects' && <ProjectLibrary projects={projects} quotesByProject={quotesByProject} active={projectId} entries={calendarEntries} open={(id) => { setProjectId(id); setSelectedUid(''); setDraft(null); setView('dashboard'); }} add={addProject} addEntry={(entry) => setCalendarEntries((items) => [...items, entry])} deleteEntry={(id) => setCalendarEntries((items) => items.filter((item) => item.id !== id))} message={message} />}
+          {view === 'projects' && <ProjectLibrary masters={masterProjects} projects={projects} quotesByProject={quotesByProject} activeMasterId={activeMasterId} entries={calendarEntries} open={openMasterProject} add={openMasterProjectManager} loadError={masterLoadError} />}
           {view === 'calendar' && <ProjectCalendar projects={projects} active={projectId} entries={calendarEntries} addEntry={(entry) => setCalendarEntries((items) => [...items, entry])} deleteEntry={(id) => setCalendarEntries((items) => items.filter((item) => item.id !== id))} message={message} />}
           {view === 'setup' && <ProjectSetup project={project} customers={customers} entries={calendarEntries} addEntry={(entry) => setCalendarEntries((items) => [...items, entry])} deleteEntry={(id) => setCalendarEntries((items) => items.filter((item) => item.id !== id))} message={message} save={(updated) => { setProjects((items) => items.map((item) => item.id === projectId ? { ...updated, modified: 'Now' } : item)); message('Saved', 'Project Setup was saved.'); }} />}
           {view === 'dashboard' && <Dashboard project={project} issues={issues} docs={docs} customers={customers} go={setView} generateAll={() => setReleaseSelection({ kinds: [...ALL_RELEASE_KINDS], notes: '' })} />}
@@ -1844,18 +1939,35 @@ function ProjectCalendar({ projects, active, entries, addEntry, deleteEntry, mes
   </>;
 }
 
-function ProjectLibrary({ projects, quotesByProject, active, entries, open, add }: { projects: Project[]; quotesByProject: Record<string, Quote[]>; active: string; entries: CalendarEntry[]; open: (id: string) => void; add: () => void; addEntry: (entry: CalendarEntry) => void; deleteEntry: (id: string) => void; message: (title: string, body: string) => void }) {
+function ProjectLibrary({ masters, projects, quotesByProject, activeMasterId, entries, open, add, loadError }: { masters: MasterProjectMeta[]; projects: Project[]; quotesByProject: Record<string, Quote[]>; activeMasterId: string; entries: CalendarEntry[]; open: (id: string) => void; add: () => void; loadError: string }) {
   const [search, setSearch] = useState('');
   const normalized = search.trim().toLowerCase();
-  const sortedProjects = [...projects].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || alphaNumericCompare(a.name, b.name));
-  const visibleProjects = sortedProjects.filter((project) => !normalized || `${project.name} ${project.client} ${project.status} ${(quotesByProject[project.id] || []).map((quote) => `${quote.number} ${quote.name}`).join(' ')}`.toLowerCase().includes(normalized));
-  const totalQuotes = Object.values(quotesByProject).reduce((sum, quotes) => sum + quotes.length, 0);
+  const sortedMasters = [...masters].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || alphaNumericCompare(a.name, b.name));
+  const projectForLegacyId = (legacyId: string) => projects.find((project) => project.id === legacyId);
+  const masterQuotes = (master: MasterProjectMeta) => master.engagements.flatMap((engagement) => quotesByProject[engagement.legacyId] || []);
+  const masterClients = (master: MasterProjectMeta) => Array.from(new Set(master.engagements.map((engagement) => engagement.clientName || projectForLegacyId(engagement.legacyId)?.client || '').filter(Boolean))).sort(alphaNumericCompare);
+  const visibleMasters = sortedMasters.filter((master) => {
+    const quoteText = masterQuotes(master).map((quote) => `${quote.number} ${quote.name}`).join(' ');
+    const clientText = masterClients(master).join(' ');
+    return !normalized || `${master.projectNumber} ${master.name} ${master.location} ${master.status} ${master.systems.join(' ')} ${clientText} ${quoteText}`.toLowerCase().includes(normalized);
+  });
+  const totalQuotes = masters.reduce((sum, master) => sum + masterQuotes(master).length, 0);
   const upcomingDates = entries.filter((entry) => entry.date >= new Date().toISOString().slice(0, 10)).length;
-  const activeProjects = projects.filter((project) => !['Complete', 'Archived'].includes(project.status)).length;
+  const activeProjects = masters.filter((master) => !master.isArchived && master.status !== 'Complete').length;
   return <>
-    <PageHead eyebrow="ScopeLogic" title="Project Library" description="Search projects, compare project status, and open any quote workspace without the calendar competing for screen space." action={<button className="primary" onClick={add}>+ New Project</button>} />
-    <div className="project-library-metrics"><div><b>{projects.length}</b><span>Total Projects</span></div><div><b>{activeProjects}</b><span>Active Projects</span></div><div><b>{totalQuotes}</b><span>Total Quotes</span></div><div><b>{upcomingDates}</b><span>Upcoming Dates</span></div></div>
-    <section className="project-list-section project-list-focus"><div className="project-list-heading"><div><span>Newest Created First</span><h2>ScopeLogic Projects and Quotes</h2></div><label className="project-library-search"><span>Search</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Project, customer, status, quote number, or quote name" /></label></div><div className="project-list-table"><div className="project-list-row head"><span>Project</span><span>Quote Numbers</span><span>Customer</span><span>Status</span><span>Contract</span><span>Revision</span><span></span></div>{visibleProjects.map((project) => {const quoteNumbers = Array.from(new Set((quotesByProject[project.id] || []).map((quote) => {const parsed = parseQuoteNumber(quote.number);return parsed ? formatQuoteNumber({ ...quote, ...parsed }) : quote.number;}).filter(Boolean))).sort(alphaNumericCompare);const quoteNumberLabel = quoteNumbers.length ? quoteNumbers.join(', ') : 'No quotes';return <button key={project.id} className={`project-list-row ${project.id === active ? 'selected' : ''}`} onClick={() => open(project.id)}><span><b>{project.name}</b><small>Created {new Date(project.createdAt).toLocaleDateString()}</small><small className="project-mobile-quotes">Quotes: {quoteNumberLabel}</small></span><span className="project-quote-numbers" title={quoteNumberLabel}>{quoteNumbers.length ? quoteNumbers.map((number) => <b key={number}>{number}</b>) : <small>No quotes</small>}</span><span>{project.client || 'Not entered'}</span><span><i>{project.status}</i></span><span>{project.contract.status}</span><span>{project.revision}</span><span className="open-project">Open</span></button>;})}{!visibleProjects.length && <div className="empty-state"><b>No matching projects.</b><p>Try a different project, customer, status, or quote search.</p></div>}</div></section>
+    <PageHead eyebrow="ScopeLogic" title="Project Library" description="Search Master Projects, compare project status, and open the same ScopeLogic workspace used in the live application." action={<button className="primary" onClick={add}>+ New Master Project</button>} />
+    {loadError && <div className="sync-note">Master Project status: <b>Could not refresh</b> — {loadError}</div>}
+    <div className="project-library-metrics"><div><b>{masters.length}</b><span>Total Master Projects</span></div><div><b>{activeProjects}</b><span>Active Master Projects</span></div><div><b>{totalQuotes}</b><span>Total Quotes</span></div><div><b>{upcomingDates}</b><span>Upcoming Dates</span></div></div>
+    <section className="project-list-section project-list-focus"><div className="project-list-heading"><div><span>Newest Created First</span><h2>ScopeLogic Master Projects and Quotes</h2></div><label className="project-library-search"><span>Search</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Master project, SLMP number, customer, status, or quote" /></label></div><div className="project-list-table"><div className="project-list-row head"><span>Project</span><span>Quote Numbers</span><span>Customer</span><span>Status</span><span>Contract</span><span>Revision</span><span></span></div>{visibleMasters.map((master) => {
+      const quoteNumbers = Array.from(new Set(masterQuotes(master).map((quote) => { const parsed = parseQuoteNumber(quote.number); return parsed ? formatQuoteNumber({ ...quote, ...parsed }) : quote.number; }).filter(Boolean))).sort(alphaNumericCompare);
+      const quoteNumberLabel = quoteNumbers.length ? quoteNumbers.join(', ') : 'No quotes';
+      const clients = masterClients(master);
+      const engagementProjects = master.engagements.map((engagement) => projectForLegacyId(engagement.legacyId)).filter(Boolean) as Project[];
+      const contractStatuses = Array.from(new Set(engagementProjects.map((item) => item.contract.status).filter(Boolean)));
+      const contractLabel = master.engagements.length > 1 ? `${master.engagements.length} engagements` : contractStatuses[0] || 'Draft';
+      const clientLabel = clients.length ? clients.join('; ') : master.engagements.length ? 'Not entered' : 'No engagement';
+      return <button key={master.id} className={`project-list-row ${master.id === activeMasterId ? 'selected' : ''}`} onClick={() => open(master.id)}><span><b>{master.name}</b><small>{master.projectNumber} · Created {new Date(master.createdAt).toLocaleDateString()}</small><small className="project-mobile-quotes">Quotes: {quoteNumberLabel}</small></span><span className="project-quote-numbers" title={quoteNumberLabel}>{quoteNumbers.length ? quoteNumbers.map((number) => <b key={number}>{number}</b>) : <small>No quotes</small>}</span><span>{clientLabel}</span><span><i>{master.status}</i></span><span>{contractLabel}</span><span>{master.revision}</span><span className="open-project">Open</span></button>;
+    })}{!visibleMasters.length && <div className="empty-state"><b>{loadError ? 'Master Projects could not be loaded.' : 'No matching Master Projects.'}</b><p>{loadError ? 'Retry the cloud connection or reload the page.' : 'Try a different Master Project, SLMP number, customer, status, or quote search.'}</p></div>}</div></section>
   </>;
 }
 
