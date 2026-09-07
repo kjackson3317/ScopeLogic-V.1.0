@@ -1,0 +1,30 @@
+name: RC5.7 shared SLR patch
+
+on:
+  push:
+    branches:
+      - rc5.7-multi-user
+    paths:
+      - scripts/rc57-shared-slr-state.py
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rc5.7-multi-user
+          fetch-depth: 0
+      - name: Apply minimal shared SLR patch
+        run: python scripts/rc57-shared-slr-state.py
+      - name: Commit patch and remove temporary files
+        run: |
+          rm -f scripts/rc57-shared-slr-state.py .github/workflows/rc57-shared-slr-state.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/workspace.tsx lib/cloud-workspace.ts scripts/rc57-shared-slr-state.py .github/workflows/rc57-shared-slr-state.yml
+          git commit -m "RC5.7 keep Master Project SLRs shared across engagements"
+          git push origin rc5.7-multi-user
