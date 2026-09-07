@@ -47,6 +47,6 @@ export default function LoginForm({ nextPath, initialError }: { nextPath: string
     <label><span>Password</span><input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
     {error && <div className="auth-error" role="alert">{error}</div>}
     <button className="primary auth-submit" type="submit" disabled={loading}>{loading ? 'Signing in…' : 'Sign In'}</button>
-    <a className="auth-link" href="/forgot-password">Forgot password?</a>
+    <a className="auth-link" href="https://app.scopelogic.net/forgot-password">Forgot password?</a>
   </form>;
 }
