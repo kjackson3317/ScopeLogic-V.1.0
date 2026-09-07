@@ -3,6 +3,8 @@
 import { useState, type FormEvent } from 'react';
 import { createClient } from '../../lib/supabase/client';
 
+const RECOVERY_ORIGIN = 'https://app.scopelogic.net';
+
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
@@ -14,11 +16,13 @@ export default function ForgotPasswordPage() {
     setLoading(true); setError(''); setMessage('');
     try {
       const supabase = createClient();
-      const origin = window.location.origin;
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${origin}/auth/callback?next=/update-password` });
+      const normalizedEmail = email.trim().toLowerCase();
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+        redirectTo: `${RECOVERY_ORIGIN}/auth/callback?next=/update-password`,
+      });
       if (resetError) throw resetError;
       setEmail('');
-      setMessage('Password reset email sent. Open the link in that email to set a new password.');
+      setMessage('If that email belongs to a ScopeLogic account, a password reset email has been sent. Open the link in that email to set a new password.');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Password reset could not be started.');
     } finally { setLoading(false); }
