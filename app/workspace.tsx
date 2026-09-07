@@ -882,12 +882,31 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
   const activeMasterId = currentMaster?.id || '';
   const currentMasterEngagements = currentMaster?.engagements.filter((engagement) => projects.some((item) => item.id === engagement.legacyId)) || [];
   const isEngagementSpecificView = ENGAGEMENT_SPECIFIC_VIEWS.has(view);
-  const issues = issuesByProject[projectId] || [];
+  const sharedIssueProjectIds = currentMasterEngagements.map((engagement) => engagement.legacyId);
+  const sharedIssues = normalizeIssues(Array.from(new Map(
+    (sharedIssueProjectIds.length ? sharedIssueProjectIds : [projectId])
+      .flatMap((id) => issuesByProject[id] || [])
+      .map((issue) => [issue.uid, issue] as const),
+  ).values()));
+  const issues = sharedIssues;
   const docs = docsByProject[projectId] || [];
   const internalNotes = notesByProject[projectId] || '';
   const exportEntries = exportsByProject[projectId] || [];
-  const setIssues = (change: (items: Issue[]) => Issue[]) => setIssuesByProject((current) => ({ ...current, [projectId]: normalizeIssues(change(current[projectId] || [])) }));
+  const setIssues = (change: (items: Issue[]) => Issue[]) => setIssuesByProject((current) => {
+    const nextIssues = normalizeIssues(change(sharedIssues));
+    const targetIds = sharedIssueProjectIds.length ? sharedIssueProjectIds : [projectId];
+    return targetIds.reduce<Record<string, Issue[]>>((next, id) => ({ ...next, [id]: nextIssues }), { ...current });
+  });
   const setDocs = (change: (items: Doc[]) => Doc[]) => setDocsByProject((current) => ({ ...current, [projectId]: change(current[projectId] || []) }));
+  useEffect(() => {
+    if (!sharedIssueProjectIds.length) return;
+    setIssuesByProject((current) => {
+      const needsSync = sharedIssueProjectIds.some((id) => JSON.stringify(current[id] || []) !== JSON.stringify(sharedIssues));
+      if (!needsSync) return current;
+      return sharedIssueProjectIds.reduce<Record<string, Issue[]>>((next, id) => ({ ...next, [id]: sharedIssues }), { ...current });
+    });
+  }, [activeMasterId, sharedIssueProjectIds.join('|'), JSON.stringify(sharedIssues)]);
+
   const systems = useMemo(() => ['All', ...Array.from(new Set(issues.flatMap(issueSystemNames))).sort(alphaNumericCompare)], [issues]);
   const filtered = issues.filter((issue) =>
     (systemFilter === 'All' || issueSystemNames(issue).includes(systemFilter)) &&

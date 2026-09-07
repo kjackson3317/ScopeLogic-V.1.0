@@ -734,7 +734,7 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
   const currentProjectDbIds = Array.from(projectMap.values());
 
   if (currentProjectDbIds.length) {
-    for (const table of ['project_contacts', 'project_systems', 'slr_entries', 'project_documents', 'export_log']) {
+    for (const table of ['project_contacts', 'project_systems', 'project_documents', 'export_log']) {
       requireResult(await supabase.from(table).delete().in('project_id', currentProjectDbIds), `Prepare ${table}`);
     }
   }
@@ -836,7 +836,17 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
 
   await insertChunks(supabase, 'project_contacts', projectContactRows);
   await insertChunks(supabase, 'project_systems', projectSystemRows);
-  await insertChunks(supabase, 'slr_entries', slrRows);
+  for (const row of slrRows) {
+    requireResult(await supabase.from('slr_entries').upsert(row, { onConflict: 'project_id,legacy_uid' }), 'Save shared SLR entry');
+  }
+  for (const project of snapshot.projects) {
+    const projectDbId = projectMap.get(project.id);
+    if (!projectDbId) continue;
+    const desiredUids = (snapshot.issuesByProject[project.id] || []).map((issue, index) => issue.uid || `${project.id}-slr-${index + 1}`);
+    const existing = requireResult(await supabase.from('slr_entries').select('id,legacy_uid').eq('project_id', projectDbId), 'Read shared SLR entries');
+    const staleIds = (existing.data || []).filter((row: AnyRecord) => !desiredUids.includes(text(row.legacy_uid))).map((row: AnyRecord) => row.id);
+    if (staleIds.length) requireResult(await supabase.from('slr_entries').delete().in('id', staleIds), 'Remove deleted shared SLR entries');
+  }
   await insertChunks(supabase, 'project_documents', documentRows);
   await insertChunks(supabase, 'export_log', exportRows);
   if (contractRows.length) requireResult(await supabase.from('contracts').upsert(contractRows, { onConflict: 'project_id' }), 'Save contracts');
