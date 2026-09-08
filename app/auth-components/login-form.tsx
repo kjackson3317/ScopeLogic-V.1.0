@@ -4,8 +4,20 @@ import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '../../lib/supabase/client';
 
+function authErrorMessage(cause: unknown, fallback: string) {
+  if (cause instanceof Error && cause.message.trim()) return cause.message.trim();
+  if (typeof cause === 'string' && cause.trim()) return cause.trim();
+  if (cause && typeof cause === 'object') {
+    const candidate = cause as { message?: unknown; error_description?: unknown; error?: unknown };
+    for (const value of [candidate.message, candidate.error_description, candidate.error]) {
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+  }
+  return fallback;
+}
+
 function friendlyLoginError(cause: unknown) {
-  const message = cause instanceof Error ? cause.message : String(cause || '');
+  const message = authErrorMessage(cause, 'Sign-in failed. Please try again.');
   const normalized = message.toLowerCase();
 
   if (normalized.includes('invalid login credentials')) return 'The email address or password is incorrect.';
@@ -13,9 +25,9 @@ function friendlyLoginError(cause: unknown) {
   if (normalized.includes('failed to fetch') || normalized.includes('network') || normalized.includes('fetch')) {
     return 'ScopeLogic cannot reach its authentication service. Check your internet connection and try again. If the problem continues, the ScopeLogic backend may be temporarily unavailable.';
   }
-  if (normalized.includes('rate limit')) return 'Too many sign-in attempts were made. Wait briefly and try again.';
+  if (normalized.includes('rate limit') || normalized.includes('too many requests')) return 'Too many sign-in attempts were made. Wait briefly and try again.';
   if (normalized.includes('jwt') || normalized.includes('session')) return 'Your ScopeLogic session is no longer valid. Sign in again to continue.';
-  return message || 'Sign-in failed. Please try again.';
+  return message;
 }
 
 export default function LoginForm({ nextPath, initialError }: { nextPath: string; initialError: string }) {
@@ -47,6 +59,6 @@ export default function LoginForm({ nextPath, initialError }: { nextPath: string
     <label><span>Password</span><input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
     {error && <div className="auth-error" role="alert">{error}</div>}
     <button className="primary auth-submit" type="submit" disabled={loading}>{loading ? 'Signing in…' : 'Sign In'}</button>
-    <a className="auth-link" href="https://app.scopelogic.net/forgot-password">Forgot password?</a>
+    <a className="auth-link" href="/forgot-password">Forgot password?</a>
   </form>;
 }
