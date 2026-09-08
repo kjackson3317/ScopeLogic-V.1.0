@@ -3,7 +3,29 @@
 import { useState, type FormEvent } from 'react';
 import { createClient } from '../../lib/supabase/client';
 
-const RECOVERY_ORIGIN = 'https://app.scopelogic.net';
+function authErrorMessage(cause: unknown, fallback: string) {
+  if (cause instanceof Error && cause.message.trim()) return cause.message.trim();
+  if (typeof cause === 'string' && cause.trim()) return cause.trim();
+  if (cause && typeof cause === 'object') {
+    const candidate = cause as { message?: unknown; error_description?: unknown; error?: unknown };
+    for (const value of [candidate.message, candidate.error_description, candidate.error]) {
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+  }
+  return fallback;
+}
+
+function friendlyRecoveryError(cause: unknown) {
+  const message = authErrorMessage(cause, 'Password reset could not be started.');
+  const normalized = message.toLowerCase();
+  if (normalized.includes('rate limit') || normalized.includes('too many requests')) {
+    return 'Too many password reset attempts were made. Wait briefly and try again.';
+  }
+  if (normalized.includes('failed to fetch') || normalized.includes('network') || normalized.includes('fetch')) {
+    return 'ScopeLogic cannot reach its authentication service. Check your connection and try again.';
+  }
+  return message;
+}
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -13,19 +35,24 @@ export default function ForgotPasswordPage() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    setLoading(true); setError(''); setMessage('');
+    setLoading(true);
+    setError('');
+    setMessage('');
     try {
       const supabase = createClient();
       const normalizedEmail = email.trim().toLowerCase();
+      const recoveryOrigin = window.location.origin;
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-        redirectTo: `${RECOVERY_ORIGIN}/auth/callback?next=/update-password`,
+        redirectTo: `${recoveryOrigin}/auth/callback?next=/update-password`,
       });
       if (resetError) throw resetError;
       setEmail('');
       setMessage('If that email belongs to a ScopeLogic account, a password reset email has been sent. Open the link in that email to set a new password.');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Password reset could not be started.');
-    } finally { setLoading(false); }
+      setError(friendlyRecoveryError(cause));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return <main className="auth-page"><section className="auth-card">
