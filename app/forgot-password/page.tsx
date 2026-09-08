@@ -24,7 +24,12 @@ export default function ForgotPasswordPage() {
       setEmail('');
       setMessage('If that email belongs to a ScopeLogic account, a password reset email has been sent. Open the link in that email to set a new password.');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Password reset could not be started.');
+      const message = cause instanceof Error
+        ? cause.message
+        : (cause && typeof cause === 'object' && 'message' in cause && typeof (cause as { message?: unknown }).message === 'string')
+          ? String((cause as { message?: unknown }).message)
+          : 'Password reset could not be started.';
+      setError(message || 'Password reset could not be started.');
     } finally { setLoading(false); }
   };
 
