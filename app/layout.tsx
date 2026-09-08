@@ -1,5 +1,6 @@
 import './globals.css';
 import type { Metadata } from 'next';
+import WorkspaceSidebarLinks from './workspace-sidebar-links';
 
 export const metadata: Metadata = {
   title: 'ScopeLogic v1.0',
@@ -11,5 +12,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body>{children}</body></html>;
+  return <html lang="en"><body><WorkspaceSidebarLinks />{children}</body></html>;
 }
