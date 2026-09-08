@@ -21,6 +21,10 @@ for (const filePath of sourceFiles) {
   const content = await readFile(filePath, 'utf8');
   const displayPath = relative(root, filePath).replaceAll('\\', '/');
 
+  if (/\b(?:window\.)?(?:alert|confirm|prompt)\s*\(/m.test(content)) {
+    violations.push(`${displayPath}: browser-native dialogs are prohibited; use an in-app ScopeLogic modal or message instead`);
+  }
+
   if (/new\s+Blob\s*\(\s*\[\s*(?:bytes|pdfBytes)\s*\]/m.test(content)) {
     violations.push(`${displayPath}: passes a pdf-lib Uint8Array directly into Blob`);
   }
