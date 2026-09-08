@@ -1,96 +1,157 @@
 -- PROPOSED ONLY — DO NOT APPLY TO PRODUCTION.
--- ScopeLogic CRM MVP schema draft for feature/crm-mvp-preview.
+-- ScopeLogic Client CRM schema draft for feature/crm-mvp-preview.
 -- The preview UI intentionally uses browser-local data only.
+--
+-- Design principle:
+--   customers + contacts + existing projects remain the source of truth.
+--   CRM adds communication history, follow-ups, invoices, and payments.
+--   There is intentionally NO opportunity pipeline, probability, forecast value,
+--   expected close date, or weighted sales pipeline.
 
-create table if not exists public.crm_opportunities (
-  id uuid primary key default gen_random_uuid(),
-  owner_id uuid not null references auth.users(id) on delete cascade,
-  customer_id uuid not null references public.customers(id) on delete cascade,
-  primary_contact_id uuid references public.contacts(id) on delete set null,
-  master_project_id uuid references public.master_projects(id) on delete set null,
-  created_by_user_id uuid not null references auth.users(id) on delete restrict default auth.uid(),
-  assigned_user_id uuid not null references auth.users(id) on delete restrict default auth.uid(),
-  name text not null,
-  stage text not null default 'Lead',
-  offering text not null default 'Both',
-  estimated_value numeric(14,2) not null default 0,
-  probability integer not null default 10 check (probability between 0 and 100),
-  expected_close date,
-  source text not null default '',
-  last_activity_at timestamptz,
-  next_action text not null default '',
-  next_action_date date,
-  notes text not null default '',
-  created_at timestamptz not null default timezone('utc', now()),
-  updated_at timestamptz not null default timezone('utc', now()),
-  check (stage in ('Lead','Ready to Contact','Contacted','Responded','Qualified','Project Received','SOW Sent','Contract / Vendor Setup','Won','Lost / Dormant')),
-  check (offering in ('Quick Review','Large Project','Both'))
-);
+alter table public.customers
+  add column if not exists relationship_status text not null default 'Prospect',
+  add column if not exists relationship_notes text not null default '',
+  add column if not exists last_contact_at timestamptz,
+  add column if not exists next_follow_up date;
 
-create table if not exists public.crm_activities (
+alter table public.customers
+  drop constraint if exists customers_relationship_status_check;
+alter table public.customers
+  add constraint customers_relationship_status_check
+  check (relationship_status in ('Prospect','Active Client','Past Client','Dormant'));
+
+create table if not exists public.crm_communications (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
   customer_id uuid not null references public.customers(id) on delete cascade,
   contact_id uuid references public.contacts(id) on delete set null,
-  opportunity_id uuid references public.crm_opportunities(id) on delete set null,
+  project_id uuid references public.projects(id) on delete set null,
   created_by_user_id uuid not null references auth.users(id) on delete restrict default auth.uid(),
-  activity_type text not null default 'Note',
-  activity_at timestamptz not null default timezone('utc', now()),
+  communication_type text not null default 'Note',
+  direction text not null default 'Internal',
+  communication_at timestamptz not null default timezone('utc', now()),
+  subject text not null default '',
   summary text not null,
+  source_reference text not null default '',
   created_at timestamptz not null default timezone('utc', now()),
-  check (activity_type in ('Email','Call','Meeting','Note','Document'))
+  check (communication_type in ('Email','Call','Teams','Meeting','Text','Document','Note')),
+  check (direction in ('Outgoing','Incoming','Internal'))
 );
 
-create table if not exists public.crm_tasks (
+create table if not exists public.crm_follow_ups (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
   customer_id uuid not null references public.customers(id) on delete cascade,
-  opportunity_id uuid references public.crm_opportunities(id) on delete set null,
+  contact_id uuid references public.contacts(id) on delete set null,
+  project_id uuid references public.projects(id) on delete set null,
   assigned_user_id uuid not null references auth.users(id) on delete restrict default auth.uid(),
   title text not null,
   due_date date not null,
-  priority text not null default 'Normal',
-  status text not null default 'Open',
+  completed boolean not null default false,
   completed_at timestamptz,
+  notes text not null default '',
   created_at timestamptz not null default timezone('utc', now()),
-  updated_at timestamptz not null default timezone('utc', now()),
-  check (priority in ('Normal','High')),
-  check (status in ('Open','Complete'))
+  updated_at timestamptz not null default timezone('utc', now())
 );
 
-alter table public.customers
-  add column if not exists crm_status text not null default 'Prospect',
-  add column if not exists project_mix text not null default 'Both',
-  add column if not exists last_activity_at timestamptz,
-  add column if not exists next_follow_up date;
+create table if not exists public.crm_invoices (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  project_id uuid not null references public.projects(id) on delete restrict,
+  invoice_number text not null,
+  amount numeric(14,2) not null check (amount >= 0),
+  issued_date date not null,
+  due_date date not null,
+  notes text not null default '',
+  created_by_user_id uuid not null references auth.users(id) on delete restrict default auth.uid(),
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  unique (owner_id, invoice_number)
+);
 
-alter table public.contacts
-  add column if not exists crm_role text not null default '',
-  add column if not exists decision_influence text not null default 'Unknown';
+create table if not exists public.crm_payments (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  invoice_id uuid not null references public.crm_invoices(id) on delete restrict,
+  amount numeric(14,2) not null check (amount > 0),
+  payment_date date not null,
+  payment_reference text not null default '',
+  notes text not null default '',
+  created_by_user_id uuid not null references auth.users(id) on delete restrict default auth.uid(),
+  created_at timestamptz not null default timezone('utc', now())
+);
 
-create index if not exists crm_opportunities_owner_stage_idx on public.crm_opportunities(owner_id, stage);
-create index if not exists crm_opportunities_customer_idx on public.crm_opportunities(customer_id);
-create index if not exists crm_tasks_owner_due_idx on public.crm_tasks(owner_id, status, due_date);
-create index if not exists crm_activities_customer_date_idx on public.crm_activities(customer_id, activity_at desc);
+create index if not exists crm_communications_customer_date_idx
+  on public.crm_communications(customer_id, communication_at desc);
+create index if not exists crm_communications_project_date_idx
+  on public.crm_communications(project_id, communication_at desc)
+  where project_id is not null;
+create index if not exists crm_follow_ups_owner_due_idx
+  on public.crm_follow_ups(owner_id, completed, due_date);
+create index if not exists crm_invoices_project_idx
+  on public.crm_invoices(project_id, issued_date desc);
+create index if not exists crm_invoices_owner_due_idx
+  on public.crm_invoices(owner_id, due_date);
+create index if not exists crm_payments_invoice_date_idx
+  on public.crm_payments(invoice_id, payment_date desc);
 
-alter table public.crm_opportunities enable row level security;
-alter table public.crm_activities enable row level security;
-alter table public.crm_tasks enable row level security;
+alter table public.crm_communications enable row level security;
+alter table public.crm_follow_ups enable row level security;
+alter table public.crm_invoices enable row level security;
+alter table public.crm_payments enable row level security;
 
--- Proposed access model: CRM is workspace-scoped. Administrators/managers can see
--- all CRM records in the workspace; subordinate users see records assigned to them.
--- Final RLS should be reviewed against the RC5.7 workspace rules before migration.
+-- Proposed access model:
+-- Workspace administrators/managers see all client relationship records.
+-- Subordinate users see communications/follow-ups tied to projects they can access,
+-- records they created/are assigned, and invoice/payment records for accessible projects.
+-- Final policies must be validated against RC5.7 before any migration is applied.
 
-drop policy if exists crm_opportunities_read on public.crm_opportunities;
-create policy crm_opportunities_read on public.crm_opportunities
+drop policy if exists crm_communications_read on public.crm_communications;
+create policy crm_communications_read on public.crm_communications
 for select to authenticated
 using (
   owner_id = (select private.current_workspace_owner())
-  and ((select private.current_is_workspace_admin()) or assigned_user_id = (select auth.uid()))
+  and (
+    (select private.current_is_workspace_admin())
+    or created_by_user_id = (select auth.uid())
+    or (project_id is not null and (select private.can_access_project(project_id)))
+  )
 );
 
-drop policy if exists crm_opportunities_write on public.crm_opportunities;
-create policy crm_opportunities_write on public.crm_opportunities
+drop policy if exists crm_communications_write on public.crm_communications;
+create policy crm_communications_write on public.crm_communications
+for all to authenticated
+using (
+  owner_id = (select private.current_workspace_owner())
+  and (
+    (select private.current_is_workspace_admin())
+    or created_by_user_id = (select auth.uid())
+    or (project_id is not null and (select private.can_access_project(project_id)))
+  )
+)
+with check (
+  owner_id = (select private.current_workspace_owner())
+  and (
+    (select private.current_is_workspace_admin())
+    or created_by_user_id = (select auth.uid())
+    or (project_id is not null and (select private.can_access_project(project_id)))
+  )
+);
+
+drop policy if exists crm_follow_ups_read on public.crm_follow_ups;
+create policy crm_follow_ups_read on public.crm_follow_ups
+for select to authenticated
+using (
+  owner_id = (select private.current_workspace_owner())
+  and (
+    (select private.current_is_workspace_admin())
+    or assigned_user_id = (select auth.uid())
+    or (project_id is not null and (select private.can_access_project(project_id)))
+  )
+);
+
+drop policy if exists crm_follow_ups_write on public.crm_follow_ups;
+create policy crm_follow_ups_write on public.crm_follow_ups
 for all to authenticated
 using (
   owner_id = (select private.current_workspace_owner())
@@ -101,54 +162,67 @@ with check (
   and ((select private.current_is_workspace_admin()) or assigned_user_id = (select auth.uid()))
 );
 
-drop policy if exists crm_activities_read on public.crm_activities;
-create policy crm_activities_read on public.crm_activities
+drop policy if exists crm_invoices_read on public.crm_invoices;
+create policy crm_invoices_read on public.crm_invoices
+for select to authenticated
+using (
+  owner_id = (select private.current_workspace_owner())
+  and ((select private.current_is_workspace_admin()) or (select private.can_access_project(project_id)))
+);
+
+drop policy if exists crm_invoices_write on public.crm_invoices;
+create policy crm_invoices_write on public.crm_invoices
+for all to authenticated
+using (
+  owner_id = (select private.current_workspace_owner())
+  and ((select private.current_is_workspace_admin()) or (select private.can_access_project(project_id)))
+)
+with check (
+  owner_id = (select private.current_workspace_owner())
+  and ((select private.current_is_workspace_admin()) or (select private.can_access_project(project_id)))
+);
+
+drop policy if exists crm_payments_read on public.crm_payments;
+create policy crm_payments_read on public.crm_payments
 for select to authenticated
 using (
   owner_id = (select private.current_workspace_owner())
   and (
     (select private.current_is_workspace_admin())
-    or created_by_user_id = (select auth.uid())
     or exists (
-      select 1 from public.crm_opportunities o
-      where o.id = crm_activities.opportunity_id
-        and o.assigned_user_id = (select auth.uid())
+      select 1 from public.crm_invoices i
+      where i.id = crm_payments.invoice_id
+        and (select private.can_access_project(i.project_id))
     )
   )
 );
 
-drop policy if exists crm_activities_write on public.crm_activities;
-create policy crm_activities_write on public.crm_activities
+drop policy if exists crm_payments_write on public.crm_payments;
+create policy crm_payments_write on public.crm_payments
 for all to authenticated
-using (owner_id = (select private.current_workspace_owner()))
+using (
+  owner_id = (select private.current_workspace_owner())
+  and (
+    (select private.current_is_workspace_admin())
+    or exists (
+      select 1 from public.crm_invoices i
+      where i.id = crm_payments.invoice_id
+        and (select private.can_access_project(i.project_id))
+    )
+  )
+)
 with check (
   owner_id = (select private.current_workspace_owner())
   and (
     (select private.current_is_workspace_admin())
-    or created_by_user_id = (select auth.uid())
+    or exists (
+      select 1 from public.crm_invoices i
+      where i.id = crm_payments.invoice_id
+        and (select private.can_access_project(i.project_id))
+    )
   )
 );
 
-drop policy if exists crm_tasks_read on public.crm_tasks;
-create policy crm_tasks_read on public.crm_tasks
-for select to authenticated
-using (
-  owner_id = (select private.current_workspace_owner())
-  and ((select private.current_is_workspace_admin()) or assigned_user_id = (select auth.uid()))
-);
-
-drop policy if exists crm_tasks_write on public.crm_tasks;
-create policy crm_tasks_write on public.crm_tasks
-for all to authenticated
-using (
-  owner_id = (select private.current_workspace_owner())
-  and ((select private.current_is_workspace_admin()) or assigned_user_id = (select auth.uid()))
-)
-with check (
-  owner_id = (select private.current_workspace_owner())
-  and ((select private.current_is_workspace_admin()) or assigned_user_id = (select auth.uid()))
-);
-
 -- Deliberately omitted from this proposed file:
--- GRANT statements, PostgREST schema reload, and any production migration history.
--- Those should be added only after preview acceptance and a final security review.
+-- GRANT statements, PostgREST reload, changes to production migration history,
+-- or any execution against the live Supabase project.
