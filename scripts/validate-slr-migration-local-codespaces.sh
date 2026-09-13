@@ -1,57 +1,36 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG="supabase/config.toml"
-BACKUP="$(mktemp)"
-cp "$CONFIG" "$BACKUP"
+TMP_SCRIPT="$(mktemp)"
 
 cleanup() {
-  cp "$BACKUP" "$CONFIG" 2>/dev/null || true
-  rm -f "$BACKUP"
+  rm -f "$TMP_SCRIPT"
   npx supabase stop --no-backup >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
-python3 <<'PY'
+EXCLUDE_SERVICES="gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor"
+
+python3 - "$EXCLUDE_SERVICES" "$TMP_SCRIPT" <<'PY'
 from pathlib import Path
-path = Path('supabase/config.toml')
-text = path.read_text()
-header = '[realtime]'
-if header not in text:
-    if not text.endswith('\n'):
-        text += '\n'
-    text += '\n[realtime]\nenabled = false\n'
-else:
-    lines = text.splitlines()
-    out = []
-    in_section = False
-    found_enabled = False
-    inserted = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith('[') and stripped.endswith(']'):
-            if in_section and not found_enabled:
-                out.append('enabled = false')
-                inserted = True
-            in_section = stripped == header
-            found_enabled = False if in_section else found_enabled
-            out.append(line)
-            continue
-        if in_section and stripped.startswith('enabled'):
-            out.append('enabled = false')
-            found_enabled = True
-        else:
-            out.append(line)
-    if in_section and not found_enabled:
-        out.append('enabled = false')
-    text = '\n'.join(out) + '\n'
-path.write_text(text)
+import sys
+
+exclude = sys.argv[1]
+target = Path(sys.argv[2])
+source = Path('scripts/validate-slr-migration-local.sh').read_text()
+old = "npx supabase start >/tmp/scopelogic-supabase-start.log 2>&1 || {"
+new = f'npx supabase start -x "{exclude}" --debug >/tmp/scopelogic-supabase-start.log 2>&1 || {{'
+if old not in source:
+    raise SystemExit('Could not find the local Supabase start command in the validation script.')
+target.write_text(source.replace(old, new, 1))
 PY
 
+chmod +x "$TMP_SCRIPT"
 export DO_NOT_TRACK=1
 
-echo "Codespaces local validation: Realtime is temporarily disabled because its bootstrap migration exhausted the local DB connection queue."
-echo "The original supabase/config.toml will be restored automatically on exit."
+echo "Codespaces local validation: starting only the local Postgres container."
+echo "Auth, Realtime, Storage API, Studio, and other service containers are excluded to stay within Codespaces resource limits."
+echo "The database still receives the normal Supabase base schema and the repository migration chain."
 
 npx supabase stop --no-backup >/dev/null 2>&1 || true
-bash scripts/validate-slr-migration-local.sh
+bash "$TMP_SCRIPT"
