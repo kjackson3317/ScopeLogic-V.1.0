@@ -1,48 +1,207 @@
 /* Presentation-only live-app facelift; no navigation or workflow reorder. */
-:root{--sl-green:#4b6623;--sl-green-dark:#3d5320;--sl-charcoal:#1f2937;--sl-muted:#667085;--sl-border:#d7dce2;--sl-border-strong:#c4cad2;--sl-canvas:#f3f5f7;--sl-panel:#fff;--sl-radius:8px;--sl-shadow:0 1px 3px rgba(16,24,40,.08)}
-body,.app-shell,.main{background:var(--sl-canvas)!important;color:#20262e}.sidebar{background:#171c22!important;border-right:1px solid #2c333c!important;box-shadow:2px 0 8px rgba(16,24,40,.08)}.topbar{background:rgba(255,255,255,.97)!important;border-bottom:1px solid var(--sl-border)!important;box-shadow:0 1px 2px rgba(16,24,40,.04)}
-.panel,.card,.standard-card,.detail-card,.matrix-card,.release-card,.empty-panel,.auth-card,.dialog-card,.modal-card,.table-card,.template-bar,.recommendation-sections{background:var(--sl-panel)!important;border:1px solid var(--sl-border)!important;border-radius:var(--sl-radius)!important;box-shadow:var(--sl-shadow)}
-input,select,textarea{border-color:var(--sl-border-strong)!important;border-radius:6px!important;background:#fff;color:#20262e}input:focus,select:focus,textarea:focus{outline:none!important;border-color:var(--sl-green)!important;box-shadow:0 0 0 3px rgba(75,102,35,.14)!important}button.primary,.primary-button{background:var(--sl-green)!important;border-color:var(--sl-green)!important;color:#fff!important;border-radius:6px!important}button.primary:hover,.primary-button:hover{background:var(--sl-green-dark)!important;border-color:var(--sl-green-dark)!important}button.secondary,.secondary-button{background:#fff!important;border:1px solid var(--sl-border-strong)!important;color:var(--sl-charcoal)!important;border-radius:6px!important}
-thead th{background:#eef1f3!important;color:#39414d!important;border-bottom:1px solid var(--sl-border-strong)!important;font-size:11px!important;font-weight:700!important}tbody td{border-bottom-color:#e5e8ec!important}tbody tr:hover td{background:#fafbf9!important}.detail-tabs button.active,.tabs button.active,.tab-row button.active{color:var(--sl-green-dark)!important;border-bottom-color:var(--sl-green)!important;background:#eef2e8!important}.help-text{color:var(--sl-muted)!important}
-.slr-child-card{border:1px solid var(--sl-border);border-radius:7px;background:#fff;margin:10px 0;overflow:hidden}.slr-child-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 11px;background:#f5f7f3;border-bottom:1px solid var(--sl-border)}.slr-child-card-body{padding:11px}.slr-child-number{font-weight:800;color:var(--sl-green-dark)}.slr-child-card-head small{display:block;margin-top:2px;color:var(--sl-muted)}.slr-child-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.slr-child-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.slr-lock-note{padding:8px 10px;margin-bottom:10px;border-left:3px solid var(--sl-green);background:#eef2e8;color:#44512f;font-size:12px}.slr-child-system-list{display:flex;flex-wrap:wrap;gap:8px 14px;padding:10px 0}.slr-child-system-list>span{width:100%;font-weight:700}.rbb-system-section{margin-top:12px;border:1px solid var(--sl-border);border-radius:6px;overflow:hidden}.rbb-system-section>.field{padding:10px;display:block}.rbb-system-section>.slr-lock-note{margin:0 10px 10px}@media(max-width:900px){.slr-child-grid{grid-template-columns:1fr}}
+:root{
+  --sl-green:#4b6623;
+  --sl-green-dark:#3d5320;
+  --sl-charcoal:#20262e;
+  --sl-muted:#667085;
+  --sl-border:#d4d9df;
+  --sl-border-strong:#bfc6cf;
+  --sl-canvas:#f2f4f6;
+  --sl-panel:#fff;
+  --sl-header:#f5f6f7;
+  --sl-header-strong:#eceff1;
+  --sl-radius:4px;
+  --sl-shadow:none;
+}
 
-/* Desktop-density pass: preserve hierarchy while reducing unused vertical space. */
+body,.app-shell,.main{background:var(--sl-canvas)!important;color:var(--sl-charcoal)}
+.sidebar{background:#171c22!important;border-right:1px solid #2c333c!important;box-shadow:none!important}
+.topbar{background:#fff!important;border-bottom:1px solid var(--sl-border)!important;box-shadow:none!important}
+
+/* Enterprise surfaces: flatter panels, restrained radii, borders instead of floating cards. */
+.panel,.card,.standard-card,.detail-card,.matrix-card,.release-card,.empty-panel,.auth-card,.dialog-card,.modal-card,.table-card,.template-bar,.recommendation-sections,.project-card,.metric,.bidder-card,.revision-box,.documents-layout,.matrix-export{
+  background:var(--sl-panel)!important;
+  border:1px solid var(--sl-border)!important;
+  border-radius:var(--sl-radius)!important;
+  box-shadow:none!important;
+}
+
+/* Inputs should read as editable enterprise fields, not large form controls. */
+input,select,textarea{
+  border-color:var(--sl-border-strong)!important;
+  border-radius:3px!important;
+  background:#fff;
+  color:var(--sl-charcoal);
+  box-shadow:none!important;
+}
+input:focus,select:focus,textarea:focus{
+  outline:none!important;
+  border-color:var(--sl-green)!important;
+  box-shadow:0 0 0 2px rgba(75,102,35,.12)!important;
+}
+.field span,.editor-grid label{color:#4b5563!important;font-size:11px!important;font-weight:700!important}
+
+/* Buttons are utility controls; primary actions retain the brand color. */
+button.primary,.primary-button{
+  background:var(--sl-green)!important;
+  border-color:var(--sl-green)!important;
+  color:#fff!important;
+  border-radius:3px!important;
+  box-shadow:none!important;
+}
+button.primary:hover,.primary-button:hover{background:var(--sl-green-dark)!important;border-color:var(--sl-green-dark)!important}
+button.secondary,.secondary-button,.panel-head button{
+  background:#fff!important;
+  border:1px solid var(--sl-border-strong)!important;
+  color:var(--sl-charcoal)!important;
+  border-radius:3px!important;
+  box-shadow:none!important;
+}
+
+/* Tables carry more of the visual structure than cards. */
+table{border-collapse:collapse!important;background:#fff!important}
+thead th{
+  background:var(--sl-header-strong)!important;
+  color:#374151!important;
+  border-top:1px solid var(--sl-border)!important;
+  border-bottom:1px solid var(--sl-border-strong)!important;
+  border-right:1px solid #dde1e6!important;
+  font-size:10px!important;
+  font-weight:800!important;
+  letter-spacing:.04em!important;
+  text-transform:uppercase!important;
+}
+tbody td{
+  border-bottom:1px solid #e2e6ea!important;
+  border-right:1px solid #eef0f2!important;
+  background:#fff!important;
+}
+tbody tr:nth-child(even) td{background:#fbfcfc!important}
+tbody tr:hover td{background:#f4f7f1!important}
+.matrix-row.head{background:#39424d!important;color:#fff!important}
+.matrix-row{border-bottom:1px solid var(--sl-border)!important}
+.matrix-row b,.matrix-row span{border-right:1px solid #e1e5e8!important}
+
+/* Tabs and section headers behave like enterprise workspaces. */
+.detail-tabs,.tabs,.tab-row{border-bottom:1px solid var(--sl-border-strong)!important}
+.detail-tabs button,.tabs button,.tab-row button{border-radius:0!important}
+.detail-tabs button.active,.tabs button.active,.tab-row button.active{
+  color:var(--sl-green-dark)!important;
+  border-bottom-color:var(--sl-green)!important;
+  background:#f2f5ee!important;
+}
+.panel-head,.recommendation-heading{
+  border-bottom:1px solid var(--sl-border)!important;
+  background:var(--sl-header)!important;
+}
+.recommendation-heading{margin:-1px -1px 0!important;padding:9px 11px!important}
+.recommendation-heading b{font-size:13px!important}
+.recommendation-heading span{font-size:11px!important;color:var(--sl-muted)!important}
+.help-text{color:var(--sl-muted)!important}
+
+/* SLR child records: flatter, row-oriented, data-first presentation. */
+.slr-child-card{
+  border:1px solid var(--sl-border)!important;
+  border-radius:3px!important;
+  background:#fff!important;
+  margin:8px 0!important;
+  overflow:hidden;
+  box-shadow:none!important;
+}
+.slr-child-card-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:7px 9px!important;
+  background:var(--sl-header)!important;
+  border-bottom:1px solid var(--sl-border)!important;
+  min-height:36px;
+}
+.slr-child-card-body{padding:9px 10px!important}
+.slr-child-number{font-weight:800;color:var(--sl-green-dark);font-size:12px;letter-spacing:.01em}
+.slr-child-card-head small{display:inline-block;margin-left:8px!important;color:var(--sl-muted);font-size:10px}
+.slr-child-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.slr-child-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.slr-lock-note{
+  padding:6px 8px!important;
+  margin-bottom:8px!important;
+  border-left:3px solid var(--sl-green)!important;
+  background:#f3f6ef!important;
+  color:#44512f;
+  font-size:11px!important;
+  line-height:1.35!important;
+}
+.slr-child-system-list{display:flex;flex-wrap:wrap;gap:6px 13px;padding:7px 0!important;border-bottom:1px solid #edf0f2}
+.slr-child-system-list>span{width:100%;font-weight:700;color:#4b5563;font-size:11px}
+.rbb-system-section{margin-top:8px!important;border:1px solid var(--sl-border)!important;border-radius:2px!important;overflow:hidden}
+.rbb-system-section>.field{padding:8px 9px!important;display:block}
+.rbb-system-section>.slr-lock-note{margin:0 9px 8px!important}
+
+/* Lists and document/library views should feel more like record grids. */
+.issue-list,.doc-list{background:#f8f9fa!important}
+.list-header{background:var(--sl-header-strong)!important;border-bottom:1px solid var(--sl-border-strong)!important}
+.issue-list>button,.doc-list button{border-bottom:1px solid #e1e5e8!important;border-radius:0!important}
+.issue-list>button:hover,.issue-list>button.selected,.doc-list button.selected{background:#fff!important}
+.issue-list>button.selected,.doc-list button.selected{box-shadow:inset 3px 0 var(--sl-green)!important}
+.documents-layout{overflow:hidden!important}
+.doc-current{background:var(--sl-header)!important;margin:-18px -20px 14px!important;padding:12px 20px!important;border-bottom:1px solid var(--sl-border)!important}
+.revision-box{padding:0!important;overflow:hidden!important}
+.revision-box h3{background:var(--sl-header)!important;margin:0!important;padding:9px 11px!important;border-bottom:1px solid var(--sl-border)!important}
+.revision-box>div{margin:0 11px!important}
+
+/* Project/setup and library cards use compact record styling, not marketing tiles. */
+.project-card{border-radius:3px!important;position:relative}
+.project-card.selected{box-shadow:inset 3px 0 var(--sl-green)!important}
+.project-card>div:first-child{padding-bottom:8px;border-bottom:1px solid #e5e8eb}
+.project-card h3{font-size:16px!important}
+.metric{border-radius:3px!important}
+.metric b{font-size:24px!important}
+.form-card{border-radius:3px!important;box-shadow:none!important}
+.template-bar{border-radius:3px!important;background:var(--sl-header)!important}
+
+/* Quote workspace: keep current placement but make line-item/editing surfaces more like ERP estimating software. */
+.bidder-card{border-radius:3px!important;padding:0!important;overflow:hidden!important}
+.bidder-head{background:var(--sl-header)!important;border-bottom:1px solid var(--sl-border)!important;padding:9px 11px!important;margin:0!important}
+.bidder-head input{background:transparent!important;border:0!important;border-bottom:1px solid transparent!important;font-size:17px!important}
+.bidder-head input:focus{border-bottom-color:var(--sl-green)!important;box-shadow:none!important}
+.matrix-toolbar{border-radius:3px 3px 0 0!important;background:var(--sl-header)!important;border-color:var(--sl-border)!important}
+
+/* Moderate desktop density: enough information per viewport without making the UI cramped. */
 @media(min-width:901px){
-  .topbar{height:60px!important;padding:0 24px!important}
-  .page{padding:22px 24px!important}
-  .page-head{gap:20px!important;margin-bottom:16px!important}
-  .page-head h1{margin:4px 0 5px!important}
-  .page-head p{line-height:1.4!important}
+  .topbar{height:64px!important;padding:0 24px!important}
+  .page{padding:24px!important}
+  .page-head{gap:22px!important;margin-bottom:18px!important}
+  .page-head h1{margin:4px 0 6px!important}
+  .page-head p{line-height:1.42!important}
 
-  .sidebar{padding:16px 13px!important}
-  .brand{margin:0 5px 16px!important}
-  .project-switch{padding:10px!important;margin-bottom:14px!important}
+  .sidebar{padding:17px 13px!important}
+  .brand{margin:0 5px 18px!important}
+  .project-switch{padding:10px!important;margin-bottom:15px!important;border-radius:4px!important}
   .project-switch b{margin:3px 0!important}
-  .nav-group{margin:13px 0!important}
+  .nav-group{margin:14px 0!important}
   .nav-group>span{margin:0 9px 5px!important}
-  .nav-group button{padding:7px 9px!important}
-  .sidebar-account{padding:13px 7px 2px!important}
-  .sidebar-account>span{margin-bottom:5px!important}
-  .sidebar-user{margin-bottom:6px!important}
-  .sidebar-account button{min-height:36px!important;padding:7px 10px!important}
+  .nav-group button{padding:7px 9px!important;border-radius:3px!important}
+  .sidebar-account{padding:14px 7px 2px!important}
+  .sidebar-account>span{margin-bottom:6px!important}
+  .sidebar-user{margin-bottom:7px!important}
+  .sidebar-account button{min-height:37px!important;padding:7px 10px!important;border-radius:3px!important}
 
-  .panel,.form-card,.project-card,.metric,.bidder-card,.detail-card,.matrix-card,.release-card,.standard-card,.table-card,.empty-panel{padding:14px!important}
-  .panel-head{margin-bottom:5px!important}
-  .panel-head h2{margin:6px 0!important}
-  .metrics{gap:10px!important;margin-bottom:12px!important}
-  .dashboard-grid{gap:12px!important}
-  .project-grid{gap:12px!important}
-  .project-card h3{margin:12px 0 4px!important}
-  .project-card dl{margin:12px 0!important;padding-top:10px!important}
+  .panel,.form-card,.project-card,.metric,.detail-card,.matrix-card,.release-card,.standard-card,.table-card,.empty-panel{padding:15px!important}
+  .panel-head{margin:-15px -15px 10px!important;padding:9px 12px!important}
+  .panel-head h2{margin:0!important;font-size:14px!important}
+  .metrics{gap:10px!important;margin-bottom:14px!important}
+  .dashboard-grid,.project-grid{gap:12px!important}
+  .project-card h3{margin:11px 0 4px!important}
+  .project-card dl{margin:11px 0!important;padding-top:9px!important}
   .project-card dl div{margin:5px 0!important}
 
-  input,select{padding:7px 9px!important;min-height:36px!important}
+  input,select{padding:7px 9px!important;min-height:37px!important}
   textarea{padding:8px 10px!important}
-  .field textarea,.editor-grid textarea,.issue-editor>.field.textarea textarea,.issue-editor>.field:nth-of-type(2) textarea{min-height:78px!important}
-  .field span,.editor-grid label{line-height:1.25!important}
-  .editor-grid{gap:10px!important;margin-bottom:10px!important}
+  .field textarea,.editor-grid textarea,.issue-editor>.field.textarea textarea,.issue-editor>.field:nth-of-type(2) textarea{min-height:88px!important}
+  .editor-grid{gap:10px!important;margin-bottom:11px!important}
   .editor-grid label select,.editor-grid label input{margin-top:4px!important}
-  .issue-editor>.field{margin:10px 0!important}
+  .issue-editor>.field{margin:11px 0!important}
   .checkbox-field{margin-top:14px!important}
 
   .primary,.secondary,.panel-head button,.primary-button,.secondary-button,.slr-child-actions button{padding:7px 11px!important;min-height:34px!important}
@@ -51,49 +210,36 @@ thead th{background:#eef1f3!important;color:#39414d!important;border-bottom:1px 
   .issue-title{gap:12px!important;padding-bottom:10px!important;margin-bottom:12px!important}
   .issue-title span{margin-bottom:3px!important}
   .issue-editor{padding:16px 20px!important}
-  .detail-tabs{margin-top:14px!important}
-  .detail-tabs button,.tabs button,.tab-row button{padding-top:7px!important;padding-bottom:7px!important}
-  .tab-panel{padding:12px 2px!important}
+  .detail-tabs{margin-top:15px!important}
+  .detail-tabs button,.tabs button,.tab-row button{padding:8px 12px!important}
+  .tab-panel{padding:13px 2px!important}
   .tab-panel.two{gap:10px!important}
   .tab-panel.checklist{gap:8px!important}
-  .tab-panel.checklist label{padding:9px!important;gap:7px!important}
+  .tab-panel.checklist label{padding:9px!important;gap:7px!important;border-radius:3px!important}
 
-  .matrix-toolbar{padding:7px 8px!important;gap:6px!important}
-  .matrix-row b,.matrix-row span{padding:9px!important}
-  .matrix-row span{min-height:42px!important}
-  thead th,tbody td{padding-top:8px!important;padding-bottom:8px!important}
+  .matrix-toolbar{padding:8px!important;gap:6px!important}
+  .matrix-row b,.matrix-row span{padding:8px 9px!important}
+  .matrix-row span{min-height:40px!important}
+  thead th,tbody td{padding-top:7px!important;padding-bottom:7px!important}
 
   .document-line,.issue-line{padding:9px 0!important}
   .issue-line{gap:9px!important}
-  .doc-list button{padding:10px 12px!important}
+  .doc-list button{padding:9px 11px!important}
   .doc-detail{padding:18px 20px!important}
-  .doc-current{padding-bottom:12px!important;margin-bottom:14px!important}
-  .revision-box{margin-top:16px!important;padding:11px!important}
-  .revision-box h3{margin-bottom:6px!important}
+  .revision-box{margin-top:15px!important}
   .revision-box>div{padding:7px 0!important}
 
-  .template-bar{gap:6px!important}
+  .template-bar{gap:6px!important;padding:10px 11px!important}
   .bidder-stack{gap:12px!important}
-  .bidder-card{padding:14px!important}
-  .bidder-head{gap:10px!important;margin-bottom:12px!important}
-  .bidder-head input{padding:3px!important}
-  .bidder-head select{padding:7px!important}
-  .empty-state{padding:24px!important}
-  .empty-state.large{padding:56px!important}
+  .empty-state{padding:26px!important}
+  .empty-state.large{padding:60px!important}
   .empty-list{padding:18px 14px!important}
 
-  .slr-child-card{margin:7px 0!important}
-  .slr-child-card-head{gap:9px!important;padding:7px 9px!important}
-  .slr-child-card-body{padding:8px 9px!important}
-  .slr-child-grid{gap:8px!important}
-  .slr-child-actions{gap:6px!important}
-  .slr-lock-note{padding:6px 8px!important;margin-bottom:7px!important;line-height:1.35!important}
-  .slr-child-system-list{gap:6px 12px!important;padding:6px 0!important}
-  .rbb-system-section{margin-top:8px!important}
-  .rbb-system-section>.field{padding:7px 9px!important}
-  .rbb-system-section>.slr-lock-note{margin:0 9px 7px!important}
-  .recommendation-sections{padding-top:8px!important;padding-bottom:8px!important}
+  .recommendation-sections{padding:0 10px 9px!important}
+  .recommendation-heading{margin:0 -10px 8px!important}
 
-  .modal-head{height:46px!important}
+  .modal-head{height:46px!important;background:var(--sl-header)!important}
   .modal-card iframe{height:calc(100% - 46px)!important}
 }
+
+@media(max-width:900px){.slr-child-grid{grid-template-columns:1fr}}
