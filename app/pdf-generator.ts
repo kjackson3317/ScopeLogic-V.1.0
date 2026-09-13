@@ -117,7 +117,7 @@ function configFor(kind: PdfKind): PdfConfig {
     title: 'Formal RFI',
     headers: ['RFI No.', 'Title / Subject', 'Systems', 'Question', 'Document References'],
     ratios: [0.08, 0.16, 0.14, 0.42, 0.20],
-    values: ({ issue, rfi }) => [rfi?.number || '', rfi?.title || issue.title, rfi?.systems?.join('; ') || systemNames(issue), rfi?.question || '', rfi?.reference || issue.reference],
+    values: ({ issue, rfi }) => [rfi?.number || '', rfi?.title || issue.title, rfi?.systems?.map((system) => displaySystem(issue, system)).join('; ') || systemNames(issue), rfi?.question || '', rfi?.reference || issue.reference],
   };
   return {
     title: 'Contractor Response Checklist',
@@ -133,7 +133,7 @@ function rowsFor(kind: PdfKind, issues: PdfIssue[]): PdfRow[] {
   if (kind === 'clarifications') return normalized.filter((issue) => issue.clarification).map((issue) => ({ issue }));
   if (kind === 'rfi') return normalized.flatMap((issue) => rfiChildrenForDeliverable(issue).map((rfi) => ({ issue, rfi })));
   if (kind === 'checklist') {
-    const rows = normalized.flatMap((issue) => checklistChildrenForDeliverable(issue).map((checklist) => ({ issue, checklist, system: checklist.system, section: checklist.system })));
+    const rows = normalized.flatMap((issue) => checklistChildrenForDeliverable(issue).map((checklist) => ({ issue, checklist, system: checklist.system, section: displaySystem(issue, checklist.system) })));
     return rows.sort((a, b) => { const ai = SYSTEM_ORDER.indexOf(a.system || ''); const bi = SYSTEM_ORDER.indexOf(b.system || ''); return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi) || String(a.system || '').localeCompare(String(b.system || '')); });
   }
   return [];

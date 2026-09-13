@@ -241,7 +241,7 @@ const alphaSorted = (values: string[]) => [...values].sort(alphaNumericCompare);
 const SYSTEM_OPTIONS = alphaSorted(['Structured Cabling', 'Network Electronics', 'CCTV', 'Access Control', 'Intrusion Detection', 'Fire Alarm', 'Video Intercom', 'Audio Visual', 'Paging / Intercom', 'Other']);
 const seedTakeoffFormulas = (saved: TakeoffFormula[]) => (saved || []).filter((formula) => !String(formula.id || '').startsWith('default-')).map((formula) => ({ ...formula, items: (formula.items || []).map((item) => ({ ...item, calculationMode: item.calculationMode || 'multiply', capacity: item.capacity || 1, rounding: item.rounding || 'up' })), laborMinutesPerUnit: { ...(formula.laborMinutesPerUnit || {}) } }));
 const PROJECT_STATUS_OPTIONS = alphaSorted(['Planning', 'Document Review', 'Bidding', 'Under Review', 'Award Support', 'Construction', 'Complete', 'On Hold', 'Archived']);
-const ISSUE_STATUS_OPTIONS = alphaSorted(['Open', 'Under Review', 'Resolved', 'Closed']);
+const ISSUE_STATUS_OPTIONS = ['Open', 'Under Review', 'Resolved', 'Closed'];
 const DOCUMENT_TYPES = alphaSorted(['Drawings', 'Specifications', 'Addendums', 'Revisions', 'Narratives', 'General Bid Documents', 'Contractor Checklist']);
 const CONTRACT_STATUS_OPTIONS = alphaSorted(['Draft', 'Proposal Sent', 'Under Review', 'Executed', 'In Progress', 'Complete', 'Cancelled']);
 const CALENDAR_EVENT_TYPES = alphaSorted(['Bid / Proposal Due', 'Document Review', 'Client Meeting', 'RFI Deadline', 'Contract Milestone', 'Delivery Date', 'Other']);
@@ -463,10 +463,10 @@ const clarificationDeliverableRows = (issues: Issue[]): DeliverableRow[] => issu
 }));
 const rfiDeliverableRows = (issues: Issue[]): DeliverableRow[] => issues.flatMap((issue) => rfiChildrenForDeliverable(issue).map((rfi) => ({
   key: `${issue.uid}:${rfi.uid}`,
-  cells: [rfi.number, rfi.title || issue.title, rfi.systems.join('; ') || systemName(issue), rfi.question, rfi.reference || issue.reference],
+  cells: [rfi.number, rfi.title || issue.title, rfi.systems.map((system) => displaySystem(issue, system)).join('; ') || systemName(issue), rfi.question, rfi.reference || issue.reference],
 })));
 const checklistDeliverableRows = (issues: Issue[]): DeliverableRow[] => issues.flatMap((issue) => checklistChildrenForDeliverable(issue).map((item) => ({
-  key: `${issue.uid}:${item.uid}`, cells: [issue.id, item.system, item.question, 'Editable in PDF', 'Editable in PDF'],
+  key: `${issue.uid}:${item.uid}`, cells: [issue.id, displaySystem(issue, item.system), item.question, 'Editable in PDF', 'Editable in PDF'],
 })));
 const snippetDeliverableRows = (issues: Issue[]): DeliverableRow[] => issues.filter((issue) => issue.snippet).map((issue) => ({ key: issue.uid, cells: [issue.snippet, issue.id, systemName(issue), issue.reference, issue.title] }));
 
@@ -914,6 +914,22 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
     const issue = blankIssue(issues.length + 1);
     if (template) {
       const templateIssue = normalizeIssue({ ...JSON.parse(JSON.stringify(template.issue)), uid: issue.uid, id: issue.id });
+      const rfiUidMap = new Map<string, string>();
+      templateIssue.rfis = templateIssue.rfis.map((child) => {
+        const nextUid = crypto.randomUUID();
+        rfiUidMap.set(child.uid, nextUid);
+        return { ...child, uid: nextUid };
+      });
+      templateIssue.recommendBaseBids = templateIssue.recommendBaseBids.map((rbb) => ({
+        ...rbb,
+        uid: crypto.randomUUID(),
+        sections: Object.fromEntries(Object.entries(rbb.sections).map(([system, section]) => [system, {
+          ...section,
+          uid: crypto.randomUUID(),
+          basedOnRfiUids: section.basedOnRfiUids.map((oldUid) => rfiUidMap.get(oldUid)).filter((nextUid): nextUid is string => Boolean(nextUid)),
+        }])),
+      }));
+      templateIssue.checklistQuestions = templateIssue.checklistQuestions.map((child) => ({ ...child, uid: crypto.randomUUID(), verifiesRbbNumbers: [] }));
       Object.assign(issue, templateIssue, { uid: issue.uid, id: issue.id, rfi: '', snippet: '' });
     }
     setDraft(issue);

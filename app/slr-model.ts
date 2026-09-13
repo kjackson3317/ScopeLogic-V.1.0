@@ -222,14 +222,18 @@ export function normalizeLegacyChildren<T extends SlrIssueLike>(source: T): T & 
   issue.systems = systems;
   issue.system = systems[0] || 'Structured Cabling';
   if (text(issue.status) === 'Answered') issue.status = 'Resolved';
-  if (text(issue.status) === 'Answered') issue.status = 'Resolved';
+  const legacyReleasedAt = text(issue.numberReleasedAt);
+  const legacyRfiReleased = Boolean(issue.numberLocked && issue.formalRfi);
+  const legacyRbbReleased = Boolean(issue.numberLocked && (issue.sow || issue.clarification));
+  const legacyChecklistReleased = Boolean(issue.numberLocked && issue.checklist);
 
   const existingRfis = Array.isArray(issue.rfis) ? issue.rfis.map(normalizedRfi) : [];
   if (!existingRfis.length && (text(issue.rfiQuestion) || issue.formalRfi)) {
     existingRfis.push(normalizedRfi({
       number: text(issue.rfi), question: text(issue.rfiQuestion) || text(issue.concern), systems,
       reference: text(issue.reference), includeInFormalRfi: Boolean(issue.formalRfi),
-      status: text(issue.resolution) ? 'Answered' : 'Draft', response: text(issue.resolution),
+      status: text(issue.resolution) ? 'Answered' : legacyRfiReleased ? 'Issued' : 'Draft', response: text(issue.resolution),
+      locked: legacyRfiReleased, releasedAt: legacyRfiReleased ? legacyReleasedAt : '',
     }));
   }
   issue.rfis = existingRfis;
@@ -244,7 +248,8 @@ export function normalizeLegacyChildren<T extends SlrIssueLike>(source: T): T & 
       rbb.selectedSystems = selected;
       rbb.sections = Object.fromEntries(selected.map((system) => [system, normalizedRbbSection(system, {
         recommendation: text(recommendations[system]) || (system === issue.system ? text(issue.basis) : ''),
-        status: 'Current',
+        status: 'Current', locked: legacyRbbReleased, contentReleased: legacyRbbReleased,
+        releasedAt: legacyRbbReleased ? legacyReleasedAt : '',
       })]));
       existingRbbs.push(rbb);
     }
@@ -255,10 +260,10 @@ export function normalizeLegacyChildren<T extends SlrIssueLike>(source: T): T & 
   if (!existingChecklist.length) {
     const legacyItems = issue.checklistItems && typeof issue.checklistItems === 'object' ? issue.checklistItems : {};
     Object.entries(legacyItems).forEach(([system, question]) => {
-      if (text(question)) existingChecklist.push(normalizedChecklist({ system, question: text(question), response: text(issue.response), responseReason: text(issue.responseReason) }));
+      if (text(question)) existingChecklist.push(normalizedChecklist({ system, question: text(question), response: text(issue.response), responseReason: text(issue.responseReason), locked: legacyChecklistReleased, releasedAt: legacyChecklistReleased ? legacyReleasedAt : '' }));
     });
     if (!existingChecklist.length && text(issue.checklistItem)) {
-      existingChecklist.push(normalizedChecklist({ system: text(issue.system) || systems[0], question: text(issue.checklistItem), response: text(issue.response), responseReason: text(issue.responseReason) }));
+      existingChecklist.push(normalizedChecklist({ system: text(issue.system) || systems[0], question: text(issue.checklistItem), response: text(issue.response), responseReason: text(issue.responseReason), locked: legacyChecklistReleased, releasedAt: legacyChecklistReleased ? legacyReleasedAt : '' }));
     }
   }
   issue.checklistQuestions = existingChecklist;

@@ -52,7 +52,7 @@ export default function SlrChildEditor({ issue, onChange }: Props) {
           <div><span className="slr-child-number">{rfi.number || 'RFI — Auto on Save'}</span><small>{rfi.locked ? ' Permanent customer-visible number' : ' Draft number may resequence'}</small></div>
           <div className="slr-child-actions">
             <select value={rfi.status} onChange={(event) => commit((next) => { next.rfis[index].status = event.target.value as typeof rfi.status; })}>
-              {['Draft', 'Issued', 'Answered', 'Closed'].map((status) => <option key={status}>{status}</option>)}
+              {(rfi.locked ? ['Issued', 'Answered', 'Closed'] : ['Draft', 'Issued', 'Answered', 'Closed']).map((status) => <option key={status}>{status}</option>)}
             </select>
             {!rfi.locked && <button className="secondary" type="button" onClick={() => commit((next) => { next.rfis.splice(index, 1); })}>Remove</button>}
           </div>
