@@ -109,15 +109,15 @@ function configFor(kind: PdfKind): PdfConfig {
   };
   if (kind === 'clarifications') return {
     title: 'Clarification Log',
-    headers: ['SLR / Associated Records', 'Systems', 'Scope Concern', 'Recommend Base Bid', 'Resolution', 'Status', 'Source Reference'],
-    ratios: [0.105, 0.105, 0.20, 0.21, 0.14, 0.075, 0.165],
-    values: ({ issue }) => [[issue.id, ...associatedClarificationNumbers(issue)].join('\n'), systemNames(issue), issue.concern, recommendationSummary(issue), issue.resolution, issue.status, issue.reference],
+    headers: ['SLR / Associated Records', 'Systems', 'Scope Item', 'Scope Concern', 'Recommend Base Bid', 'Resolution', 'Status', 'Source Reference'],
+    ratios: [0.095, 0.09, 0.12, 0.18, 0.18, 0.12, 0.075, 0.14],
+    values: ({ issue }) => [[issue.id, ...associatedClarificationNumbers(issue)].join('\n'), systemNames(issue), issue.title, issue.concern, recommendationSummary(issue), issue.resolution, issue.status, issue.reference],
   };
   if (kind === 'rfi') return {
     title: 'Formal RFI',
-    headers: ['RFI No.', 'Systems', 'Question', 'Document References'],
-    ratios: [0.1, 0.18, 0.48, 0.24],
-    values: ({ issue, rfi }) => [rfi?.number || '', rfi?.systems?.join('; ') || systemNames(issue), rfi?.question || '', rfi?.reference || issue.reference],
+    headers: ['RFI No.', 'Title / Subject', 'Systems', 'Question', 'Document References'],
+    ratios: [0.08, 0.16, 0.14, 0.42, 0.20],
+    values: ({ issue, rfi }) => [rfi?.number || '', rfi?.title || issue.title, rfi?.systems?.join('; ') || systemNames(issue), rfi?.question || '', rfi?.reference || issue.reference],
   };
   return {
     title: 'Contractor Response Checklist',

@@ -221,6 +221,8 @@ export function normalizeLegacyChildren<T extends SlrIssueLike>(source: T): T & 
   const systems = unique(Array.isArray(issue.systems) && issue.systems.length ? issue.systems : [text(issue.system) || 'Structured Cabling']);
   issue.systems = systems;
   issue.system = systems[0] || 'Structured Cabling';
+  if (text(issue.status) === 'Answered') issue.status = 'Resolved';
+  if (text(issue.status) === 'Answered') issue.status = 'Resolved';
 
   const existingRfis = Array.isArray(issue.rfis) ? issue.rfis.map(normalizedRfi) : [];
   if (!existingRfis.length && (text(issue.rfiQuestion) || issue.formalRfi)) {
@@ -393,7 +395,8 @@ export function recommendBaseBidSummary(issueSource: SlrIssueLike, includeDraft 
     const section = rbb.sections[system];
     if (!section || !text(section.recommendation)) return;
     if (!includeDraft && !['Current', 'Confirmed'].includes(section.status)) return;
-    lines.push(`${system}\n${section.recommendation}`);
+    const systemLabel = system === 'Other' ? text(issue.customSystem) || 'Other' : system;
+    lines.push(`${systemLabel}\n${section.recommendation}`);
   }));
   return lines.join('\n\n');
 }
@@ -432,10 +435,12 @@ export function lockIssuesForOfficialRelease<T extends SlrIssueLike>(sources: T[
       issue.numberReleasedAt ||= releasedAt;
     }
     if (lockRfi) issue.rfis.forEach((rfi) => {
-      if (!rfi.includeInFormalRfi && !kinds.includes('clarifications')) return;
       if (!text(rfi.question)) return;
+      const releasingFormalRfi = kinds.includes('rfi') && rfi.includeInFormalRfi;
+      const releasingClarification = kinds.includes('clarifications') && rfi.status !== 'Draft';
+      if (!releasingFormalRfi && !releasingClarification) return;
       rfi.locked = true; rfi.releasedAt ||= releasedAt;
-      if (rfi.status === 'Draft') rfi.status = 'Issued';
+      if (releasingFormalRfi && rfi.status === 'Draft') rfi.status = 'Issued';
     });
     if (lockRbb) issue.recommendBaseBids.forEach((rbb) => rbb.selectedSystems.forEach((system) => {
       const section = rbb.sections[system];
