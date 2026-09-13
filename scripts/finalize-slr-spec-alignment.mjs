@@ -5,9 +5,14 @@ const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const write = (file, value) => fs.writeFileSync(path.join(root, file), value);
 const replaceOnce = (source, before, after, label) => {
-  const count = source.split(before).length - 1;
-  if (count !== 1) throw new Error(`${label}: expected exactly one match, found ${count}`);
-  return source.replace(before, after);
+  const beforeCount = source.split(before).length - 1;
+  if (beforeCount === 1) return source.replace(before, after);
+  if (beforeCount === 0) {
+    const afterCount = source.split(after).length - 1;
+    if (afterCount === 1) return source;
+    throw new Error(`${label}: expected one unapplied or already-applied match, found before=${beforeCount}, after=${afterCount}`);
+  }
+  throw new Error(`${label}: expected exactly one unapplied match, found ${beforeCount}`);
 };
 
 function patchModel() {
