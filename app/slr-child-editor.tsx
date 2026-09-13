@@ -60,17 +60,17 @@ export default function SlrChildEditor({ issue, onChange }: Props) {
         <div className="slr-child-card-body">
           {rfi.locked && <div className="slr-lock-note">This RFI number has appeared in an Official Release and will not be renumbered or reused.</div>}
           <div className="slr-child-grid">
-            <label className="field"><span>RFI Title / Subject</span><input value={rfi.title} onChange={(event) => commit((next) => { next.rfis[index].title = event.target.value; })} /></label>
-            <label className="field"><span>Document Reference</span><input value={rfi.reference} onChange={(event) => commit((next) => { next.rfis[index].reference = event.target.value; })} /></label>
+            <label className="field"><span>RFI Title / Subject</span><input readOnly={rfi.locked} value={rfi.title} onChange={(event) => commit((next) => { next.rfis[index].title = event.target.value; })} /></label>
+            <label className="field"><span>Document Reference</span><input readOnly={rfi.locked} value={rfi.reference} onChange={(event) => commit((next) => { next.rfis[index].reference = event.target.value; })} /></label>
           </div>
-          <label className="field"><span>Question</span><textarea rows={3} value={rfi.question} onChange={(event) => commit((next) => { next.rfis[index].question = event.target.value; })} /></label>
-          <div className="slr-child-system-list"><span>Systems</span>{rfiSystems.map((system) => <label key={system}><input type="checkbox" checked={rfi.systems.includes(system)} onChange={(event) => commit((next) => { const target = next.rfis[index]; target.systems = event.target.checked ? Array.from(new Set([...target.systems, system])) : target.systems.filter((item) => item !== system); })} /> {system}</label>)}</div>
+          <label className="field"><span>Question</span><textarea rows={3} readOnly={rfi.locked} value={rfi.question} onChange={(event) => commit((next) => { next.rfis[index].question = event.target.value; })} /></label>
+          <div className="slr-child-system-list"><span>Systems</span>{rfiSystems.map((system) => <label key={system}><input type="checkbox" checked={rfi.systems.includes(system)} disabled={rfi.locked} onChange={(event) => commit((next) => { const target = next.rfis[index]; target.systems = event.target.checked ? Array.from(new Set([...target.systems, system])) : target.systems.filter((item) => item !== system); })} /> {system}</label>)}</div>
           <label className="field"><span>Internal A/E / Owner Response</span><textarea rows={3} value={rfi.response} onChange={(event) => commit((next) => { next.rfis[index].response = event.target.value; if (event.target.value.trim() && next.rfis[index].status === 'Issued') next.rfis[index].status = 'Answered'; })} /></label>
           <div className="slr-child-grid">
             <label className="field"><span>Response Date</span><input type="date" value={rfi.responseDate} onChange={(event) => commit((next) => { next.rfis[index].responseDate = event.target.value; })} /></label>
             <label className="field"><span>Response Source</span><input value={rfi.responseSource} onChange={(event) => commit((next) => { next.rfis[index].responseSource = event.target.value; })} /></label>
           </div>
-          <label><input type="checkbox" checked={rfi.includeInFormalRfi} onChange={(event) => commit((next) => { next.rfis[index].includeInFormalRfi = event.target.checked; })} /> Include in Formal RFI deliverable</label>
+          <label><input type="checkbox" checked={rfi.includeInFormalRfi} disabled={rfi.locked} onChange={(event) => commit((next) => { next.rfis[index].includeInFormalRfi = event.target.checked; })} /> Include in Formal RFI deliverable</label>
         </div>
       </div>)}
     </section>
@@ -109,9 +109,21 @@ export default function SlrChildEditor({ issue, onChange }: Props) {
               return <div className="rbb-system-section" key={section.uid || system}>
                 <div className="slr-child-card-head">
                   <div><span className="slr-child-number">{section.displayNumber || `${system} — Auto on Save`}</span><small>{system}</small></div>
-                  <select value={section.status} onChange={(event) => commit((next) => { next.recommendBaseBids[rbbIndex].sections[system].status = event.target.value as typeof section.status; })}>
+                  {(section.locked || section.contentReleased) ? <div className="slr-child-actions">
+                    {section.status !== 'Superseded' && <button className="secondary" type="button" onClick={() => commit((next) => { next.recommendBaseBids[rbbIndex].sections[system].status = 'Confirmed'; })}>Confirm</button>}
+                    {section.status !== 'Superseded' && <button className="secondary" type="button" onClick={() => commit((next) => {
+                      const currentSection = next.recommendBaseBids[rbbIndex].sections[system];
+                      currentSection.status = 'Superseded';
+                      const replacement = blankRbbChild(system);
+                      replacement.forceSuffix = Boolean(currentSection.suffix);
+                      replacement.sections[system].suffix = currentSection.suffix;
+                      replacement.sections[system].supersedesNumber = currentSection.displayNumber;
+                      next.recommendBaseBids.push(replacement);
+                    })}>Supersede & Create Replacement</button>}
+                    {section.status === 'Superseded' && <span className="status-badge">Superseded</span>}
+                  </div> : <select value={section.status} onChange={(event) => commit((next) => { next.recommendBaseBids[rbbIndex].sections[system].status = event.target.value as typeof section.status; })}>
                     {['Draft', 'Current', 'Confirmed', 'Superseded'].map((status) => <option key={status}>{status}</option>)}
-                  </select>
+                  </select>}
                 </div>
                 <label className="field"><span>Recommend Base Bid — {system}</span><textarea rows={4} readOnly={section.locked || section.contentReleased} value={section.recommendation} onChange={(event) => commit((next) => { next.recommendBaseBids[rbbIndex].sections[system].recommendation = event.target.value; })} /></label>
                 <label className="field"><span>Based on RFI</span><select multiple value={section.basedOnRfiUids} onChange={(event) => commit((next) => { next.recommendBaseBids[rbbIndex].sections[system].basedOnRfiUids = Array.from(event.target.selectedOptions).map((option) => option.value); })}>{issue.rfis.map((rfi) => <option key={rfi.uid} value={rfi.uid}>{rfi.number || 'Draft RFI'} — {rfi.title || rfi.question || 'Untitled'}</option>)}</select></label>
@@ -136,10 +148,10 @@ export default function SlrChildEditor({ issue, onChange }: Props) {
         </div>
         <div className="slr-child-card-body">
           <div className="slr-child-grid">
-            <label className="field"><span>System</span><select value={item.system} onChange={(event) => commit((next) => { next.checklistQuestions[index].system = event.target.value; })}><option value="">Select system...</option>{rfiSystems.map((system) => <option key={system}>{system}</option>)}</select></label>
+            <label className="field"><span>System</span><select value={item.system} disabled={item.locked} onChange={(event) => commit((next) => { next.checklistQuestions[index].system = event.target.value; })}><option value="">Select system...</option>{rfiSystems.map((system) => <option key={system}>{system}</option>)}</select></label>
             <label className="field"><span>Response</span><select value={item.response} onChange={(event) => commit((next) => { next.checklistQuestions[index].response = event.target.value; })}><option>Included</option><option>Excluded</option><option>Included with Exception</option><option>Not Stated</option><option>Clarification Required</option><option>N/A</option></select></label>
           </div>
-          <label className="field"><span>Checklist Question / Requirement</span><textarea rows={3} value={item.question} onChange={(event) => commit((next) => { next.checklistQuestions[index].question = event.target.value; })} /></label>
+          <label className="field"><span>Checklist Question / Requirement</span><textarea rows={3} readOnly={item.locked} value={item.question} onChange={(event) => commit((next) => { next.checklistQuestions[index].question = event.target.value; })} /></label>
           <label className="field"><span>Exception / Explanation</span><textarea rows={2} value={item.responseReason} onChange={(event) => commit((next) => { next.checklistQuestions[index].responseReason = event.target.value; })} /></label>
           <label className="field"><span>Verifies RBB</span><select multiple value={item.verifiesRbbNumbers} onChange={(event) => commit((next) => { next.checklistQuestions[index].verifiesRbbNumbers = Array.from(event.target.selectedOptions).map((option) => option.value); })}>{issue.recommendBaseBids.flatMap((rbb) => rbb.selectedSystems.map((system) => rbb.sections[system]).filter(Boolean)).filter((section) => section.displayNumber).map((section) => <option key={section.uid} value={section.displayNumber}>{section.displayNumber} — {section.system}</option>)}</select></label>
         </div>

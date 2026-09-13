@@ -106,6 +106,7 @@ export type Issue = {
   responseReason: string;
   numberLocked: boolean;
   numberReleasedAt: string;
+  rbbScopeLetterMap: Record<string, string>;
   rfis: any[];
   recommendBaseBids: any[];
   checklistQuestions: any[];
@@ -573,6 +574,7 @@ export async function loadWorkspaceFromCloud(forceSchemaCheck = false): Promise<
       responseReason: text(row.contractor_response_reason),
       numberLocked: Boolean(row.number_locked),
       numberReleasedAt: text(row.number_released_at),
+      rbbScopeLetterMap: row.rbb_scope_letter_map && typeof row.rbb_scope_letter_map === 'object' ? Object.fromEntries(Object.entries(row.rbb_scope_letter_map).map(([key, value]) => [key, text(value)])) : {},
       rfis: Array.isArray(row.rfi_children) ? row.rfi_children : [],
       recommendBaseBids: Array.isArray(row.recommend_base_bid_children) ? row.recommend_base_bid_children : [],
       checklistQuestions: Array.isArray(row.contractor_checklist_children) ? row.contractor_checklist_children : [],
@@ -795,6 +797,7 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
       contractor_response_reason: issue.responseReason || '',
       number_locked: Boolean(issue.numberLocked),
       number_released_at: issue.numberReleasedAt || null,
+      rbb_scope_letter_map: issue.rbbScopeLetterMap || {},
       rfi_children: issue.rfis || [],
       recommend_base_bid_children: issue.recommendBaseBids || [],
       contractor_checklist_children: issue.checklistQuestions || [],

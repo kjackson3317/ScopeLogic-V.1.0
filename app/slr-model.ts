@@ -72,6 +72,7 @@ export type SlrChecklistChild = {
 export type SlrChildFields = {
   numberLocked: boolean;
   numberReleasedAt: string;
+  rbbScopeLetterMap: Record<string, string>;
   rfis: SlrRfiChild[];
   recommendBaseBids: SlrRbbChild[];
   checklistQuestions: SlrChecklistChild[];
@@ -261,6 +262,7 @@ export function normalizeLegacyChildren<T extends SlrIssueLike>(source: T): T & 
   issue.checklistQuestions = existingChecklist;
   issue.numberLocked = Boolean(issue.numberLocked);
   issue.numberReleasedAt = text(issue.numberReleasedAt);
+  issue.rbbScopeLetterMap = issue.rbbScopeLetterMap && typeof issue.rbbScopeLetterMap === 'object' ? Object.fromEntries(Object.entries(issue.rbbScopeLetterMap).map(([system, suffix]) => [text(system), text(suffix).toUpperCase()]).filter(([system, suffix]) => system && suffix)) : {};
   return syncLegacyFields(issue);
 }
 
@@ -314,6 +316,7 @@ export function normalizeProjectIssueNumbers<T extends SlrIssueLike>(sources: T[
     if (!clean || suffixBySystem.has(system) || usedSuffixes.has(clean)) return;
     suffixBySystem.set(system, clean); usedSuffixes.add(clean);
   };
+  issues.forEach((issue) => Object.entries(issue.rbbScopeLetterMap || {}).forEach(([system, suffix]) => captureSuffix(system, suffix)));
   issues.forEach((issue) => issue.recommendBaseBids.forEach((rbb) => Object.values(rbb.sections).forEach((section) => {
     if (section.locked || section.contentReleased) captureSuffix(section.system, section.suffix);
   })));
@@ -338,6 +341,9 @@ export function normalizeProjectIssueNumbers<T extends SlrIssueLike>(sources: T[
       section.displayNumber = `${rbb.baseNumber}${section.suffix}`;
     });
   }));
+
+  const persistedScopeLetterMap = Object.fromEntries(suffixBySystem.entries());
+  issues.forEach((issue) => { issue.rbbScopeLetterMap = { ...persistedScopeLetterMap }; });
 
   const lockedChecklist = new Set<number>();
   issues.forEach((issue) => issue.checklistQuestions.forEach((item) => { if (item.locked) { const value = parseNumber(item.number, 'CL'); if (value) lockedChecklist.add(value); } }));
@@ -395,10 +401,12 @@ export function recommendBaseBidSummary(issueSource: SlrIssueLike, includeDraft 
 export function associatedClarificationNumbers(issueSource: SlrIssueLike): string[] {
   const issue = normalizeLegacyChildren(issueSource);
   const values: string[] = [];
-  issue.rfis.forEach((rfi) => { if (text(rfi.number)) values.push(`${rfi.number} — ${rfi.status}`); });
+  issue.rfis.forEach((rfi) => { if (text(rfi.number) && text(rfi.question) && (rfi.locked || rfi.status !== 'Draft')) values.push(`${rfi.number} — ${rfi.status}`); });
   issue.recommendBaseBids.forEach((rbb) => rbb.selectedSystems.forEach((system) => {
     const section = rbb.sections[system];
-    if (section?.displayNumber) values.push(`${section.displayNumber} — ${section.status}`);
+    const customerReady = Boolean(section && text(section.recommendation) && ['Current', 'Confirmed'].includes(section.status));
+    const historical = Boolean(section && (section.locked || section.contentReleased));
+    if (section?.displayNumber && (customerReady || historical)) values.push(`${section.displayNumber} — ${section.status}`);
   }));
   return values;
 }
@@ -427,7 +435,7 @@ export function lockIssuesForOfficialRelease<T extends SlrIssueLike>(sources: T[
       if (!rfi.includeInFormalRfi && !kinds.includes('clarifications')) return;
       if (!text(rfi.question)) return;
       rfi.locked = true; rfi.releasedAt ||= releasedAt;
-      if (kinds.includes('rfi') && rfi.status === 'Draft') rfi.status = 'Issued';
+      if (rfi.status === 'Draft') rfi.status = 'Issued';
     });
     if (lockRbb) issue.recommendBaseBids.forEach((rbb) => rbb.selectedSystems.forEach((system) => {
       const section = rbb.sections[system];

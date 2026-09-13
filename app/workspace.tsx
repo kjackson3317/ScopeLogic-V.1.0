@@ -241,7 +241,7 @@ const alphaSorted = (values: string[]) => [...values].sort(alphaNumericCompare);
 const SYSTEM_OPTIONS = alphaSorted(['Structured Cabling', 'Network Electronics', 'CCTV', 'Access Control', 'Intrusion Detection', 'Fire Alarm', 'Video Intercom', 'Audio Visual', 'Paging / Intercom', 'Other']);
 const seedTakeoffFormulas = (saved: TakeoffFormula[]) => (saved || []).filter((formula) => !String(formula.id || '').startsWith('default-')).map((formula) => ({ ...formula, items: (formula.items || []).map((item) => ({ ...item, calculationMode: item.calculationMode || 'multiply', capacity: item.capacity || 1, rounding: item.rounding || 'up' })), laborMinutesPerUnit: { ...(formula.laborMinutesPerUnit || {}) } }));
 const PROJECT_STATUS_OPTIONS = alphaSorted(['Planning', 'Document Review', 'Bidding', 'Under Review', 'Award Support', 'Construction', 'Complete', 'On Hold', 'Archived']);
-const ISSUE_STATUS_OPTIONS = alphaSorted(['Open', 'Under Review', 'Answered', 'Closed']);
+const ISSUE_STATUS_OPTIONS = alphaSorted(['Open', 'Under Review', 'Resolved', 'Closed']);
 const DOCUMENT_TYPES = alphaSorted(['Drawings', 'Specifications', 'Addendums', 'Revisions', 'Narratives', 'General Bid Documents', 'Contractor Checklist']);
 const CONTRACT_STATUS_OPTIONS = alphaSorted(['Draft', 'Proposal Sent', 'Under Review', 'Executed', 'In Progress', 'Complete', 'Cancelled']);
 const CALENDAR_EVENT_TYPES = alphaSorted(['Bid / Proposal Due', 'Document Review', 'Client Meeting', 'RFI Deadline', 'Contract Milestone', 'Delivery Date', 'Other']);
@@ -386,7 +386,7 @@ const resolvedProjectCreatedAt = (project: Partial<Project> & { id: string } & {
 const blankProject = (id: string): Project => ({ id, createdAt: new Date().toISOString(), name: 'New ScopeLogic Project', client: '', customerId: '', contactIds: [], versionDate: new Date().toISOString().slice(0, 10), status: 'Planning', systems: [], revision: 'Rev 0', modified: 'Now', contract: blankContract() });
 const blankCustomer = (): Customer => ({ id: crypto.randomUUID(), name: '', address1: '', address2: '', city: '', state: '', zip: '', website: '', notes: '', contacts: [] });
 const blankCustomerContact = (): CustomerContact => ({ id: crypto.randomUUID(), name: '', title: '', email: '', phone: '' });
-const blankIssue = (number: number): Issue => ({ uid: crypto.randomUUID(), id: `SLR-${String(number).padStart(3, '0')}`, system: 'Structured Cabling', customSystem: '', systems: ['Structured Cabling'], recommendations: {}, title: '', status: 'Open', concern: '', rfiQuestion: '', basis: '', reason: '', reference: '', sourceType: '', rfi: '', resolution: '', snippet: '', sow: true, clarification: true, formalRfi: false, checklist: false, checklistItem: '', checklistItems: {}, response: 'Included', responseReason: '', numberLocked: false, numberReleasedAt: '', rfis: [], recommendBaseBids: [], checklistQuestions: [] });
+const blankIssue = (number: number): Issue => ({ uid: crypto.randomUUID(), id: `SLR-${String(number).padStart(3, '0')}`, system: 'Structured Cabling', customSystem: '', systems: ['Structured Cabling'], recommendations: {}, title: '', status: 'Open', concern: '', rfiQuestion: '', basis: '', reason: '', reference: '', sourceType: '', rfi: '', resolution: '', snippet: '', sow: true, clarification: true, formalRfi: false, checklist: false, checklistItem: '', checklistItems: {}, response: 'Included', responseReason: '', numberLocked: false, numberReleasedAt: '', rbbScopeLetterMap: {}, rfis: [], recommendBaseBids: [], checklistQuestions: [] });
 const cloneIssue = (issue: Issue): Issue => JSON.parse(JSON.stringify(issue));
 const displaySystem = (issue: Issue, system: string) => system === 'Other' ? issue.customSystem || 'Other' : system;
 const issueSystemKeys = (issue: Issue) => issue.systems?.length ? issue.systems : [issue.system || 'Structured Cabling'];
@@ -953,7 +953,8 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
     }
     if (!selectedUid) return;
     const selectedIssue = issues.find((item) => item.uid === selectedUid);
-    if (selectedIssue?.numberLocked) return message('Customer-Visible SLR', `${selectedIssue.id} has appeared in an Official Release. Its permanent number and history cannot be deleted. Resolve, close, or supersede its child records instead.`);
+    const hasCustomerVisibleChild = Boolean(selectedIssue && (selectedIssue.rfis.some((child) => child.locked) || selectedIssue.recommendBaseBids.some((rbb) => Object.values(rbb.sections).some((section) => section.locked || section.contentReleased)) || selectedIssue.checklistQuestions.some((child) => child.locked)));
+    if (selectedIssue?.numberLocked || hasCustomerVisibleChild) return message('Customer-Visible SLR History', `${selectedIssue?.id || 'This SLR'} contains information that has appeared in an Official Release. It cannot be hard-deleted. Resolve or close the SLR, or supersede the affected child record instead.`);
     confirmAction('Delete Submitted SLR?', 'This unreleased SLR will be deleted. Draft-only SLR, RFI, RBB, checklist, and snippet numbers may resequence automatically.', () => {
       setIssues((items) => items.filter((item) => item.uid !== selectedUid));
       setSelectedUid('');
@@ -968,10 +969,10 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
       const name = value.trim();
       if (!name) return message('Template Name Required', 'Enter a name before saving the template.');
       const templateDraft = JSON.parse(JSON.stringify(draft)) as Issue;
-      templateDraft.numberLocked = false; templateDraft.numberReleasedAt = '';
-      templateDraft.rfis = templateDraft.rfis.map((child) => ({ ...child, number: '', locked: false, releasedAt: '', status: child.status === 'Closed' ? 'Draft' : child.status }));
-      templateDraft.recommendBaseBids = templateDraft.recommendBaseBids.map((rbb) => ({ ...rbb, baseSequence: 0, baseNumber: '', sections: Object.fromEntries(Object.entries(rbb.sections).map(([system, section]) => [system, { ...section, suffix: '', displayNumber: '', locked: false, contentReleased: false, releasedAt: '', supersedesNumber: '' }])) }));
-      templateDraft.checklistQuestions = templateDraft.checklistQuestions.map((child) => ({ ...child, number: '', locked: false, releasedAt: '' }));
+      templateDraft.numberLocked = false; templateDraft.numberReleasedAt = ''; templateDraft.rbbScopeLetterMap = {};
+      templateDraft.rfis = templateDraft.rfis.map((child) => ({ ...child, number: '', locked: false, releasedAt: '', status: 'Draft', response: '', responseDate: '', responseSource: '', relatedChildNumbers: [] }));
+      templateDraft.recommendBaseBids = templateDraft.recommendBaseBids.map((rbb) => ({ ...rbb, baseSequence: 0, baseNumber: '', sections: Object.fromEntries(Object.entries(rbb.sections).map(([system, section]) => [system, { ...section, suffix: '', displayNumber: '', status: 'Current', locked: false, contentReleased: false, releasedAt: '', supersedesNumber: '', basedOnRfiUids: [] }])) }));
+      templateDraft.checklistQuestions = templateDraft.checklistQuestions.map((child) => ({ ...child, number: '', status: 'Open', response: 'Included', responseReason: '', locked: false, releasedAt: '', verifiesRbbNumbers: [] }));
       const { uid, id, rfi, snippet, ...issue } = templateDraft;
       setTemplates((items) => [...items, { uid: crypto.randomUUID(), name, issue }]);
       message('Saved', `The global SLR template "${name}" was saved.`);
@@ -1327,6 +1328,21 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
         deliverables: kinds,
       };
       const archived = await saveOfficialRelease(projectId, project.revision, project.versionDate, fileName, notes, kinds, blob, releaseSnapshot);
+      const targetIssueProjectIds = sharedIssueProjectIds.length ? sharedIssueProjectIds : [projectId];
+      const lockedIssuesByProject = targetIssueProjectIds.reduce<Record<string, Issue[]>>((next, id) => ({ ...next, [id]: lockedIssues }), { ...cloudSnapshot.issuesByProject });
+      let lockSyncWarning = '';
+      try {
+        await saveWorkspaceToCloud({ ...cloudSnapshot, issuesByProject: lockedIssuesByProject });
+        skipNextCloudSync.current = true;
+        writeLocalSyncMeta({ pendingCloudChanges: false, lastCloudSyncAt: new Date().toISOString() });
+        setSyncState('synced');
+        setCloudStatus((current) => ({ ...current, cloudRevision: current.cloudRevision + 1, lastCloudSyncAt: new Date().toISOString() }));
+      } catch (cause) {
+        lockSyncWarning = cause instanceof Error ? cause.message : 'Customer-visible numbering locks could not be synchronized immediately.';
+        writeLocalSyncMeta({ pendingCloudChanges: true, changedAt: new Date().toISOString(), lastCloudSyncAt: readLocalSyncMeta().lastCloudSyncAt });
+        setSyncState('error');
+        setSyncError(lockSyncWarning);
+      }
       setIssues(() => lockedIssues);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
@@ -1338,7 +1354,7 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
       recordDownload(fileName, `Official GC Release ${String(archived.releaseNumber).padStart(3, '0')}`);
       setTimeout(() => URL.revokeObjectURL(url), 3000);
       setOfficialReleases(await listOfficialReleases(projectId));
-      message('Official Release Created', `Release ${String(archived.releaseNumber).padStart(3, '0')} was archived as an immutable cloud record and downloaded.`);
+      message(lockSyncWarning ? 'Official Release Created — Sync Required' : 'Official Release Created', lockSyncWarning ? `Release ${String(archived.releaseNumber).padStart(3, '0')} was archived and downloaded, but its customer-visible numbering locks still need cloud synchronization: ${lockSyncWarning}` : `Release ${String(archived.releaseNumber).padStart(3, '0')} was archived as an immutable cloud record, its numbering locks were persisted, and the PDF was downloaded.`);
     } catch (error) {
       message('Official Release Failed', error instanceof Error ? error.message : 'The combined PDF package could not be generated.');
     }
