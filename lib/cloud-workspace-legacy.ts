@@ -104,6 +104,11 @@ export type Issue = {
   checklistItems: Record<string, string>;
   response: string;
   responseReason: string;
+  numberLocked: boolean;
+  numberReleasedAt: string;
+  rfis: any[];
+  recommendBaseBids: any[];
+  checklistQuestions: any[];
 };
 
 export type Template = { uid: string; name: string; issue: Omit<Issue, 'uid' | 'id' | 'rfi' | 'snippet'> };
@@ -566,6 +571,11 @@ export async function loadWorkspaceFromCloud(forceSchemaCheck = false): Promise<
       checklistItems,
       response: text(row.contractor_response) || 'Included',
       responseReason: text(row.contractor_response_reason),
+      numberLocked: Boolean(row.number_locked),
+      numberReleasedAt: text(row.number_released_at),
+      rfis: Array.isArray(row.rfi_children) ? row.rfi_children : [],
+      recommendBaseBids: Array.isArray(row.recommend_base_bid_children) ? row.recommend_base_bid_children : [],
+      checklistQuestions: Array.isArray(row.contractor_checklist_children) ? row.contractor_checklist_children : [],
     });
   }
 
@@ -760,7 +770,7 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
       project_id: projectDbId,
       legacy_uid: issue.uid || `${project.id}-slr-${index + 1}`,
       sequence_number: index + 1,
-      display_number: `SLR-${String(index + 1).padStart(3, '0')}`,
+      display_number: issue.id || `SLR-${String(index + 1).padStart(3, '0')}`,
       system_name: issue.systems?.[0] || issue.system || 'Structured Cabling',
       custom_system: issue.customSystem || '',
       systems: issue.systems?.length ? issue.systems : [issue.system || 'Structured Cabling'],
@@ -783,6 +793,11 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
       checklist_scope_items_by_system: issue.checklistItems || Object.fromEntries((issue.systems?.length ? issue.systems : [issue.system || 'Structured Cabling']).map((system) => [system, issue.checklistItem || ''])),
       contractor_response: issue.response || 'Included',
       contractor_response_reason: issue.responseReason || '',
+      number_locked: Boolean(issue.numberLocked),
+      number_released_at: issue.numberReleasedAt || null,
+      rfi_children: issue.rfis || [],
+      recommend_base_bid_children: issue.recommendBaseBids || [],
+      contractor_checklist_children: issue.checklistQuestions || [],
     }));
     (snapshot.docsByProject[project.id] || []).forEach((doc, index) => documentRows.push({
       owner_id: ownerId,

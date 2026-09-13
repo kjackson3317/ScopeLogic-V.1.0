@@ -76,10 +76,16 @@ function patchWorkspace() {
     "      const plannedReleaseNumber = await getNextOfficialReleaseNumber(projectId);\n      const bytes = await buildReleasePackageBytes(project, issues, kinds, notes, plannedReleaseNumber);",
     "      const plannedReleaseNumber = await getNextOfficialReleaseNumber(projectId);\n      const lockedIssues = lockIssuesForOfficialRelease(issues, kinds) as Issue[];\n      const bytes = await buildReleasePackageBytes(project, lockedIssues, kinds, notes, plannedReleaseNumber);",
     'official release lock before PDF');
-  source = replaceOnce(source,
-    "        issues: JSON.parse(JSON.stringify(issues)),",
-    "        issues: JSON.parse(JSON.stringify(lockedIssues)),",
-    'release snapshot locked issues');
+  {
+    const anchor = "      const lockedIssues = lockIssuesForOfficialRelease(issues, kinds) as Issue[];";
+    const needle = "        issues: JSON.parse(JSON.stringify(issues)),";
+    const replacement = "        issues: JSON.parse(JSON.stringify(lockedIssues)),";
+    const anchorIndex = source.indexOf(anchor);
+    if (anchorIndex < 0) throw new Error('release snapshot locked issues: official release anchor not found');
+    const matchIndex = source.indexOf(needle, anchorIndex);
+    if (matchIndex < 0) throw new Error('release snapshot locked issues: snapshot line not found after official release anchor');
+    source = source.slice(0, matchIndex) + replacement + source.slice(matchIndex + needle.length);
+  }
   source = replaceOnce(source,
     "      const archived = await saveOfficialRelease(projectId, project.revision, project.versionDate, fileName, notes, kinds, blob, releaseSnapshot);\n      const url = URL.createObjectURL(blob);",
     "      const archived = await saveOfficialRelease(projectId, project.revision, project.versionDate, fileName, notes, kinds, blob, releaseSnapshot);\n      setIssues(() => lockedIssues);\n      const url = URL.createObjectURL(blob);",

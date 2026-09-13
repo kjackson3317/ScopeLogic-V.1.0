@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont, type PDFImage } from 'pdf-lib';
+import { associatedClarificationNumbers, checklistChildrenForDeliverable, normalizeLegacyChildren, recommendBaseBidSummary, rfiChildrenForDeliverable, type SlrChecklistChild, type SlrChildFields, type SlrRfiChild } from './slr-model';
 
 export type PdfKind = 'sow' | 'clarifications' | 'rfi' | 'checklist';
 
@@ -34,7 +35,7 @@ export type PdfIssue = {
   checklistItems: Record<string, string>;
   response: string;
   responseReason: string;
-};
+} & SlrChildFields;
 
 type PdfConfig = {
   title: string;
@@ -83,12 +84,12 @@ async function embedBrand(document: PDFDocument, assets: BrandAssets): Promise<E
 }
 
 const SYSTEM_ORDER = ['Structured Cabling', 'Network Electronics', 'CCTV', 'Access Control', 'Intrusion Detection', 'Fire Alarm', 'Video Intercom', 'Audio Visual', 'Paging / Intercom', 'Other'];
-type PdfRow = { issue: PdfIssue; system?: string; section?: string };
+type PdfRow = { issue: PdfIssue; system?: string; section?: string; rfi?: SlrRfiChild; checklist?: SlrChecklistChild };
 const systemKeys = (issue: PdfIssue) => issue.systems?.length ? issue.systems : [issue.system || 'Structured Cabling'];
 const displaySystem = (issue: PdfIssue, system: string) => system === 'Other' ? issue.customSystem || 'Other' : system;
 const systemNames = (issue: PdfIssue) => systemKeys(issue).map((system) => displaySystem(issue, system)).join('; ');
 const recommendationFor = (issue: PdfIssue, system: string) => issue.recommendations?.[system] || (system === issue.system ? issue.basis : '') || '';
-const recommendationSummary = (issue: PdfIssue) => systemKeys(issue).map((system) => `${displaySystem(issue, system)}\n${recommendationFor(issue, system) || 'No recommendation entered'}`).join('\n\n');
+const recommendationSummary = (issue: PdfIssue) => recommendBaseBidSummary(issue);
 const checklistItemFor = (issue: PdfIssue, system: string) => issue.checklistItems?.[system] || '';
 
 const safe = (value: string) =>
@@ -102,43 +103,38 @@ const safe = (value: string) =>
 function configFor(kind: PdfKind): PdfConfig {
   if (kind === 'sow') return {
     title: 'Recommended SOW Matrix',
-    headers: ['SLR', 'Systems', 'Scope Item', 'Scope Concern', 'Recommended Bid Basis by System', 'Source Reference'],
+    headers: ['SLR', 'Systems', 'Scope Item', 'Scope Concern', 'Recommend Base Bid', 'Source Reference'],
     ratios: [0.055, 0.125, 0.13, 0.22, 0.285, 0.185],
     values: ({ issue }) => [issue.id, systemNames(issue), issue.title, issue.concern, recommendationSummary(issue), issue.reference],
   };
   if (kind === 'clarifications') return {
-    title: 'Clarification Matrix',
-    headers: ['SLR / RFI', 'Systems', 'Question / Issue', 'Recommended Bid Basis by System', 'Resolution', 'Status', 'Source Reference'],
-    ratios: [0.075, 0.105, 0.205, 0.225, 0.15, 0.075, 0.165],
-    values: ({ issue }) => [[issue.id, issue.rfi].filter(Boolean).join('\n'), systemNames(issue), issue.concern, recommendationSummary(issue), issue.resolution, issue.status, issue.reference],
+    title: 'Clarification Log',
+    headers: ['SLR / Associated Records', 'Systems', 'Scope Concern', 'Recommend Base Bid', 'Resolution', 'Status', 'Source Reference'],
+    ratios: [0.105, 0.105, 0.20, 0.21, 0.14, 0.075, 0.165],
+    values: ({ issue }) => [[issue.id, ...associatedClarificationNumbers(issue)].join('\n'), systemNames(issue), issue.concern, recommendationSummary(issue), issue.resolution, issue.status, issue.reference],
   };
   if (kind === 'rfi') return {
     title: 'Formal RFI',
     headers: ['RFI No.', 'Systems', 'Question', 'Document References'],
     ratios: [0.1, 0.18, 0.48, 0.24],
-    values: ({ issue }) => [issue.rfi, systemNames(issue), issue.rfiQuestion || issue.concern, issue.reference],
+    values: ({ issue, rfi }) => [rfi?.number || '', rfi?.systems?.join('; ') || systemNames(issue), rfi?.question || '', rfi?.reference || issue.reference],
   };
   return {
     title: 'Contractor Response Checklist',
     headers: ['SLR', 'Checklist Scope Item', 'Response', 'Reason'],
     ratios: [0.08, 0.39, 0.2, 0.33],
-    values: ({ issue, system }) => [issue.id, checklistItemFor(issue, system || systemKeys(issue)[0]), '', ''],
+    values: ({ issue, checklist }) => [issue.id, checklist?.question || '', '', ''],
   };
 }
 
 function rowsFor(kind: PdfKind, issues: PdfIssue[]): PdfRow[] {
-  if (kind === 'sow') return issues.filter((issue) => issue.sow).map((issue) => ({ issue }));
-  if (kind === 'clarifications') return issues.filter((issue) => issue.clarification).map((issue) => ({ issue }));
-  if (kind === 'rfi') return issues.filter((issue) => issue.formalRfi).map((issue) => ({ issue }));
+  const normalized = issues.map((issue) => normalizeLegacyChildren(issue) as PdfIssue);
+  if (kind === 'sow') return normalized.filter((issue) => issue.sow).map((issue) => ({ issue }));
+  if (kind === 'clarifications') return normalized.filter((issue) => issue.clarification).map((issue) => ({ issue }));
+  if (kind === 'rfi') return normalized.flatMap((issue) => rfiChildrenForDeliverable(issue).map((rfi) => ({ issue, rfi })));
   if (kind === 'checklist') {
-    const applicable = issues.filter((issue) => systemKeys(issue).some((system) => checklistItemFor(issue, system).trim()));
-    const systems = Array.from(new Set(applicable.flatMap(systemKeys))).sort((a, b) => {
-      const ai = SYSTEM_ORDER.indexOf(a); const bi = SYSTEM_ORDER.indexOf(b);
-      return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi) || a.localeCompare(b);
-    });
-    return systems.flatMap((system) => applicable
-      .filter((issue) => systemKeys(issue).includes(system) && checklistItemFor(issue, system).trim())
-      .map((issue) => ({ issue, system, section: displaySystem(issue, system) })));
+    const rows = normalized.flatMap((issue) => checklistChildrenForDeliverable(issue).map((checklist) => ({ issue, checklist, system: checklist.system, section: checklist.system })));
+    return rows.sort((a, b) => { const ai = SYSTEM_ORDER.indexOf(a.system || ''); const bi = SYSTEM_ORDER.indexOf(b.system || ''); return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi) || String(a.system || '').localeCompare(String(b.system || '')); });
   }
   return [];
 }

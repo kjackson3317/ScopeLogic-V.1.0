@@ -5,6 +5,8 @@ import { createClient } from '../lib/supabase/client';
 import { bytesToText, createZip, readZip, textToBytes } from '../lib/zip';
 import { buildPdfBytes, buildProposalPdfBytes, buildReleasePackageBytes, type PdfKind, type ProposalPdfMode, type QuotePdfMode, type QuotePdfPricingDisplay } from './pdf-generator';
 import DrawingTakeoffPage, { type DrawingAnnotation, type DrawingMeasurement, type DrawingPageCalibration, type DrawingTakeoffMark, type DrawingTakeoffTool } from './drawing-takeoff';
+import SlrChildEditor from './slr-child-editor';
+import { associatedClarificationNumbers, checklistChildrenForDeliverable, lockIssuesForOfficialRelease, normalizeLegacyChildren, normalizeProjectIssueNumbers, recommendBaseBidSummary, rfiChildrenForDeliverable, syncLegacyFields, type SlrChildFields } from './slr-model';
 import {
   createWorkspaceBackup,
   createOfficialReleaseUrl,
@@ -169,7 +171,7 @@ type Issue = {
   checklistItems: Record<string, string>;
   response: string;
   responseReason: string;
-};
+} & SlrChildFields;
 
 type Template = { uid: string; name: string; issue: Omit<Issue, 'uid' | 'id' | 'rfi' | 'snippet'> };
 type Doc = {
@@ -384,28 +386,22 @@ const resolvedProjectCreatedAt = (project: Partial<Project> & { id: string } & {
 const blankProject = (id: string): Project => ({ id, createdAt: new Date().toISOString(), name: 'New ScopeLogic Project', client: '', customerId: '', contactIds: [], versionDate: new Date().toISOString().slice(0, 10), status: 'Planning', systems: [], revision: 'Rev 0', modified: 'Now', contract: blankContract() });
 const blankCustomer = (): Customer => ({ id: crypto.randomUUID(), name: '', address1: '', address2: '', city: '', state: '', zip: '', website: '', notes: '', contacts: [] });
 const blankCustomerContact = (): CustomerContact => ({ id: crypto.randomUUID(), name: '', title: '', email: '', phone: '' });
-const blankIssue = (number: number): Issue => ({ uid: crypto.randomUUID(), id: `SLR-${String(number).padStart(3, '0')}`, system: 'Structured Cabling', customSystem: '', systems: ['Structured Cabling'], recommendations: { 'Structured Cabling': '' }, title: '', status: 'Open', concern: '', rfiQuestion: '', basis: '', reason: '', reference: '', sourceType: '', rfi: '', resolution: '', snippet: '', sow: true, clarification: true, formalRfi: false, checklist: false, checklistItem: '', checklistItems: { 'Structured Cabling': '' }, response: 'Included', responseReason: '' });
+const blankIssue = (number: number): Issue => ({ uid: crypto.randomUUID(), id: `SLR-${String(number).padStart(3, '0')}`, system: 'Structured Cabling', customSystem: '', systems: ['Structured Cabling'], recommendations: {}, title: '', status: 'Open', concern: '', rfiQuestion: '', basis: '', reason: '', reference: '', sourceType: '', rfi: '', resolution: '', snippet: '', sow: true, clarification: true, formalRfi: false, checklist: false, checklistItem: '', checklistItems: {}, response: 'Included', responseReason: '', numberLocked: false, numberReleasedAt: '', rfis: [], recommendBaseBids: [], checklistQuestions: [] });
 const cloneIssue = (issue: Issue): Issue => JSON.parse(JSON.stringify(issue));
 const displaySystem = (issue: Issue, system: string) => system === 'Other' ? issue.customSystem || 'Other' : system;
 const issueSystemKeys = (issue: Issue) => issue.systems?.length ? issue.systems : [issue.system || 'Structured Cabling'];
 const issueSystemNames = (issue: Issue) => issueSystemKeys(issue).map((system) => displaySystem(issue, system));
 const systemName = (issue: Issue) => issueSystemNames(issue).join('; ');
-const recommendationSummary = (issue: Issue) => issueSystemKeys(issue).map((system) => {
-  const recommendation = issue.recommendations?.[system] || (system === issue.system ? issue.basis : '') || '';
-  return `${displaySystem(issue, system)}\n${recommendation || 'No recommendation entered'}`;
-}).join('\n\n');
+const recommendationSummary = (issue: Issue) => recommendBaseBidSummary(issue);
 const checklistItemFor = (issue: Issue, system: string) => issue.checklistItems?.[system] || '';
 const checklistSummary = (issue: Issue) => issueSystemKeys(issue)
   .filter((system) => checklistItemFor(issue, system).trim())
   .map((system) => `${displaySystem(issue, system)}\n${checklistItemFor(issue, system)}`)
   .join('\n\n');
-const normalizeIssues = (items: Issue[]) => {
-  let rfiNumber = 0;
+const normalizeIssues = (items: Issue[]): Issue[] => {
   let snippetNumber = 0;
-  return items.map((item, index) => ({
-    ...item,
-    id: `SLR-${String(index + 1).padStart(3, '0')}`,
-    rfi: item.formalRfi ? `RFI-${String(++rfiNumber).padStart(3, '0')}` : '',
+  return normalizeProjectIssueNumbers(items).map((item) => ({
+    ...(item as Issue),
     snippet: item.snippet ? `SNP-${String(++snippetNumber).padStart(3, '0')}` : '',
   }));
 };
@@ -425,32 +421,24 @@ const normalizeIssue = (issue: Partial<Issue> & Pick<Issue, 'uid' | 'id'>): Issu
   const legacyChecklistItem = issue.checklistItem ?? (issue.checklist ? issue.title || '' : '');
   const systems = Array.from(new Set((Array.isArray(issue.systems) && issue.systems.length ? issue.systems : [issue.system || 'Structured Cabling']).map(String).filter(Boolean)));
   const hasRecommendations = issue.recommendations && typeof issue.recommendations === 'object' && Object.keys(issue.recommendations).length > 0;
-  const recommendations = hasRecommendations
-    ? { ...issue.recommendations }
-    : { [systems[0]]: issue.basis || '' };
+  const recommendations = hasRecommendations ? { ...issue.recommendations } : { [systems[0]]: issue.basis || '' };
   const hasChecklistItems = issue.checklistItems && typeof issue.checklistItems === 'object' && Object.keys(issue.checklistItems).length > 0;
-  const checklistItems = hasChecklistItems
-    ? { ...issue.checklistItems }
-    : Object.fromEntries(systems.map((system) => [system, legacyChecklistItem || '']));
-  systems.forEach((system) => {
-    if (!(system in recommendations)) recommendations[system] = '';
-    if (!(system in checklistItems)) checklistItems[system] = '';
-  });
+  const checklistItems = hasChecklistItems ? { ...issue.checklistItems } : Object.fromEntries(systems.map((system) => [system, legacyChecklistItem || '']));
+  systems.forEach((system) => { if (!(system in recommendations)) recommendations[system] = ''; if (!(system in checklistItems)) checklistItems[system] = ''; });
   const firstChecklistItem = systems.map((system) => checklistItems[system] || '').find((value) => value.trim()) || '';
-  return {
-    ...blankIssue(1), ...issue,
-    system: systems[0], systems, recommendations, checklistItems,
+  return normalizeLegacyChildren({
+    ...blankIssue(1), ...issue, system: systems[0], systems, recommendations, checklistItems,
     sourceType: sourceTypeText(sourceTypeValues(issue.sourceType || '')),
     rfiQuestion: issue.rfiQuestion ?? (issue.formalRfi ? issue.concern || '' : ''),
     checklistItem: firstChecklistItem, checklist: Boolean(firstChecklistItem.trim()),
-  };
+  } as Issue) as Issue;
 };
 
 const dateKey = (year: number, month: number, day: number) => `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
 const navDeliverables: [View, string][] = [
   ['sow', 'Recommended SOW Matrix'],
-  ['clarifications', 'Clarification Matrix'],
+  ['clarifications', 'Clarification Log'],
   ['rfi', 'Formal RFI'],
   ['checklist', 'Contractor Response Checklist'],
 ];
@@ -459,7 +447,7 @@ const ENGAGEMENT_SPECIFIC_VIEWS = new Set<View>(['sow', 'clarifications', 'rfi',
 
 const RELEASE_OPTIONS: { kind: PdfKind; label: string }[] = [
   { kind: 'sow', label: 'Recommended SOW Matrix' },
-  { kind: 'clarifications', label: 'Clarification Matrix' },
+  { kind: 'clarifications', label: 'Clarification Log' },
   { kind: 'rfi', label: 'Formal RFI' },
   { kind: 'checklist', label: 'Contractor Response Checklist' },
 ];
@@ -467,15 +455,19 @@ const ALL_RELEASE_KINDS = RELEASE_OPTIONS.map((item) => item.kind);
 
 type DeliverableRow = { key: string; cells: string[] };
 const sowDeliverableRows = (issues: Issue[]): DeliverableRow[] => issues.filter((issue) => issue.sow).map((issue) => ({
-  key: issue.uid,
-  cells: [issue.id, systemName(issue), issue.title, issue.concern, recommendationSummary(issue), issue.reference],
+  key: issue.uid, cells: [issue.id, systemName(issue), issue.title, issue.concern, recommendBaseBidSummary(issue), issue.reference],
 }));
 const clarificationDeliverableRows = (issues: Issue[]): DeliverableRow[] => issues.filter((issue) => issue.clarification).map((issue) => ({
   key: issue.uid,
-  cells: [[issue.id, issue.rfi].filter(Boolean).join('\n'), systemName(issue), issue.concern, recommendationSummary(issue), issue.resolution, issue.status, issue.reference],
+  cells: [[issue.id, ...associatedClarificationNumbers(issue)].join('\n'), systemName(issue), issue.concern, recommendBaseBidSummary(issue), issue.resolution, issue.status, issue.reference],
 }));
-const rfiDeliverableRows = (issues: Issue[]): DeliverableRow[] => issues.filter((issue) => issue.formalRfi).map((issue) => ({ key: issue.uid, cells: [issue.rfi, systemName(issue), issue.rfiQuestion || issue.concern, issue.reference, issue.resolution] }));
-const checklistDeliverableRows = (issues: Issue[]): DeliverableRow[] => issues.filter((issue) => checklistSummary(issue).trim()).map((issue) => ({ key: issue.uid, cells: [issue.id, issueSystemKeys(issue).filter((system) => checklistItemFor(issue, system).trim()).map((system) => displaySystem(issue, system)).join('; '), checklistSummary(issue), 'Editable in PDF', 'Editable in PDF'] }));
+const rfiDeliverableRows = (issues: Issue[]): DeliverableRow[] => issues.flatMap((issue) => rfiChildrenForDeliverable(issue).map((rfi) => ({
+  key: `${issue.uid}:${rfi.uid}`,
+  cells: [rfi.number, rfi.systems.join('; ') || systemName(issue), rfi.question, rfi.reference || issue.reference],
+})));
+const checklistDeliverableRows = (issues: Issue[]): DeliverableRow[] => issues.flatMap((issue) => checklistChildrenForDeliverable(issue).map((item) => ({
+  key: `${issue.uid}:${item.uid}`, cells: [issue.id, item.system, item.question, 'Editable in PDF', 'Editable in PDF'],
+})));
 const snippetDeliverableRows = (issues: Issue[]): DeliverableRow[] => issues.filter((issue) => issue.snippet).map((issue) => ({ key: issue.uid, cells: [issue.snippet, issue.id, systemName(issue), issue.reference, issue.title] }));
 
 function openFileDatabase() {
@@ -960,7 +952,9 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
       return confirmAction('Discard Draft?', 'This unsubmitted draft will be discarded and no SLR number will be consumed.', () => setDraft(null), 'Discard Draft', true);
     }
     if (!selectedUid) return;
-    confirmAction('Delete Submitted SLR?', 'The SLR will be deleted and all later SLR, RFI, and snippet numbers will be renumbered automatically.', () => {
+    const selectedIssue = issues.find((item) => item.uid === selectedUid);
+    if (selectedIssue?.numberLocked) return message('Customer-Visible SLR', `${selectedIssue.id} has appeared in an Official Release. Its permanent number and history cannot be deleted. Resolve, close, or supersede its child records instead.`);
+    confirmAction('Delete Submitted SLR?', 'This unreleased SLR will be deleted. Draft-only SLR, RFI, RBB, checklist, and snippet numbers may resequence automatically.', () => {
       setIssues((items) => items.filter((item) => item.uid !== selectedUid));
       setSelectedUid('');
       setDraft(null);
@@ -973,7 +967,12 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
     requestInput('Save SLR Template', 'Enter a reusable template name. This template will be available in every project.', draft.title || 'Saved SLR Template', (value) => {
       const name = value.trim();
       if (!name) return message('Template Name Required', 'Enter a name before saving the template.');
-      const { uid, id, rfi, snippet, ...issue } = draft;
+      const templateDraft = JSON.parse(JSON.stringify(draft)) as Issue;
+      templateDraft.numberLocked = false; templateDraft.numberReleasedAt = '';
+      templateDraft.rfis = templateDraft.rfis.map((child) => ({ ...child, number: '', locked: false, releasedAt: '', status: child.status === 'Closed' ? 'Draft' : child.status }));
+      templateDraft.recommendBaseBids = templateDraft.recommendBaseBids.map((rbb) => ({ ...rbb, baseSequence: 0, baseNumber: '', sections: Object.fromEntries(Object.entries(rbb.sections).map(([system, section]) => [system, { ...section, suffix: '', displayNumber: '', locked: false, contentReleased: false, releasedAt: '', supersedesNumber: '' }])) }));
+      templateDraft.checklistQuestions = templateDraft.checklistQuestions.map((child) => ({ ...child, number: '', locked: false, releasedAt: '' }));
+      const { uid, id, rfi, snippet, ...issue } = templateDraft;
       setTemplates((items) => [...items, { uid: crypto.randomUUID(), name, issue }]);
       message('Saved', `The global SLR template "${name}" was saved.`);
     }, 'Save Template');
@@ -1313,7 +1312,8 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
       if (!kinds.length) return message('Select Deliverables', 'Choose at least one deliverable for the official release.');
       if (dataMode !== 'cloud' || syncState !== 'synced') return message('Cloud Sync Required', 'Official releases can only be created while the production workspace is Cloud synced.');
       const plannedReleaseNumber = await getNextOfficialReleaseNumber(projectId);
-      const bytes = await buildReleasePackageBytes(project, issues, kinds, notes, plannedReleaseNumber);
+      const lockedIssues = lockIssuesForOfficialRelease(issues, kinds) as Issue[];
+      const bytes = await buildReleasePackageBytes(project, lockedIssues, kinds, notes, plannedReleaseNumber);
       const blob = pdfBytesToBlob(bytes);
       const fileName = releaseFileName(plannedReleaseNumber);
       const releaseSnapshot = {
@@ -1321,12 +1321,13 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
         releaseNumber: plannedReleaseNumber,
         createdAt: new Date().toISOString(),
         project: JSON.parse(JSON.stringify(project)),
-        issues: JSON.parse(JSON.stringify(issues)),
+        issues: JSON.parse(JSON.stringify(lockedIssues)),
         documents: docs.map((doc) => ({ id: doc.id, type: doc.type, name: doc.name, revision: doc.revision, date: doc.date, current: doc.current, fileName: doc.fileName })),
         internalNotes,
         deliverables: kinds,
       };
       const archived = await saveOfficialRelease(projectId, project.revision, project.versionDate, fileName, notes, kinds, blob, releaseSnapshot);
+      setIssues(() => lockedIssues);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
@@ -1408,9 +1409,9 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
           {view === 'documents' && <Documents projectId={projectId} docs={docs} setDocs={setDocs} openPreview={setPreview} confirmAction={confirmAction} requestInput={requestInput} message={message} cloudEnabled={dataMode === 'cloud'} />}
           {view === 'notes' && <InternalNotes value={internalNotes} save={(value) => { setNotesByProject((current) => ({ ...current, [projectId]: value })); message('Saved', 'Internal notes were saved.'); }} />}
           {view === 'internal' && <InternalMatrix issues={filtered} allCount={issues.length} draft={draft} selectedUid={selectedUid} edit={editIssue} setDraft={setDraft} submit={submit} remove={deleteEntry} newDraft={newDraft} saveTemplate={saveTemplate} templates={templates} deleteTemplate={requestDeleteTemplate} search={search} setSearch={setSearch} systems={systems} systemFilter={systemFilter} setSystemFilter={setSystemFilter} statusFilter={statusFilter} setStatusFilter={setStatusFilter} tab={tab} setTab={setTab} confirmAction={confirmAction} />}
-          {view === 'sow' && <Deliverable title="Recommended SOW Matrix" eyebrow="Primary Flagship Deliverable" description="Each SLR appears once. All affected systems and their separate Recommended Bid Basis sections remain inside the same matrix row." rows={sowDeliverableRows(issues)} columns={['SLR', 'Systems', 'Scope Item', 'Scope Concern', 'Recommended Bid Basis by System', 'Source Reference']} update={() => updatePdf('sow', 'Recommended SOW Matrix')} url={pdfUrls.sow} onDownload={() => recordDownload('Recommended_SOW_Matrix.pdf', 'Recommended SOW Matrix')} preview={(url) => setPreview({ title: 'Recommended SOW Matrix', url, mode: 'pdf' })} />}
-          {view === 'clarifications' && <Deliverable title="Clarification Matrix" eyebrow="GC Working Document" description="Each SLR remains one record while all selected systems and system-specific recommendations are shown together." rows={clarificationDeliverableRows(issues)} columns={['SLR / RFI', 'Systems', 'Question / Issue', 'Recommended Bid Basis by System', 'Resolution', 'Status', 'Source Reference']} update={() => updatePdf('clarifications', 'Clarification Matrix')} url={pdfUrls.clarifications} onDownload={() => recordDownload('Clarification_Matrix.pdf', 'Clarification Matrix')} preview={(url) => setPreview({ title: 'Clarification Matrix', url, mode: 'pdf' })} />}
-          {view === 'rfi' && <Deliverable title="Formal RFI" eyebrow="A/E Deliverable" description="Document references are visible here for internal coordination and remain included on the Formal RFI PDF." rows={rfiDeliverableRows(issues)} columns={['RFI No.', 'Systems', 'Question', 'Document References', 'Answer']} update={() => updatePdf('rfi', 'Formal RFI')} url={pdfUrls.rfi} onDownload={() => recordDownload('Formal_RFI.pdf', 'Formal RFI')} preview={(url) => setPreview({ title: 'Formal RFI', url, mode: 'pdf' })} />}
+          {view === 'sow' && <Deliverable title="Recommended SOW Matrix" eyebrow="Primary Flagship Deliverable" description="Each SLR appears once. All affected systems and their separate Recommend Base Bid sections remain inside the same matrix row." rows={sowDeliverableRows(issues)} columns={['SLR', 'Systems', 'Scope Item', 'Scope Concern', 'Recommend Base Bid', 'Source Reference']} update={() => updatePdf('sow', 'Recommended SOW Matrix')} url={pdfUrls.sow} onDownload={() => recordDownload('Recommended_SOW_Matrix.pdf', 'Recommended SOW Matrix')} preview={(url) => setPreview({ title: 'Recommended SOW Matrix', url, mode: 'pdf' })} />}
+          {view === 'clarifications' && <Deliverable title="Clarification Log" eyebrow="GC Working Document" description="Each SLR remains one record while all selected systems and system-specific recommendations are shown together." rows={clarificationDeliverableRows(issues)} columns={['SLR / RFI', 'Systems', 'Question / Issue', 'Recommend Base Bid', 'Resolution', 'Status', 'Source Reference']} update={() => updatePdf('clarifications', 'Clarification Log')} url={pdfUrls.clarifications} onDownload={() => recordDownload('Clarification_Matrix.pdf', 'Clarification Log')} preview={(url) => setPreview({ title: 'Clarification Log', url, mode: 'pdf' })} />}
+          {view === 'rfi' && <Deliverable title="Formal RFI" eyebrow="A/E Deliverable" description="Document references are visible here for internal coordination and remain included on the Formal RFI PDF." rows={rfiDeliverableRows(issues)} columns={['RFI No.', 'Systems', 'Question', 'Document References']} update={() => updatePdf('rfi', 'Formal RFI')} url={pdfUrls.rfi} onDownload={() => recordDownload('Formal_RFI.pdf', 'Formal RFI')} preview={(url) => setPreview({ title: 'Formal RFI', url, mode: 'pdf' })} />}
           {view === 'checklist' && <Deliverable title="Contractor Response Checklist" eyebrow="Editable PDF" description="The PDF contains one continuous document divided into system sections. Each selected system uses its own checklist scope item, and additional pages are created only when content requires them." rows={checklistDeliverableRows(issues)} columns={['SLR', 'Systems', 'Checklist Scope Item by System', 'Response', 'Reason']} update={() => updatePdf('checklist', 'Contractor Response Checklist')} url={pdfUrls.checklist} onDownload={() => recordDownload('Contractor_Response_Checklist.pdf', 'Contractor Response Checklist')} preview={(url) => setPreview({ title: 'Contractor Response Checklist', url, mode: 'pdf' })} />}
           {view === 'quotes' && <QuoteBuilder project={project} quotes={quotesByProject[projectId] || []} allQuotes={Object.values(quotesByProject).flat()} quoteSources={projects.flatMap((sourceProject)=>(quotesByProject[sourceProject.id]||[]).map((sourceQuote)=>({projectId:sourceProject.id,projectName:sourceProject.name,quote:sourceQuote})))} setQuotes={(quotes) => setQuotesByProject((current) => ({ ...current, [projectId]: quotes }))} parts={parts} laborRates={laborRates} difficultyMultipliers={difficultyMultipliers} quoteTemplates={quoteTemplates} saveQuoteTemplate={(template) => setQuoteTemplates((current) => [template, ...current])} requestInput={requestInput} scopeOfWork={scopeOfWorkByProject[projectId] || { includedHtml: '', excludedHtml: '' }} message={message} />}
           {view === 'quote-templates' && <QuoteTemplateBuilder templates={quoteTemplates} save={(items) => { setQuoteTemplates(items); message('Saved', 'Quote templates were saved.'); }} parts={parts} laborRates={laborRates} difficultyMultipliers={difficultyMultipliers} />}
@@ -1460,13 +1461,13 @@ function InternalMatrix(props: any) {
     const recommendation = draft.recommendations?.[system]?.trim();
     const checklistItem = draft.checklistItems?.[system]?.trim();
     const remove = () => setSystems(draft.systems.filter((item) => item !== system));
-    if (recommendation || checklistItem) props.confirmAction('Remove System?', `Removing ${displaySystem(draft, system)} will also remove its Recommended Bid Basis and Contractor Checklist Scope Item from this SLR.`, remove, 'Remove System', true);
+    if (recommendation || checklistItem) props.confirmAction('Remove System?', `Removing ${displaySystem(draft, system)} will also remove its Recommend Base Bid and Contractor Checklist Scope Item from this SLR.`, remove, 'Remove System', true);
     else remove();
   };
   const patchRecommendation = (system: string, value: string) => props.setDraft((current: Issue | null) => current ? { ...current, recommendations: { ...current.recommendations, [system]: value } } : current);
   const patchChecklistItem = (system: string, value: string) => props.setDraft((current: Issue | null) => current ? { ...current, checklistItems: { ...current.checklistItems, [system]: value } } : current);
   return <>
-    <PageHead eyebrow="Primary Workspace" title="ScopeLogic Internal Matrix" description="Create one SLR for a scope issue, select every affected system, and enter a separate Recommended Bid Basis for each system." action={<div className="button-row"><button className="secondary" onClick={props.remove}>{draft && !props.selectedUid ? 'Discard Draft' : 'Delete'}</button><button className="primary" onClick={() => props.newDraft()}>+ New Issue</button></div>} />
+    <PageHead eyebrow="Primary Workspace" title="ScopeLogic Internal Matrix" description="Create one SLR for a scope issue, select every affected system, and enter a separate Recommend Base Bid for each system." action={<div className="button-row"><button className="secondary" onClick={props.remove}>{draft && !props.selectedUid ? 'Discard Draft' : 'Delete'}</button><button className="primary" onClick={() => props.newDraft()}>+ New Issue</button></div>} />
     <div className="template-bar template-library">
       <div><b>SLR Template Library</b><span>Global templates remain available across every project.</span></div>
       <select value={selectedTemplate} onChange={(event) => setSelectedTemplate(event.target.value)}><option value="">{props.templates.length ? 'Select a saved SLR template...' : 'No saved templates yet'}</option>{[...props.templates].sort((a: Template,b: Template)=>alphaNumericCompare(a.name,b.name)).map((template: Template) => <option key={template.uid} value={template.uid}>{template.name}</option>)}</select>
@@ -1483,19 +1484,16 @@ function InternalMatrix(props: any) {
 
         <div className="matrix-writing-grid">
           <TextArea label="Scope Concern" value={draft.concern} onChange={(value) => patch('concern', value)} />
-          <TextArea label="Formal RFI Question" value={draft.rfiQuestion} onChange={(value) => patch('rfiQuestion', value)} />
+
         </div>
-        <p className="help-text rfi-help">The Formal RFI uses the RFI Question. Scope Concern remains the internal and clarification statement.</p>
+
         <div className="matrix-reference-grid"><label className="field"><span>SLR ID</span><input value={draft.id} disabled /></label><MultiSelectField label="Source Type(s)" values={sourceTypeValues(draft.sourceType)} options={SOURCE_TYPE_OPTIONS} emptyLabel="Select one or more source types" onChange={(values)=>patch('sourceType',sourceTypeText(values))} /><Field label="Source Reference" value={draft.reference} onChange={(value) => patch('reference', value)} /><label className="field"><span>Markup Reference</span><input value={draft.id} disabled /></label></div><p className="help-text reference-help">Select every applicable source type when an issue appears in more than one place, such as both Drawing and Specification. Choose Not Mentioned in Contract Documents when the issue is absent from the contract documents. Use Source Reference for citations such as A601 / Note 4 and Division 28 13 00. The SLR ID remains the permanent cross-reference.</p>
 
-        <div className="recommendation-sections"><div className="recommendation-heading"><b>Recommended Bid Basis by System</b><span>Each selected system receives its own recommendation in the Recommended SOW Matrix.</span></div>{draft.systems.length ? draft.systems.map((system) => <div key={system} className="recommendation-field"><AutoGrowTextArea label={`Recommended Bid Basis — ${displaySystem(draft, system)}`} value={draft.recommendations?.[system] || ''} onChange={(value) => patchRecommendation(system, value)} /></div>) : <div className="empty-panel compact"><b>No systems selected.</b><p>Select at least one affected system above.</p></div>}</div>
-
-        <div className="recommendation-sections checklist-scope-sections"><div className="recommendation-heading"><b>Contractor Checklist Scope Item by System</b><span>Each selected system receives its own contractor checklist language.</span></div>{draft.systems.length ? draft.systems.map((system) => <div key={system} className="recommendation-field"><AutoGrowTextArea label={`Contractor Checklist Scope Item — ${displaySystem(draft, system)}`} value={draft.checklistItems?.[system] || ''} onChange={(value) => patchChecklistItem(system, value)} /></div>) : <div className="empty-panel compact"><b>No systems selected.</b><p>Select at least one affected system above.</p></div>}</div>
-        <p className="help-text checklist-help">Leave a system-specific field blank to omit this SLR from that system section of the Contractor Response Checklist.</p>
+        <SlrChildEditor issue={draft} onChange={(next) => props.setDraft(next as Issue)} />
 
         <div className="detail-tabs"><button className={props.tab === 'details' ? 'active' : ''} onClick={() => props.setTab('details')}>Details</button><button className={props.tab === 'deliverables' ? 'active' : ''} onClick={() => props.setTab('deliverables')}>Deliverables</button><button className={props.tab === 'history' ? 'active' : ''} onClick={() => props.setTab('history')}>History</button></div>
-        {props.tab === 'details' && <div className="tab-panel"><AutoGrowTextArea label="RFI Resolution / Official Answer" value={draft.resolution} onChange={(value) => patch('resolution', value)} /></div>}
-        {props.tab === 'deliverables' && <div className="tab-panel checklist"><Check label="Recommended SOW Matrix" value={draft.sow} change={(value) => patch('sow', value)} /><Check label="Clarification Matrix" value={draft.clarification} change={(value) => patch('clarification', value)} /><Check label="Formal RFI" value={draft.formalRfi} change={(value) => patch('formalRfi', value)} /><div className="deliverable-rule-note"><b>Contractor Response Checklist</b><span>Controlled by the system-specific Contractor Checklist Scope Item fields above.</span></div></div>}
+        {props.tab === 'details' && <div className="tab-panel"><AutoGrowTextArea label="RFI Response / Official Answer" value={draft.resolution} onChange={(value) => patch('resolution', value)} /></div>}
+        {props.tab === 'deliverables' && <div className="tab-panel checklist"><Check label="Recommended SOW Matrix" value={draft.sow} change={(value) => patch('sow', value)} /><Check label="Clarification Log" value={draft.clarification} change={(value) => patch('clarification', value)} /><Check label="Formal RFI" value={draft.formalRfi} change={(value) => patch('formalRfi', value)} /><div className="deliverable-rule-note"><b>Contractor Response Checklist</b><span>Controlled by the system-specific Contractor Checklist Scope Item fields above.</span></div></div>}
         {props.tab === 'history' && <div className="tab-panel timeline"><p><b>Draft workflow</b><span>Only Submit Entry publishes changes to the deliverables.</span></p></div>}
         <div className="submit-bar"><button className="secondary" onClick={props.saveTemplate}>Save This SLR as Template</button><button className="primary" onClick={props.submit}>Submit Entry</button></div>
       </>}
@@ -1856,8 +1854,8 @@ function ScopeLogicHelp() {
     { category: 'Getting Started', title: 'Project Library', steps: ['Search by project, customer, status, quote number, or quote name.', 'Projects are sorted by created date, newest first.', 'Select a project row to open its workspace.'], notes: ['Quote numbers are shown in the project list.'] },
     { category: 'Getting Started', title: 'Calendar and Important Dates', steps: ['In Project Setup, enter a subject and date under Important Dates.', 'Choose Add Date; the entry appears on the Calendar automatically.', 'Use the separate Calendar tab to view all projects by month or add another entry.'], notes: ['Removing a Project Setup date also removes that calendar entry.'] },
     { category: 'Getting Started', title: 'Project Setup, Dashboard, Documents, and Notes', steps: ['Save the customer, version date, revision, status, and systems in Project Setup.', 'Use Dashboard for project health and shortcuts.', 'Keep current and superseded source files in Project Documents.', 'Keep internal-only coordination in Internal Notes.'], notes: ['Internal Notes are not customer-facing.'] },
-    { category: 'Scope Review', title: 'Internal Matrix', steps: ['Create or select an SLR.', 'Enter systems, Scope Concern, Recommended Bid Basis, Source Type, Source Reference, and any RFI or checklist language.', 'Submit the entry and enable only the required deliverables.'], notes: ['Source Type supports multiple sources.', 'Alphanumeric sorting keeps identifiers in natural order.'] },
-    { category: 'Scope Review', title: 'SOW, Clarification, RFI, and Checklist', steps: ['Use Recommended SOW Matrix for bid-basis scope.', 'Use Clarification Matrix for concerns, recommendations, status, and resolution.', 'Use Formal RFI for customer-ready questions; Document References appear internally and on the PDF.', 'Use Contractor Response Checklist for system-specific scope confirmations.'], notes: ['Correct the source record in Internal Matrix, then regenerate the PDF.'] },
+    { category: 'Scope Review', title: 'Internal Matrix', steps: ['Create or select an SLR.', 'Enter systems, Scope Concern, Recommend Base Bid, Source Type, Source Reference, and any RFI or checklist language.', 'Submit the entry and enable only the required deliverables.'], notes: ['Source Type supports multiple sources.', 'Alphanumeric sorting keeps identifiers in natural order.'] },
+    { category: 'Scope Review', title: 'SOW, Clarification, RFI, and Checklist', steps: ['Use Recommended SOW Matrix for bid-basis scope.', 'Use Clarification Log for concerns, recommendations, status, and resolution.', 'Use Formal RFI for customer-ready questions; Document references remain on the customer-facing RFI; SLR cross-references and response tracking remain internal.', 'Use Contractor Response Checklist for system-specific scope confirmations.'], notes: ['Correct the source record in Internal Matrix, then regenerate the PDF.'] },
     { category: 'Quote Builder', title: 'Create, Copy, Revise, and Number Quotes', steps: ['Choose New Quote to start blank, duplicate within a project, copy from another project, or use a template.', 'Use New Revision for a revised bid and New Change Order for post-award work.', 'Use compact automatic numbers such as Q-0102, Q-0102-R1, Q-0102-C1, and Q-0102-C1-R1.', 'Choose Save Quote at the top or bottom.'], notes: ['There is no autosave.', 'Delete Quote remains confirmed and is available at both ends of the working area.'] },
     { category: 'Quote Builder', title: 'Base Bid BOM', steps: ['Add database parts or ad-hoc rows.', 'Enter quantities, costs, individual material markups, and labor minutes.', 'Use Group / Reorder to create headers and control BOM order.', 'Select proposal BOM rows during PDF generation.'], notes: ['The same part number may be used on separate quote rows.', 'Base pricing never changes merely because an alternate is priced.'] },
     { category: 'Quote Builder', title: 'Breakout Pricing', steps: ['Create user-defined names such as First Floor, Warehouse, Phase 2, or Training.', 'Allocate each Base Bid quantity across one or more breakouts.', 'Choose Automatic to distribute quote-level costs by direct-price share, or Manual % to set the shares.', 'Review Allocation, Material, Labor, Other / Fees, and Total Price.'], notes: ['Breakout rows follow Base Bid order and repeat its headers.', 'General Conditions are allocated into named breakouts and never appear as a separate breakout row.', 'Resolve Unassigned Qty before issuing the proposal.'] },
@@ -1877,11 +1875,11 @@ function ScopeLogicHelp() {
   const visibleTopics = topics.filter((topic) => !needle || [topic.category, topic.title, ...topic.steps, ...topic.notes].join(' ').toLowerCase().includes(needle));
   const categories = Array.from(new Set(visibleTopics.map((topic) => topic.category)));
   const mappings = [
-    ['Scope Concern', 'Clarification Matrix', 'Internal issue statement or clarification need.'],
+    ['Scope Concern', 'Clarification Log', 'Internal issue statement or clarification need.'],
     ['Formal RFI Question', 'Formal RFI', 'A/E-facing question. Only completed when an official RFI is required.'],
-    ['Recommended Bid Basis by System', 'Recommended SOW Matrix', 'A separate interim bid basis or recommended scope standard for every selected system.'],
+    ['Recommend Base Bid', 'Recommended SOW Matrix', 'A separate interim bid basis or recommended scope standard for every selected system.'],
     ['Contractor Checklist Scope Item by System', 'Contractor Response Checklist', 'System-specific checklist language. A blank system field excludes the SLR from that system section.'],
-    ['RFI Resolution / Official Answer', 'Clarification Matrix and RFI tracking', 'Official response received from the A/E or owner.'],
+    ['RFI Resolution / Official Answer', 'Clarification Log and RFI tracking', 'Official response received from the A/E or owner.'],
   ];
   return <>
     <PageHead eyebrow="Administration" title="ScopeLogic Help" description="Searchable, in-app instructions for every major project, scope-review, estimating, proposal, and data-protection function." />
@@ -1991,7 +1989,7 @@ function ProjectLibrary({ masters, projects, quotesByProject, activeMasterId, en
 }
 
 function OfficialReleases({ project, releases, loading, generate, openRelease }: { project: Project; releases: OfficialRelease[]; loading: boolean; generate: () => void; openRelease: (release: OfficialRelease, download?: boolean) => void | Promise<void> }) {
-  const labels: Record<string, string> = { sow: 'Recommended SOW', clarifications: 'Clarification Matrix', rfi: 'Formal RFI', checklist: 'Contractor Checklist' };
+  const labels: Record<string, string> = { sow: 'Recommended SOW', clarifications: 'Clarification Log', rfi: 'Formal RFI', checklist: 'Contractor Checklist' };
   const histories=Array.from(releases.reduce((map,release)=>{const key=release.documentKey||'project-package';map.set(key,[...(map.get(key)||[]),release]);return map;},new Map<string,OfficialRelease[]>()).entries());
   return <>
     <PageHead eyebrow="Project Control" title="Official Releases" description="Independent, immutable histories for every proposal document and project package." action={<button className="primary" onClick={generate}>Generate Project Package</button>} />

@@ -1,4 +1,5 @@
 import './globals.css';
+import './commercial-facelift.css';
 import type { Metadata } from 'next';
 import WorkspaceSidebarLinks from './workspace-sidebar-links';
 

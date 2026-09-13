@@ -446,10 +446,16 @@ export function lockIssuesForOfficialRelease<T extends SlrIssueLike>(sources: T[
 export function supersedeRbbSection<T extends SlrIssueLike>(source: T, displayNumber: string, recommendation: string, basedOnRfiUid = ''): T & SlrChildFields {
   const issue = normalizeLegacyChildren(source);
   let target: SlrRbbSection | null = null;
-  issue.recommendBaseBids.forEach((rbb) => rbb.selectedSystems.forEach((system) => {
-    const section = rbb.sections[system];
-    if (section?.displayNumber === displayNumber) target = section;
-  }));
+  for (const rbb of issue.recommendBaseBids) {
+    for (const system of rbb.selectedSystems) {
+      const section = rbb.sections[system];
+      if (section?.displayNumber === displayNumber) {
+        target = section;
+        break;
+      }
+    }
+    if (target) break;
+  }
   if (!target) throw new Error(`Could not find ${displayNumber}.`);
   if (!target.locked && !target.contentReleased) {
     target.recommendation = recommendation;
