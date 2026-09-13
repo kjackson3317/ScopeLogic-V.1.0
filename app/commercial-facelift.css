@@ -5,3 +5,95 @@ body,.app-shell,.main{background:var(--sl-canvas)!important;color:#20262e}.sideb
 input,select,textarea{border-color:var(--sl-border-strong)!important;border-radius:6px!important;background:#fff;color:#20262e}input:focus,select:focus,textarea:focus{outline:none!important;border-color:var(--sl-green)!important;box-shadow:0 0 0 3px rgba(75,102,35,.14)!important}button.primary,.primary-button{background:var(--sl-green)!important;border-color:var(--sl-green)!important;color:#fff!important;border-radius:6px!important}button.primary:hover,.primary-button:hover{background:var(--sl-green-dark)!important;border-color:var(--sl-green-dark)!important}button.secondary,.secondary-button{background:#fff!important;border:1px solid var(--sl-border-strong)!important;color:var(--sl-charcoal)!important;border-radius:6px!important}
 thead th{background:#eef1f3!important;color:#39414d!important;border-bottom:1px solid var(--sl-border-strong)!important;font-size:11px!important;font-weight:700!important}tbody td{border-bottom-color:#e5e8ec!important}tbody tr:hover td{background:#fafbf9!important}.detail-tabs button.active,.tabs button.active,.tab-row button.active{color:var(--sl-green-dark)!important;border-bottom-color:var(--sl-green)!important;background:#eef2e8!important}.help-text{color:var(--sl-muted)!important}
 .slr-child-card{border:1px solid var(--sl-border);border-radius:7px;background:#fff;margin:10px 0;overflow:hidden}.slr-child-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 11px;background:#f5f7f3;border-bottom:1px solid var(--sl-border)}.slr-child-card-body{padding:11px}.slr-child-number{font-weight:800;color:var(--sl-green-dark)}.slr-child-card-head small{display:block;margin-top:2px;color:var(--sl-muted)}.slr-child-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.slr-child-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.slr-lock-note{padding:8px 10px;margin-bottom:10px;border-left:3px solid var(--sl-green);background:#eef2e8;color:#44512f;font-size:12px}.slr-child-system-list{display:flex;flex-wrap:wrap;gap:8px 14px;padding:10px 0}.slr-child-system-list>span{width:100%;font-weight:700}.rbb-system-section{margin-top:12px;border:1px solid var(--sl-border);border-radius:6px;overflow:hidden}.rbb-system-section>.field{padding:10px;display:block}.rbb-system-section>.slr-lock-note{margin:0 10px 10px}@media(max-width:900px){.slr-child-grid{grid-template-columns:1fr}}
+
+/* Desktop-density pass: preserve hierarchy while reducing unused vertical space. */
+@media(min-width:901px){
+  .topbar{height:60px!important;padding:0 24px!important}
+  .page{padding:22px 24px!important}
+  .page-head{gap:20px!important;margin-bottom:16px!important}
+  .page-head h1{margin:4px 0 5px!important}
+  .page-head p{line-height:1.4!important}
+
+  .sidebar{padding:16px 13px!important}
+  .brand{margin:0 5px 16px!important}
+  .project-switch{padding:10px!important;margin-bottom:14px!important}
+  .project-switch b{margin:3px 0!important}
+  .nav-group{margin:13px 0!important}
+  .nav-group>span{margin:0 9px 5px!important}
+  .nav-group button{padding:7px 9px!important}
+  .sidebar-account{padding:13px 7px 2px!important}
+  .sidebar-account>span{margin-bottom:5px!important}
+  .sidebar-user{margin-bottom:6px!important}
+  .sidebar-account button{min-height:36px!important;padding:7px 10px!important}
+
+  .panel,.form-card,.project-card,.metric,.bidder-card,.detail-card,.matrix-card,.release-card,.standard-card,.table-card,.empty-panel{padding:14px!important}
+  .panel-head{margin-bottom:5px!important}
+  .panel-head h2{margin:6px 0!important}
+  .metrics{gap:10px!important;margin-bottom:12px!important}
+  .dashboard-grid{gap:12px!important}
+  .project-grid{gap:12px!important}
+  .project-card h3{margin:12px 0 4px!important}
+  .project-card dl{margin:12px 0!important;padding-top:10px!important}
+  .project-card dl div{margin:5px 0!important}
+
+  input,select{padding:7px 9px!important;min-height:36px!important}
+  textarea{padding:8px 10px!important}
+  .field textarea,.editor-grid textarea,.issue-editor>.field.textarea textarea,.issue-editor>.field:nth-of-type(2) textarea{min-height:78px!important}
+  .field span,.editor-grid label{line-height:1.25!important}
+  .editor-grid{gap:10px!important;margin-bottom:10px!important}
+  .editor-grid label select,.editor-grid label input{margin-top:4px!important}
+  .issue-editor>.field{margin:10px 0!important}
+  .checkbox-field{margin-top:14px!important}
+
+  .primary,.secondary,.panel-head button,.primary-button,.secondary-button,.slr-child-actions button{padding:7px 11px!important;min-height:34px!important}
+  .button-row,.top-actions{gap:6px!important}
+
+  .issue-title{gap:12px!important;padding-bottom:10px!important;margin-bottom:12px!important}
+  .issue-title span{margin-bottom:3px!important}
+  .issue-editor{padding:16px 20px!important}
+  .detail-tabs{margin-top:14px!important}
+  .detail-tabs button,.tabs button,.tab-row button{padding-top:7px!important;padding-bottom:7px!important}
+  .tab-panel{padding:12px 2px!important}
+  .tab-panel.two{gap:10px!important}
+  .tab-panel.checklist{gap:8px!important}
+  .tab-panel.checklist label{padding:9px!important;gap:7px!important}
+
+  .matrix-toolbar{padding:7px 8px!important;gap:6px!important}
+  .matrix-row b,.matrix-row span{padding:9px!important}
+  .matrix-row span{min-height:42px!important}
+  thead th,tbody td{padding-top:8px!important;padding-bottom:8px!important}
+
+  .document-line,.issue-line{padding:9px 0!important}
+  .issue-line{gap:9px!important}
+  .doc-list button{padding:10px 12px!important}
+  .doc-detail{padding:18px 20px!important}
+  .doc-current{padding-bottom:12px!important;margin-bottom:14px!important}
+  .revision-box{margin-top:16px!important;padding:11px!important}
+  .revision-box h3{margin-bottom:6px!important}
+  .revision-box>div{padding:7px 0!important}
+
+  .template-bar{gap:6px!important}
+  .bidder-stack{gap:12px!important}
+  .bidder-card{padding:14px!important}
+  .bidder-head{gap:10px!important;margin-bottom:12px!important}
+  .bidder-head input{padding:3px!important}
+  .bidder-head select{padding:7px!important}
+  .empty-state{padding:24px!important}
+  .empty-state.large{padding:56px!important}
+  .empty-list{padding:18px 14px!important}
+
+  .slr-child-card{margin:7px 0!important}
+  .slr-child-card-head{gap:9px!important;padding:7px 9px!important}
+  .slr-child-card-body{padding:8px 9px!important}
+  .slr-child-grid{gap:8px!important}
+  .slr-child-actions{gap:6px!important}
+  .slr-lock-note{padding:6px 8px!important;margin-bottom:7px!important;line-height:1.35!important}
+  .slr-child-system-list{gap:6px 12px!important;padding:6px 0!important}
+  .rbb-system-section{margin-top:8px!important}
+  .rbb-system-section>.field{padding:7px 9px!important}
+  .rbb-system-section>.slr-lock-note{margin:0 9px 7px!important}
+  .recommendation-sections{padding-top:8px!important;padding-bottom:8px!important}
+
+  .modal-head{height:46px!important}
+  .modal-card iframe{height:calc(100% - 46px)!important}
+}
