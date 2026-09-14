@@ -112,7 +112,7 @@ export default function DismissibleUiBehavior() {
     return () => {
       observer.disconnect();
       archiveToggleButton?.remove();
-      document.addEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('pointerdown', onPointerDown, true);
       document.removeEventListener('keydown', onKeyDown);
     };
   }, []);
