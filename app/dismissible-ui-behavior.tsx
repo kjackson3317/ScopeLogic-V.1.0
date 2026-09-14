@@ -6,6 +6,51 @@ const buttonWithText = (root: Element, labels: string[]) => Array.from(root.quer
 
 export default function DismissibleUiBehavior() {
   useEffect(() => {
+    let showArchivedProjects = false;
+    let projectLibraryWasVisible = false;
+    let archiveToggleButton: HTMLButtonElement | null = null;
+
+    const syncArchivedProjectVisibility = () => {
+      const projectTable = document.querySelector<HTMLElement>('.project-list-table');
+      const projectHeading = document.querySelector<HTMLElement>('.project-list-heading');
+
+      if (!projectTable || !projectHeading) {
+        if (projectLibraryWasVisible) showArchivedProjects = false;
+        projectLibraryWasVisible = false;
+        archiveToggleButton = null;
+        return;
+      }
+
+      projectLibraryWasVisible = true;
+      const projectRows = Array.from(projectTable.querySelectorAll<HTMLButtonElement>('.project-list-row:not(.head)'));
+      const archivedRows = projectRows.filter((row) => {
+        const statusCell = Array.from(row.children)[3] as HTMLElement | undefined;
+        return statusCell?.querySelector('i')?.textContent?.trim().toLowerCase() === 'archived';
+      });
+
+      archivedRows.forEach((row) => {
+        row.hidden = !showArchivedProjects;
+        row.setAttribute('aria-hidden', showArchivedProjects ? 'false' : 'true');
+      });
+
+      if (!archiveToggleButton || !archiveToggleButton.isConnected) {
+        archiveToggleButton = document.createElement('button');
+        archiveToggleButton.type = 'button';
+        archiveToggleButton.className = 'secondary project-library-archive-toggle';
+        archiveToggleButton.addEventListener('click', () => {
+          showArchivedProjects = !showArchivedProjects;
+          syncArchivedProjectVisibility();
+        });
+        const searchField = projectHeading.querySelector('.project-library-search');
+        if (searchField) searchField.insertAdjacentElement('afterend', archiveToggleButton);
+        else projectHeading.appendChild(archiveToggleButton);
+      }
+
+      const label = showArchivedProjects ? `Hide Archived (${archivedRows.length})` : `Show Archived (${archivedRows.length})`;
+      if (archiveToggleButton.textContent !== label) archiveToggleButton.textContent = label;
+      archiveToggleButton.hidden = archivedRows.length === 0;
+    };
+
     const closeCustomMenusOutside = (target: Node) => {
       document.querySelectorAll<HTMLElement>('.multiselect-field').forEach((field) => {
         if (!field.querySelector('.multiselect-menu') || field.contains(target)) return;
@@ -58,10 +103,16 @@ export default function DismissibleUiBehavior() {
       if (dismiss && !dismiss.disabled) dismiss.click();
     };
 
+    const observer = new MutationObserver(syncArchivedProjectVisibility);
+    observer.observe(document.body, { childList: true, subtree: true });
+    syncArchivedProjectVisibility();
+
     document.addEventListener('pointerdown', onPointerDown, true);
     document.addEventListener('keydown', onKeyDown);
     return () => {
-      document.removeEventListener('pointerdown', onPointerDown, true);
+      observer.disconnect();
+      archiveToggleButton?.remove();
+      document.addEventListener('pointerdown', onPointerDown, true);
       document.removeEventListener('keydown', onKeyDown);
     };
   }, []);
