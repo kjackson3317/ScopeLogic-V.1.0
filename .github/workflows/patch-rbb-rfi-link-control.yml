@@ -1,0 +1,48 @@
+name: Patch and Validate RBB RFI Link Control
+
+on:
+  push:
+    branches:
+      - feature/rbb-rfi-link-control
+
+permissions:
+  contents: write
+
+jobs:
+  patch-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Patch Based on RFI control
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('app/slr-child-editor.tsx')
+          text = path.read_text()
+          old = '''                <label className="field"><span>Based on RFI</span><select multiple value={section.basedOnRfiUids} onChange={(event) => commit((next) => { next.recommendBaseBids[rbbIndex].sections[system].basedOnRfiUids = Array.from(event.target.selectedOptions).map((option) => option.value); })}>{issue.rfis.map((rfi) => <option key={rfi.uid} value={rfi.uid}>{rfi.number || 'Draft RFI'} — {rfi.title || rfi.question || 'Untitled'}</option>)}</select></label>'''
+          new = '''                <div className="field"><span>Based on RFI</span>{issue.rfis.length ? <div className="slr-child-system-list rfi-link-list">{issue.rfis.map((rfi) => { const checked = section.basedOnRfiUids.includes(rfi.uid); return <label key={rfi.uid}><input type="checkbox" checked={checked} onChange={(event) => commit((next) => { const target = next.recommendBaseBids[rbbIndex].sections[system]; target.basedOnRfiUids = event.target.checked ? Array.from(new Set([...target.basedOnRfiUids, rfi.uid])) : target.basedOnRfiUids.filter((uid) => uid !== rfi.uid); })} /> {rfi.number || 'Draft RFI'} — {rfi.title || rfi.question || 'Untitled'}</label>; })}</div> : <small>No RFI is currently available on this SLR.</small>}<small>Internal traceability only. These links remain editable after an Official Release; released customer-visible recommendation text does not change.</small></div>'''
+          if old in text:
+              path.write_text(text.replace(old, new, 1))
+          elif 'Internal traceability only. These links remain editable after an Official Release' not in text:
+              raise SystemExit('Expected Based on RFI control was not found; refusing to patch an unexpected source state.')
+          PY
+      - run: npm ci
+      - run: npm run build
+      - name: Commit validated source change
+        run: |
+          if git diff --quiet -- app/slr-child-editor.tsx; then
+            echo "Source already patched."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/slr-child-editor.tsx
+          git commit -m "Make RBB Based on RFI links directly editable"
+          git push origin HEAD:feature/rbb-rfi-link-control
