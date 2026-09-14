@@ -167,6 +167,32 @@ tbody tr:hover td{background:#f4f7f1!important}
 .bidder-head input:focus{border-bottom-color:var(--sl-green)!important;box-shadow:none!important}
 .matrix-toolbar{border-radius:3px 3px 0 0!important;background:var(--sl-header)!important;border-color:var(--sl-border)!important}
 
+/* SLR editing controls: each child record can collapse independently or as a group. */
+.recommendation-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.recommendation-heading>div:first-child{min-width:0;flex:1}
+.slr-section-actions{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex-wrap:wrap}
+.slr-section-actions button{white-space:nowrap;font-size:11px!important;min-height:30px!important;padding:5px 8px!important}
+.slr-section-actions button:disabled{opacity:.45;cursor:not-allowed}
+.slr-section-save{margin-left:3px}
+.slr-child-card.collapsed .slr-child-card-head{border-bottom:0!important}
+.slr-child-summary-button{
+  display:flex;
+  align-items:center;
+  min-width:0;
+  flex:1;
+  gap:0;
+  padding:0!important;
+  border:0!important;
+  background:transparent!important;
+  color:inherit!important;
+  text-align:left;
+  cursor:pointer;
+  box-shadow:none!important;
+}
+.slr-child-summary-button:hover .slr-child-number{text-decoration:underline}
+.slr-child-summary-button small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(760px,60vw)}
+.slr-collapse-toggle{min-width:68px}
+
 /* Moderate desktop density: enough information per viewport without making the UI cramped. */
 @media(min-width:901px){
   .topbar{height:64px!important;padding:0 24px!important}
@@ -242,4 +268,11 @@ tbody tr:hover td{background:#f4f7f1!important}
   .modal-card iframe{height:calc(100% - 46px)!important}
 }
 
-@media(max-width:900px){.slr-child-grid{grid-template-columns:1fr}}
+@media(max-width:900px){
+  .slr-child-grid{grid-template-columns:1fr}
+  .recommendation-heading{align-items:flex-start;flex-direction:column}
+  .slr-section-actions{width:100%;justify-content:flex-start}
+  .slr-child-card-head{align-items:flex-start}
+  .slr-child-summary-button{align-items:flex-start;flex-direction:column;gap:2px}
+  .slr-child-summary-button small{margin-left:0!important;max-width:100%}
+}

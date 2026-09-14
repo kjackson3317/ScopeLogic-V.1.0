@@ -2,6 +2,7 @@ import './globals.css';
 import './commercial-facelift.css';
 import type { Metadata } from 'next';
 import WorkspaceSidebarLinks from './workspace-sidebar-links';
+import DismissibleUiBehavior from './dismissible-ui-behavior';
 
 export const metadata: Metadata = {
   title: 'ScopeLogic v1.0',
@@ -13,5 +14,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body><WorkspaceSidebarLinks />{children}</body></html>;
+  return <html lang="en"><body><DismissibleUiBehavior /><WorkspaceSidebarLinks />{children}</body></html>;
 }
