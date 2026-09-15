@@ -53,6 +53,6 @@ body .matrix-editor-full .slr-child-card { padding: 8px !important; border-radiu
 body .mp-button.danger, body .danger-button, body .template-delete-button {
   color: #20262e !important; background: #fbeaea !important; border: 1px solid #b84b4b !important;
 }
-body .mp-button.danger:hover, body .danger-button, body .template-delete-button:hover { color: #111827 !important; background: #f6dede !important; }
+body .mp-button.danger:hover, body .danger-button:hover, body .template-delete-button:hover { color: #111827 !important; background: #f6dede !important; }
 
 /* Deployment touch: 2026-09-15 — ensure Vercel's ignored-build check sees an app-scoped change. */
