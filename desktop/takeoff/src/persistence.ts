@@ -1,3 +1,8 @@
+import {
+  clearNativeTakeoffRecovery,
+  loadNativeTakeoffRecovery,
+  saveNativeTakeoffRecovery,
+} from './native-persistence';
 import type { TakeoffRecoverySnapshot } from './takeoff-model';
 
 const RECOVERY_KEY = 'scopelogic.takeoff.recovery.v1';
@@ -45,20 +50,7 @@ function isSnapshot(value: unknown): value is TakeoffRecoverySnapshot {
     && Boolean(item.syncSelection);
 }
 
-export function saveTakeoffRecovery(snapshot: Omit<TakeoffRecoverySnapshot, 'schemaVersion' | 'savedAt'>) {
-  if (!storageAvailable()) return false;
-  const payload: TakeoffRecoverySnapshot = {
-    ...snapshot,
-    schemaVersion: SCHEMA_VERSION,
-    savedAt: new Date().toISOString(),
-  };
-  window.localStorage.setItem(RECOVERY_KEY, JSON.stringify(payload));
-  return true;
-}
-
-export function loadTakeoffRecovery(): TakeoffRecoverySnapshot | null {
-  if (!storageAvailable()) return null;
-  const raw = window.localStorage.getItem(RECOVERY_KEY);
+function parseSnapshot(raw: string | null): TakeoffRecoverySnapshot | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -68,10 +60,49 @@ export function loadTakeoffRecovery(): TakeoffRecoverySnapshot | null {
   }
 }
 
+export function saveTakeoffRecovery(snapshot: Omit<TakeoffRecoverySnapshot, 'schemaVersion' | 'savedAt'>) {
+  const payload: TakeoffRecoverySnapshot = {
+    ...snapshot,
+    schemaVersion: SCHEMA_VERSION,
+    savedAt: new Date().toISOString(),
+  };
+
+  let localSaved = false;
+  if (storageAvailable()) {
+    window.localStorage.setItem(RECOVERY_KEY, JSON.stringify(payload));
+    localSaved = true;
+  }
+
+  // Native storage is a durable mirror in the Tauri shell. It is deliberately
+  // fire-and-forget here so autosave never blocks drawing/takeoff interaction.
+  void saveNativeTakeoffRecovery(payload);
+  return localSaved;
+}
+
+export function loadTakeoffRecovery(): TakeoffRecoverySnapshot | null {
+  if (!storageAvailable()) return null;
+  return parseSnapshot(window.localStorage.getItem(RECOVERY_KEY));
+}
+
+/**
+ * Preferred asynchronous recovery read for the native shell. It checks the
+ * durable native mirror first, then falls back to WebView local storage.
+ * Existing synchronous callers may continue using loadTakeoffRecovery until
+ * their startup flow is converted to async.
+ */
+export async function loadPreferredTakeoffRecovery(): Promise<TakeoffRecoverySnapshot | null> {
+  const native = await loadNativeTakeoffRecovery();
+  return native || loadTakeoffRecovery();
+}
+
 export function clearTakeoffRecovery() {
-  if (!storageAvailable()) return false;
-  window.localStorage.removeItem(RECOVERY_KEY);
-  return true;
+  let localCleared = false;
+  if (storageAvailable()) {
+    window.localStorage.removeItem(RECOVERY_KEY);
+    localCleared = true;
+  }
+  void clearNativeTakeoffRecovery();
+  return localCleared;
 }
 
 export function recoverySummary(snapshot: TakeoffRecoverySnapshot): RecoverySummary {
