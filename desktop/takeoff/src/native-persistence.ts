@@ -4,27 +4,26 @@ function tauriAvailable() {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
-async function invokeNative<T>(command: string, args?: Record<string, unknown>): Promise<T | null> {
-  if (!tauriAvailable()) return null;
+async function nativeInvoke<T>(command: string, args?: Record<string, unknown>): Promise<{ ok: true; value: T } | { ok: false }> {
+  if (!tauriAvailable()) return { ok: false };
   try {
     const { invoke } = await import('@tauri-apps/api/core');
-    return await invoke<T>(command, args);
+    return { ok: true, value: await invoke<T>(command, args) };
   } catch {
-    return null;
+    return { ok: false };
   }
 }
 
 export async function saveNativeTakeoffRecovery(snapshot: TakeoffRecoverySnapshot) {
-  if (!tauriAvailable()) return false;
-  const result = await invokeNative<undefined>('save_takeoff_recovery', { json: JSON.stringify(snapshot) });
-  return result !== null || tauriAvailable();
+  const result = await nativeInvoke<void>('save_takeoff_recovery', { json: JSON.stringify(snapshot) });
+  return result.ok;
 }
 
 export async function loadNativeTakeoffRecovery(): Promise<TakeoffRecoverySnapshot | null> {
-  const raw = await invokeNative<string | null>('load_takeoff_recovery');
-  if (!raw) return null;
+  const result = await nativeInvoke<string | null>('load_takeoff_recovery');
+  if (!result.ok || !result.value) return null;
   try {
-    const parsed = JSON.parse(raw) as TakeoffRecoverySnapshot;
+    const parsed = JSON.parse(result.value) as TakeoffRecoverySnapshot;
     return parsed?.schemaVersion === 1 ? parsed : null;
   } catch {
     return null;
@@ -32,9 +31,8 @@ export async function loadNativeTakeoffRecovery(): Promise<TakeoffRecoverySnapsh
 }
 
 export async function clearNativeTakeoffRecovery() {
-  if (!tauriAvailable()) return false;
-  await invokeNative<undefined>('clear_takeoff_recovery');
-  return true;
+  const result = await nativeInvoke<void>('clear_takeoff_recovery');
+  return result.ok;
 }
 
 export function isNativeTakeoffShell() {
