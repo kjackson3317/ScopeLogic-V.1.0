@@ -1,7 +1,7 @@
 import { connection } from 'next/server';
 import { redirect } from 'next/navigation';
 import { createClient, isSupabaseConfigured } from '../../lib/supabase/server';
-import ReviewWorkflowPreviewV2, { type PreviewEngagement, type PreviewMasterProject } from './review-workflow-preview-v2';
+import ReviewWorkflowPreviewV3, { type PreviewEngagement, type PreviewMasterProject } from './review-workflow-preview-v3';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -48,5 +48,5 @@ export default async function ReviewWorkflowPreviewPage() {
     engagements: engagements.filter((engagement) => engagement.masterProjectId === String(row.id || '')),
   }));
 
-  return <ReviewWorkflowPreviewV2 masters={masters} userEmail={user.email || 'Signed-in user'} />;
+  return <ReviewWorkflowPreviewV3 masters={masters} userEmail={user.email || 'Signed-in user'} />;
 }
