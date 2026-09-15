@@ -47,3 +47,5 @@ jobs:
       - run: npm install
       - run: npm run build
       - run: cargo check --manifest-path src-tauri/Cargo.toml
+
+# Phase 1 validation covers both the React/Vite frontend and the native Tauri shell.
