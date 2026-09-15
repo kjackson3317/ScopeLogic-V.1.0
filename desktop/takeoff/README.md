@@ -19,6 +19,11 @@ Takeoff is a desktop companion to the shared ScopeLogic platform. It is not a se
 - Multi-page navigation
 - Zoom controls
 - compact Pages rail
+- lazy-rendered true PDF page thumbnails
+- PDF page-label support when the drawing set provides labels
+- on-demand full-sheet text search with cached page text and bounded parallel scanning
+- drawing page filters for All / Counted / Measured / Scaled sheets
+- page-level count, measurement, and scale status in the drawing navigator
 - local Tool Chest
 - count marks using Circle, Square, Triangle, or Diamond
 - quantity multipliers and result units
@@ -73,12 +78,11 @@ npm run desktop:build
 
 ## Next implementation phases
 
-1. Render true page thumbnails and add drawing-set organization/search.
-2. Bring over markup/snippet tools and linked issue support where appropriate.
-3. Add local project persistence/cache and recovery.
-4. Authenticate against the shared ScopeLogic platform and sync company/project Tool Chest data.
-5. Link tools to shared Rules/Assemblies and show resulting BOM/labor impact in Sync Review.
-6. Write approved Sync Review changes into the shared Quote/BOM engine.
-7. Add drawing revision/overlay comparison and marked-up PDF export.
+1. Bring over markup/snippet tools and linked issue support where appropriate.
+2. Add local project persistence/cache and recovery.
+3. Authenticate against the shared ScopeLogic platform and sync company/project Tool Chest data.
+4. Link tools to shared Rules/Assemblies and show resulting BOM/labor impact in Sync Review.
+5. Write approved Sync Review changes into the shared Quote/BOM engine.
+6. Add drawing revision/overlay comparison and marked-up PDF export.
 
-SLC and SLS will use the same Takeoff engine. SLC-only consulting methodology (including RBB) remains outside the commercial Takeoff feature set.
+ScopeLogic Consulting and ScopeLogic Software can use the same Takeoff engine. Consulting-only methodology remains outside the universal commercial Takeoff feature set unless deliberately generalized.
