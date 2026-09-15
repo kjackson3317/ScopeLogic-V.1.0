@@ -4,6 +4,12 @@ export type Shape = 'square' | 'triangle' | 'circle' | 'diamond';
 export type MarkupKind = 'text' | 'line' | 'arrow' | 'rectangle' | 'cloud' | 'highlight' | 'freehand';
 export type Uuid = ReturnType<Crypto['randomUUID']>;
 
+export type ToolDownstreamLink = {
+  assemblyId?: string;
+  ruleId?: string;
+  estimateSection?: string;
+};
+
 export type Tool = {
   id: string;
   name: string;
@@ -11,6 +17,7 @@ export type Tool = {
   color: string;
   multiplier: number;
   unit: string;
+  downstream?: ToolDownstreamLink;
 };
 
 export type Mark = {
