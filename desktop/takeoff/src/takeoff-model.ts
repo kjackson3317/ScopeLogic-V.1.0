@@ -2,6 +2,7 @@ import type { Measurement, PageCalibration, Point } from './measurements';
 
 export type Shape = 'square' | 'triangle' | 'circle' | 'diamond';
 export type MarkupKind = 'text' | 'line' | 'arrow' | 'rectangle' | 'cloud' | 'highlight' | 'freehand';
+export type Uuid = ReturnType<Crypto['randomUUID']>;
 
 export type Tool = {
   id: string;
@@ -63,7 +64,7 @@ export type DrawingIdentity = {
 
 export type TakeoffRecoverySnapshot = {
   schemaVersion: 1;
-  id: string;
+  id: Uuid;
   name: string;
   savedAt: string;
   drawing: DrawingIdentity;
