@@ -25,6 +25,12 @@ export default async function MasterProjectsPage() {
 
   return (
     <>
+      <div style={{ padding: '10px 18px 0', background: '#f5f6f7' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 10px', border: '1px solid #cad8ba', borderRadius: 8, background: '#f2f6ed', fontFamily: 'Arial, Helvetica, sans-serif', fontSize: 12 }}>
+          <span><b>Feature Preview:</b> unified Master Project Library, document-review notebook, evidence grouping, optional address fields, and SLR/checklist templates.</span>
+          <a href="/review-workflow-preview" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 30, padding: '4px 9px', borderRadius: 6, background: '#526d2f', color: '#fff', textDecoration: 'none', fontWeight: 700, whiteSpace: 'nowrap' }}>Open Review Workflow Preview</a>
+        </div>
+      </div>
       <MasterProjectsClient
         actualUserId={user.id}
         workspaceOwnerId={workspaceOwnerId}
