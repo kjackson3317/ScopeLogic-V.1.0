@@ -25,10 +25,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: desktop/takeoff/package-lock.json
-      - run: npm install --package-lock-only
-      - run: npm ci
+      - run: npm install
       - run: npm run build
 
   native-check:
