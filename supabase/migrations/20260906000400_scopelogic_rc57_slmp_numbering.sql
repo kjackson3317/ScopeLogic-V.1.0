@@ -50,23 +50,23 @@ security definer
 set search_path = ''
 as $$
 declare
-  project_year integer;
+  v_project_year integer;
   yy text;
   next_seq integer;
 begin
   if nullif(btrim(new.project_number), '') is null then
-    project_year := extract(year from coalesce(new.created_at, timezone('utc', now())))::integer;
-    yy := right(project_year::text, 2);
+    v_project_year := extract(year from coalesce(new.created_at, timezone('utc', now())))::integer;
+    yy := right(v_project_year::text, 2);
 
     insert into public.master_project_number_counters (owner_id, project_year, last_number)
-    values (new.owner_id, project_year, 1)
+    values (new.owner_id, v_project_year, 1)
     on conflict (owner_id, project_year) do update
       set last_number = public.master_project_number_counters.last_number + 1,
           updated_at = timezone('utc', now())
     returning last_number into next_seq;
 
     if next_seq > 999 then
-      raise exception 'ScopeLogic Master Project numbering exceeded 999 projects for year %', project_year;
+      raise exception 'ScopeLogic Master Project numbering exceeded 999 projects for year %', v_project_year;
     end if;
 
     new.project_number := 'SLMP-' || yy || lpad(next_seq::text, 3, '0');

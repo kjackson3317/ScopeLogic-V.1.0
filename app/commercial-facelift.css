@@ -268,6 +268,36 @@ tbody tr:hover td{background:#f4f7f1!important}
   .modal-card iframe{height:calc(100% - 46px)!important}
 }
 
+/* Final board-aligned density pass: compact navigation and estimator rows. */
+@media(min-width:901px){
+  .sidebar{width:216px!important;padding:14px 10px!important}
+  .main{margin-left:216px!important;width:calc(100% - 216px)!important}
+  .brand{gap:8px!important;margin:0 4px 14px!important}
+  .brand-mark{width:32px!important;height:32px!important;border-radius:7px!important}
+  .brand strong{font-size:15px!important}
+  .brand span{font-size:10px!important}
+  .project-switch{padding:8px!important;margin-bottom:10px!important;border-radius:7px!important}
+  .nav-group{margin:9px 0!important}
+  .nav-group>span{font-size:9px!important;margin:0 8px 4px!important}
+  .nav-group button{padding:6px 8px!important;border-radius:5px!important;font-size:12px!important;line-height:1.2!important}
+  .sidebar-account{padding:10px 5px 2px!important}
+  .sidebar-account button{min-height:32px!important;padding:6px 8px!important;border-radius:5px!important}
+  .topbar{height:58px!important;padding:0 18px!important}
+  .page{padding:18px!important}
+  .panel,.form-card,.project-card,.metric,.detail-card,.matrix-card,.release-card,.standard-card,.table-card,.empty-panel{border-radius:10px!important}
+  .quote-table{font-size:10px!important}
+  .quote-table th{padding:6px 6px!important;height:30px!important}
+  .quote-table td{padding:4px 6px!important;height:38px!important}
+  .quote-table input{height:32px!important;min-height:32px!important;padding:4px 7px!important;border-radius:7px!important}
+  .quote-table td:nth-child(3) input,.description-input{min-width:260px!important}
+  .quote-table .qty-input{width:58px!important;min-width:58px!important}
+  .quote-table .money-input{width:82px!important;min-width:82px!important}
+  .quote-table .labor-min-input{width:64px!important;min-width:64px!important}
+  .quote-table input[type=checkbox]{width:18px!important;height:18px!important}
+  .link-button.danger,.danger-button{color:#20262e!important}
+  .link-button.danger:hover,.danger-button:hover{color:#111827!important}
+}
+
 @media(max-width:900px){
   .slr-child-grid{grid-template-columns:1fr}
   .recommendation-heading{align-items:flex-start;flex-direction:column}
