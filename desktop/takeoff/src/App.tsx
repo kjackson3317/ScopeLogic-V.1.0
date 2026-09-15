@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import * as pdfjs from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import DrawingPagesRail from './DrawingPagesRail';
 import {
   PRESET_SCALES,
   formatMeasurement,
@@ -158,6 +159,16 @@ export default function App() {
     measurement,
     value: measurementValue(measurement, pageCalibrations[measurement.page], pageBaseSizes[measurement.page]),
   })), [measurements, pageCalibrations, pageBaseSizes]);
+
+  const markCountByPage = useMemo(() => marks.reduce<Record<number, number>>((counts, mark) => {
+    counts[mark.page] = (counts[mark.page] || 0) + 1;
+    return counts;
+  }, {}), [marks]);
+
+  const measurementCountByPage = useMemo(() => measurements.reduce<Record<number, number>>((counts, measurement) => {
+    counts[measurement.page] = (counts[measurement.page] || 0) + 1;
+    return counts;
+  }, {}), [measurements]);
 
   const syncRequired = syncRows.some((row) => row.difference !== 0);
   const pageCalibration = pageCalibrations[page];
@@ -504,26 +515,15 @@ export default function App() {
 
       <div className="desktop-workspace">
         <aside className="left-rail">
-          <section className="rail-section pages-section">
-            <div className="rail-heading"><b>Pages</b><span>{pageCount || 0}</span></div>
-            <div className="page-list">
-              {!pageCount && <div className="empty-compact">Open a PDF drawing set.</div>}
-              {Array.from({ length: pageCount }, (_, index) => index + 1).map((pageNumber) => {
-                const markCount = marks.filter((mark) => mark.page === pageNumber).length;
-                const measurementCount = measurements.filter((measurement) => measurement.page === pageNumber).length;
-                return (
-                  <button key={pageNumber} className={pageNumber === page ? 'page-row active' : 'page-row'} onClick={() => setPage(pageNumber)}>
-                    <span className="page-thumb">{pageNumber}</span>
-                    <span>
-                      <b>Page {pageNumber}</b>
-                      <small>{markCount} marks · {measurementCount} measurements</small>
-                    </span>
-                    <span className={pageCalibrations[pageNumber] ? 'page-scale-dot scaled' : 'page-scale-dot'} title={pageCalibrations[pageNumber]?.label || 'Unscaled'} />
-                  </button>
-                );
-              })}
-            </div>
-          </section>
+          <DrawingPagesRail
+            pdfDoc={pdfDoc}
+            pageCount={pageCount}
+            activePage={page}
+            onSelectPage={setPage}
+            markCountByPage={markCountByPage}
+            measurementCountByPage={measurementCountByPage}
+            pageCalibrations={pageCalibrations}
+          />
 
           <section className="rail-section tool-section">
             <div className="rail-heading"><b>Tool Chest</b><button onClick={() => setShowToolForm((value) => !value)}>+ Tool</button></div>
