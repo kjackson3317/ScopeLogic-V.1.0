@@ -98,6 +98,12 @@ export default function AnnotationPanel({
 
           {selectedSnippet && (
             <>
+              {selectedSnippet.previewDataUrl && (
+                <div className="snippet-preview">
+                  <img src={selectedSnippet.previewDataUrl} alt={`Preview of ${selectedSnippet.title || `snippet on page ${selectedSnippet.page}`}`} />
+                  <small>Captured from page {selectedSnippet.page}</small>
+                </div>
+              )}
               <label><span>Title</span><input value={selectedSnippet.title} onChange={(event) => patchSnippet({ title: event.target.value })} /></label>
               <label><span>Note</span><textarea value={selectedSnippet.note} onChange={(event) => patchSnippet({ note: event.target.value })} /></label>
               <label><span>Reference / Issue ID</span><input value={selectedSnippet.referenceId || ''} onChange={(event) => patchSnippet({ referenceId: event.target.value })} placeholder="Optional" /></label>
