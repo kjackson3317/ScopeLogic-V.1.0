@@ -104,6 +104,14 @@
   color: #1f2937;
 }
 .annotation-inspector textarea { min-height: 52px; resize: vertical; line-height: 1.35; }
+.snippet-preview {
+  overflow: hidden;
+  border: 1px solid #d7dce1;
+  border-radius: 6px;
+  background: #f7f8f9;
+}
+.snippet-preview img { display: block; width: 100%; max-height: 160px; object-fit: contain; background: #fff; }
+.snippet-preview small { display: block; padding: 4px 6px; color: #667085; font-size: 9px; }
 
 .recovery-banner {
   position: fixed;
