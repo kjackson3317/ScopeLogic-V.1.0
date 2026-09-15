@@ -1,0 +1,52 @@
+name: Takeoff Desktop CI
+
+on:
+  push:
+    branches:
+      - feature/takeoff-desktop-phase-1
+    paths:
+      - 'desktop/takeoff/**'
+      - '.github/workflows/takeoff-desktop-ci.yml'
+  pull_request:
+    paths:
+      - 'desktop/takeoff/**'
+      - '.github/workflows/takeoff-desktop-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop/takeoff
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/takeoff/package-lock.json
+      - run: npm install --package-lock-only
+      - run: npm ci
+      - run: npm run build
+
+  native-check:
+    name: Tauri native check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop/takeoff
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux Tauri prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm install
+      - run: npm run build
+      - run: cargo check --manifest-path src-tauri/Cargo.toml
