@@ -1,0 +1,291 @@
+.command-bar {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.command-label {
+  flex: 0 0 auto;
+  color: var(--sl-muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.command-input,
+.command-select {
+  flex: 0 0 auto;
+  height: var(--sl-control-height);
+  min-height: var(--sl-control-height);
+  border: 1px solid var(--sl-line-strong);
+  border-radius: var(--sl-input-radius);
+  background: #fff;
+  color: var(--sl-charcoal);
+  font-size: var(--sl-font-data);
+}
+
+.command-input {
+  width: 62px;
+  padding: 3px 6px;
+}
+
+.command-select {
+  padding: 3px 24px 3px 6px;
+}
+
+.command-input:focus,
+.command-select:focus {
+  outline: none;
+  border-color: var(--sl-green);
+  box-shadow: 0 0 0 2px rgba(75, 102, 35, .1);
+}
+
+.scale-select { max-width: 118px; }
+.unit-select { width: 52px; }
+.button.compact { padding-left: 6px; padding-right: 6px; }
+
+.scale-chip {
+  flex: 0 0 auto;
+  max-width: 122px;
+  overflow: hidden;
+  padding: 4px 7px;
+  border: 1px solid #d4d9df;
+  border-radius: 999px;
+  background: #f6f7f6;
+  color: #7b8490;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scale-chip.scaled {
+  border-color: #b9c7a9;
+  background: #f0f4eb;
+  color: var(--sl-green-dark);
+}
+
+.page-row { position: relative; }
+.page-row > span:nth-child(2) { min-width: 0; flex: 1; }
+.page-scale-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border: 1px solid #b4bbc2;
+  border-radius: 50%;
+  background: #fff;
+}
+.page-scale-dot.scaled {
+  border-color: #6f864d;
+  background: #6f864d;
+}
+
+.measurement-graphic polyline,
+.measurement-graphic polygon {
+  fill: none;
+  stroke: var(--sl-green);
+  stroke-width: 2.25;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+}
+
+.measurement-graphic.area polygon {
+  fill: rgba(75, 102, 35, .13);
+}
+
+.measurement-graphic.perimeter polygon {
+  fill: rgba(75, 102, 35, .035);
+  stroke-dasharray: 7 3;
+}
+
+.measurement-graphic.selected polyline,
+.measurement-graphic.selected polygon {
+  stroke: #17202a;
+  stroke-width: 3.25;
+}
+
+.measurement-node {
+  fill: #fff;
+  stroke: var(--sl-green-dark);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.measurement-graphic.selected .measurement-node {
+  fill: #17202a;
+  stroke: #fff;
+}
+
+.measurement-label { pointer-events: none; }
+.measurement-label rect {
+  fill: rgba(31, 41, 55, .9);
+  stroke: rgba(255, 255, 255, .8);
+  stroke-width: 1;
+}
+.measurement-label text {
+  fill: #fff;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.measurement-draft polyline,
+.calibration-draft line {
+  fill: none;
+  stroke: #2563eb;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.measurement-draft circle,
+.calibration-draft circle {
+  fill: #fff;
+  stroke: #2563eb;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.measurement-draft.area polyline,
+.measurement-draft.perimeter polyline {
+  stroke: var(--sl-green);
+}
+
+.measurement-draft.area circle,
+.measurement-draft.perimeter circle {
+  stroke: var(--sl-green-dark);
+}
+
+.calibration-draft line,
+.calibration-draft circle {
+  stroke: #b45309;
+}
+
+.scale-card {
+  display: grid;
+  gap: 2px;
+  margin: 8px;
+  padding: 8px 9px;
+  border: 1px solid #d5dade;
+  border-left: 3px solid #9aa3ad;
+  border-radius: 6px;
+  background: #fafbfa;
+}
+
+.scale-card.scaled {
+  border-left-color: var(--sl-green);
+  background: #f4f7f0;
+}
+
+.scale-card span {
+  color: var(--sl-muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.scale-card b { font-size: 11px; }
+.scale-card small { color: var(--sl-muted); font-size: 9px; line-height: 1.35; }
+
+.subsection-title {
+  min-height: 29px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  border-top: 1px solid var(--sl-line);
+  border-bottom: 1px solid var(--sl-line);
+  background: #fafbfa;
+}
+
+.subsection-title b {
+  font-size: 9px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.subsection-title span { color: var(--sl-muted); font-size: 9px; }
+
+.measurement-list { display: grid; }
+.measurement-row {
+  width: 100%;
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border: 0;
+  border-bottom: 1px solid #e4e8eb;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+.measurement-row:hover { background: #f7f9f5; }
+.measurement-row.selected { background: #f0f4eb; box-shadow: inset 3px 0 var(--sl-green); }
+.measurement-row span:nth-child(2) { min-width: 0; }
+.measurement-row b,
+.measurement-row small { display: block; }
+.measurement-row b {
+  overflow: hidden;
+  color: var(--sl-charcoal);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.measurement-row small { margin-top: 1px; color: var(--sl-muted); font-size: 8px; }
+.measurement-row strong { color: var(--sl-green-dark); font-size: 10px; white-space: nowrap; }
+
+.measurement-kind-icon {
+  position: relative;
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+.measurement-kind-icon::before,
+.measurement-kind-icon::after {
+  content: '';
+  position: absolute;
+}
+.measurement-kind-icon.distance::before,
+.measurement-kind-icon.polyline::before {
+  left: 1px;
+  right: 1px;
+  top: 7px;
+  height: 2px;
+  background: var(--sl-green);
+  transform: rotate(-18deg);
+}
+.measurement-kind-icon.distance::after,
+.measurement-kind-icon.polyline::after {
+  left: 0;
+  top: 5px;
+  width: 4px;
+  height: 4px;
+  border: 2px solid var(--sl-green-dark);
+  border-radius: 50%;
+  background: #fff;
+}
+.measurement-kind-icon.area::before,
+.measurement-kind-icon.perimeter::before {
+  inset: 2px;
+  border: 2px solid var(--sl-green);
+  transform: skew(-10deg);
+}
+.measurement-kind-icon.area::after {
+  inset: 5px;
+  background: rgba(75, 102, 35, .24);
+}
+.measurement-kind-icon.perimeter::before { border-style: dashed; }
+
+@media (max-width: 1360px) {
+  .command-bar { gap: 4px; }
+  .button { padding-left: 7px; padding-right: 7px; }
+  .scale-chip { max-width: 92px; }
+}
