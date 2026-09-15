@@ -1,0 +1,403 @@
+/* ScopeLogic Takeoff Desktop — Phase 1
+   Match the approved quote workspace density/typography standard.
+   Desktop layout: compact drawing controls, left tool rail, central sheet, right live summary.
+*/
+
+.drawing-takeoff-page {
+  gap: 8px !important;
+  font-size: var(--sl-font-body) !important;
+}
+
+.drawing-takeoff-page .section-head {
+  margin-bottom: 0 !important;
+}
+
+.drawing-takeoff-page .section-head > div:first-child > span,
+.drawing-takeoff-page .drawing-document-bar label,
+.drawing-takeoff-page .field-label {
+  font-size: var(--sl-font-label) !important;
+}
+
+.drawing-takeoff-page .section-head h1 {
+  font-size: var(--sl-font-title) !important;
+  margin: 3px 0 4px !important;
+}
+
+.drawing-takeoff-page .section-head p {
+  font-size: var(--sl-font-body) !important;
+  line-height: 1.35 !important;
+}
+
+.drawing-takeoff-head-actions {
+  gap: 5px !important;
+}
+
+.drawing-takeoff-head-actions button,
+.drawing-document-bar button,
+.drawing-dock button,
+.drawing-finish-bar button {
+  min-height: 30px !important;
+  padding: 5px 8px !important;
+  border-radius: var(--sl-input-radius) !important;
+  font-size: var(--sl-font-nav) !important;
+}
+
+.drawing-document-bar {
+  gap: 7px !important;
+  padding: 7px 8px !important;
+  border-radius: var(--sl-panel-radius) !important;
+}
+
+.drawing-document-bar label {
+  gap: 3px !important;
+  letter-spacing: .03em !important;
+}
+
+.drawing-document-bar select {
+  min-height: var(--sl-input-height) !important;
+  height: var(--sl-input-height) !important;
+  padding: 3px 7px !important;
+  border-radius: var(--sl-input-radius) !important;
+  font-size: var(--sl-font-data) !important;
+}
+
+.drawing-page-controls {
+  gap: 4px !important;
+}
+
+.drawing-page-controls span {
+  min-width: 76px !important;
+  font-size: var(--sl-font-data) !important;
+  font-weight: 600 !important;
+}
+
+.drawing-zoom-controls {
+  gap: 4px !important;
+  flex-wrap: nowrap !important;
+}
+
+.drawing-zoom-input {
+  min-height: 30px !important;
+  height: 30px !important;
+  grid-template-columns:auto 42px auto !important;
+  padding: 0 6px !important;
+  border-radius: var(--sl-input-radius) !important;
+}
+
+.drawing-zoom-input > span,
+.drawing-zoom-input input,
+.drawing-zoom-input b {
+  font-size: var(--sl-font-label) !important;
+}
+
+.drawing-calibration-badge {
+  padding: 5px 8px !important;
+  border-radius: 999px !important;
+  font-size: 10px !important;
+}
+
+.drawing-dock {
+  border-radius: var(--sl-panel-radius) !important;
+}
+
+.drawing-dock-head {
+  min-height: 42px !important;
+  padding: 6px 7px !important;
+  gap: 6px !important;
+}
+
+.drawing-dock-toggle {
+  gap: 8px !important;
+  padding: 0 !important;
+}
+
+.drawing-dock-toggle b,
+.drawing-mode-section h3,
+.drawing-tool-chest-section h3 {
+  font-size: var(--sl-font-label) !important;
+  letter-spacing: .03em !important;
+}
+
+.drawing-dock-toggle small,
+.drawing-tool-row small,
+.drawing-summary-row small,
+.drawing-measure-row small,
+.drawing-link-row span,
+.drawing-shortcut-help,
+.drawing-help,
+.compact-empty {
+  font-size: 10px !important;
+  line-height: 1.3 !important;
+}
+
+.drawing-dock-toggle strong {
+  font-size: 10px !important;
+}
+
+.drawing-mode-grid {
+  gap: 4px !important;
+  margin-bottom: 8px !important;
+}
+
+.drawing-mode-grid button {
+  min-height: 30px !important;
+  padding: 4px 6px !important;
+  border-radius: 5px !important;
+  font-size: var(--sl-font-nav) !important;
+  font-weight: 400 !important;
+}
+
+.drawing-tool-row {
+  min-height: 38px !important;
+  border-radius: 6px !important;
+}
+
+.drawing-tool-row > button:first-child {
+  padding: 5px 6px !important;
+  gap: 7px !important;
+}
+
+.drawing-tool-row b {
+  font-size: var(--sl-font-data) !important;
+}
+
+.drawing-summary-tabs {
+  border-radius: 6px !important;
+}
+
+.drawing-summary-tabs button {
+  min-height: 28px !important;
+  padding: 4px 7px !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+}
+
+.drawing-summary-content {
+  padding: 6px 8px !important;
+}
+
+.drawing-summary-row,
+.drawing-measure-row,
+.drawing-link-row {
+  min-height: 38px !important;
+  padding-top: 5px !important;
+  padding-bottom: 5px !important;
+}
+
+.drawing-summary-row b,
+.drawing-measure-row b,
+.drawing-link-row b,
+.drawing-measure-row strong {
+  font-size: var(--sl-font-data) !important;
+}
+
+.drawing-scroll {
+  padding: 12px !important;
+}
+
+.drawing-canvas-panel {
+  border-radius: var(--sl-panel-radius) !important;
+  background: #d9ddda !important;
+}
+
+.drawing-sheet {
+  box-shadow: 0 4px 18px rgba(31,41,55,.18) !important;
+}
+
+/* Desktop workstation arrangement. Existing component behavior remains intact. */
+@media (min-width: 1180px) {
+  .drawing-takeoff-page {
+    grid-template-rows: auto auto minmax(0, 1fr) !important;
+  }
+
+  .drawing-workspace-stack {
+    display: grid !important;
+    grid-template-columns: 245px minmax(520px, 1fr) 300px !important;
+    grid-template-rows: minmax(620px, calc(100vh - 230px)) !important;
+    gap: 8px !important;
+    align-items: stretch !important;
+    min-height: 620px !important;
+  }
+
+  .drawing-tools-dock {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    height: 100% !important;
+    min-height: 0 !important;
+  }
+
+  .drawing-canvas-panel {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    height: 100% !important;
+    min-height: 0 !important;
+  }
+
+  .drawing-summary-dock {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+    height: 100% !important;
+    min-height: 0 !important;
+  }
+
+  .drawing-tools-dock.open,
+  .drawing-summary-dock.open {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .drawing-tools-dock-body {
+    display: flex !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    padding: 8px !important;
+    overflow: hidden !important;
+  }
+
+  .drawing-mode-section {
+    flex: 0 0 auto !important;
+  }
+
+  .drawing-mode-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .drawing-tool-chest-section {
+    display: flex !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    flex-direction: column !important;
+    border-top: 1px solid var(--sl-border) !important;
+    padding-top: 8px !important;
+  }
+
+  .drawing-tool-chest-head {
+    flex: 0 0 auto !important;
+    padding: 0 0 6px !important;
+  }
+
+  .drawing-tool-list {
+    display: grid !important;
+    grid-auto-flow: row !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: none !important;
+    grid-auto-columns: auto !important;
+    gap: 4px !important;
+    max-height: none !important;
+    overflow: auto !important;
+    padding: 0 2px 4px 0 !important;
+  }
+
+  .drawing-summary-dock.open .drawing-dock-head {
+    display: block !important;
+    flex: 0 0 auto !important;
+  }
+
+  .drawing-summary-dock .drawing-dock-toggle {
+    width: 100% !important;
+  }
+
+  .drawing-summary-tabs {
+    width: 100% !important;
+    margin-top: 6px !important;
+  }
+
+  .drawing-summary-tabs button {
+    flex: 1 1 0 !important;
+  }
+
+  .drawing-summary-content {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow: auto !important;
+  }
+
+  .drawing-summary-list {
+    display: block !important;
+  }
+
+  .drawing-summary-row {
+    grid-template-columns: minmax(0, 1fr) 58px 66px !important;
+  }
+
+  .drawing-scroll {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: none !important;
+  }
+
+  .drawing-stage {
+    min-height: 100% !important;
+  }
+
+  /* When a rail is collapsed, return its space to the drawing instead of leaving a blank column. */
+  .drawing-workspace-stack:has(.drawing-tools-dock.collapsed) {
+    grid-template-columns: minmax(520px, 1fr) 300px !important;
+  }
+
+  .drawing-workspace-stack:has(.drawing-tools-dock.collapsed) .drawing-tools-dock {
+    grid-column: 1 / -1 !important;
+    grid-row: 1 !important;
+    position: absolute !important;
+    z-index: 5 !important;
+    left: 8px !important;
+    top: 8px !important;
+    width: 210px !important;
+    height: auto !important;
+  }
+
+  .drawing-workspace-stack:has(.drawing-tools-dock.collapsed) .drawing-canvas-panel {
+    grid-column: 1 !important;
+  }
+
+  .drawing-workspace-stack:has(.drawing-tools-dock.collapsed) .drawing-summary-dock {
+    grid-column: 2 !important;
+  }
+
+  .drawing-workspace-stack:has(.drawing-summary-dock.collapsed) {
+    grid-template-columns: 245px minmax(520px, 1fr) !important;
+  }
+
+  .drawing-workspace-stack:has(.drawing-summary-dock.collapsed) .drawing-summary-dock {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    position: absolute !important;
+    z-index: 5 !important;
+    right: 8px !important;
+    top: 8px !important;
+    width: 210px !important;
+    height: auto !important;
+  }
+
+  .drawing-workspace-stack:has(.drawing-summary-dock.collapsed) .drawing-canvas-panel {
+    grid-column: 2 !important;
+  }
+
+  .drawing-workspace-stack:has(.drawing-tools-dock.collapsed):has(.drawing-summary-dock.collapsed) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .drawing-workspace-stack:has(.drawing-tools-dock.collapsed):has(.drawing-summary-dock.collapsed) .drawing-canvas-panel {
+    grid-column: 1 !important;
+  }
+}
+
+@media (min-width: 1180px) and (max-width: 1440px) {
+  .drawing-workspace-stack {
+    grid-template-columns: 220px minmax(470px, 1fr) 270px !important;
+  }
+
+  .drawing-summary-tabs button {
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+  }
+}
+
+@media (max-width: 1179px) {
+  .drawing-takeoff-page .drawing-document-bar {
+    gap: 6px !important;
+  }
+}
