@@ -1,6 +1,7 @@
 import './globals.css';
 import './commercial-facelift.css';
 import './destructive-action-contrast.css';
+import './workspace-density.css';
 import type { Metadata } from 'next';
 import WorkspaceSidebarLinks from './workspace-sidebar-links';
 import DismissibleUiBehavior from './dismissible-ui-behavior';

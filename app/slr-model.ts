@@ -393,17 +393,21 @@ export function syncLegacyFields<T extends SlrIssueLike & SlrChildFields>(issue:
   return issue;
 }
 
-export function recommendBaseBidSummary(issueSource: SlrIssueLike, includeDraft = false): string {
+export function recommendBaseBidSections(issueSource: SlrIssueLike, includeDraft = false): Array<{ system: string; recommendation: string }> {
   const issue = normalizeLegacyChildren(issueSource);
-  const lines: string[] = [];
+  const lines: Array<{ system: string; recommendation: string }> = [];
   issue.recommendBaseBids.forEach((rbb) => rbb.selectedSystems.forEach((system) => {
     const section = rbb.sections[system];
     if (!section || !text(section.recommendation)) return;
     if (!includeDraft && !['Current', 'Confirmed'].includes(section.status)) return;
     const systemLabel = system === 'Other' ? text(issue.customSystem) || 'Other' : system;
-    lines.push(`${systemLabel}\n${section.recommendation}`);
+    lines.push({ system: systemLabel, recommendation: section.recommendation });
   }));
-  return lines.join('\n\n');
+  return lines;
+}
+
+export function recommendBaseBidSummary(issueSource: SlrIssueLike, includeDraft = false): string {
+  return recommendBaseBidSections(issueSource, includeDraft).map(({ system, recommendation }) => `${system}\n${recommendation}`).join('\n\n');
 }
 
 export function associatedClarificationNumbers(issueSource: SlrIssueLike): string[] {

@@ -1,5 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont, type PDFImage } from 'pdf-lib';
-import { associatedClarificationNumbers, checklistChildrenForDeliverable, normalizeLegacyChildren, recommendBaseBidSummary, rfiChildrenForDeliverable, type SlrChecklistChild, type SlrChildFields, type SlrRfiChild } from './slr-model';
+import { associatedClarificationNumbers, checklistChildrenForDeliverable, normalizeLegacyChildren, recommendBaseBidSummary, recommendBaseBidSections, rfiChildrenForDeliverable, type SlrChecklistChild, type SlrChildFields, type SlrRfiChild } from './slr-model';
 
 export type PdfKind = 'sow' | 'clarifications' | 'rfi' | 'checklist';
 
@@ -338,6 +338,7 @@ async function appendDeliverable(
     linesByCell: string[][],
     rowHeight: number,
     firstFragment: boolean,
+    headingLines: boolean[] = [],
   ) => {
     const issue = row.issue;
     const fill = rowIndex % 2 ? white : alternate;
@@ -393,6 +394,14 @@ async function appendDeliverable(
         }
       } else if (isChecklistField && !firstFragment) {
         page.drawText('Continued', { x: cellX + 4, y: y - 13, size: 6, font, color: muted });
+      } else if (kind === 'sow' && columnIndex === 4) {
+        lines.forEach((line, lineIndex) => {
+          const heading = headingLines[lineIndex];
+          const lineFont = heading ? bold : font;
+          const baseline = y - 11 - lineIndex * lineHeight;
+          page.drawText(line, { x: cellX + 4, y: baseline, size: fontSize, font: lineFont, color: black });
+          if (heading && line) page.drawLine({ start: { x: cellX + 4, y: baseline - 1.5 }, end: { x: cellX + 4 + bold.widthOfTextAtSize(line, fontSize), y: baseline - 1.5 }, thickness: 0.5, color: black });
+        });
       } else {
         drawWrapped(page, lines, cellX + 4, y - 11, font, fontSize, lineHeight, black);
       }
@@ -414,6 +423,12 @@ async function appendDeliverable(
     }
     const values = config.values(row);
     const allLines = values.map((value, columnIndex) => wrapText(value, widths[columnIndex] - 8, font, fontSize));
+    const rbbLines = kind === 'sow' ? recommendBaseBidSections(row.issue).flatMap((section, index) => [
+      ...(index ? [{ text: '', heading: false }] : []),
+      ...wrapText(section.system, widths[4] - 8, bold, fontSize).map((text) => ({ text, heading: true })),
+      ...wrapText(section.recommendation, widths[4] - 8, font, fontSize).map((text) => ({ text, heading: false })),
+    ]) : [];
+    if (rbbLines.length) allLines[4] = rbbLines.map((line) => line.text);
     const offsets = allLines.map(() => 0);
     let firstFragment = true;
 
@@ -428,7 +443,7 @@ async function appendDeliverable(
       const usedLineCount = Math.max(1, ...fragmentLines.map((lines) => lines.length));
       const rowHeight = Math.max(minimumRowHeight, usedLineCount * lineHeight + 8);
 
-      drawRowFragment(row, rowIndex, fragmentLines, rowHeight, firstFragment);
+      drawRowFragment(row, rowIndex, fragmentLines, rowHeight, firstFragment, rbbLines.slice(offsets[4], offsets[4] + take).map((line) => line.heading));
       fragmentLines.forEach((lines, index) => {
         offsets[index] += lines.length;
       });
