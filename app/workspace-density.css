@@ -56,3 +56,9 @@ body .mp-button.danger, body .danger-button, body .template-delete-button {
 body .mp-button.danger:hover, body .danger-button:hover, body .template-delete-button:hover { color: #111827 !important; background: #f6dede !important; }
 
 /* Deployment touch: 2026-09-15 — ensure Vercel's ignored-build check sees an app-scoped change. */
+
+
+/* The demo uses the existing workspace layout and density tokens. */
+.demo-takeoff-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;margin-bottom:10px;background:#f2f4ee;border:1px solid #d4dacb;border-radius:8px;font-size:12px}
+.demo-takeoff-controls>span{color:#526050}.demo-takeoff-controls label{display:flex;align-items:center;gap:5px;font-size:11px}.demo-takeoff-controls input{width:65px}.demo-takeoff-controls select{max-width:160px}.demo-takeoff-controls small{max-width:200px}
+.nav-group>a{display:block;color:inherit;padding:7px 10px;font-size:12px;text-decoration:none}

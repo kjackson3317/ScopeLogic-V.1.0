@@ -2,6 +2,14 @@ export * from './cloud-workspace-legacy';
 
 import * as legacy from './cloud-workspace-legacy';
 import type { WorkspaceSnapshot } from './cloud-workspace-legacy';
+import { isEmployerDemo, DEMO_WORKSPACE_KEY } from './demo/config';
+import { localSaveRelease, localReleaseUrl, localListReleases, localNextRelease } from './demo/releases';
+
+export const listOfficialReleases: typeof legacy.listOfficialReleases = (...args) => isEmployerDemo ? localListReleases() : legacy.listOfficialReleases(...args);
+export const getNextOfficialReleaseNumber: typeof legacy.getNextOfficialReleaseNumber = (...args) => isEmployerDemo ? localNextRelease() : legacy.getNextOfficialReleaseNumber(...args);
+export const createOfficialReleaseUrl: typeof legacy.createOfficialReleaseUrl = (...args) => isEmployerDemo ? localReleaseUrl(args[0]) : legacy.createOfficialReleaseUrl(...args);
+export const saveOfficialRelease: typeof legacy.saveOfficialRelease = (...args) => isEmployerDemo ? localSaveRelease(args[3],args[6],args[1],args[2],args[4],args[5],args[7]) : legacy.saveOfficialRelease(...args);
+export const saveProposalRelease: typeof legacy.saveProposalRelease = (input) => isEmployerDemo ? localSaveRelease(input.filename,input.pdf,input.revision,input.versionDate,'Local demo proposal',[],input.snapshotData,input.documentKey) : legacy.saveProposalRelease(input);
 
 const slrUid = (projectId: string, issue: { uid?: string }, index: number) => issue.uid || `${projectId}-slr-${index + 1}`;
 
@@ -49,6 +57,7 @@ async function saveWithSlrProtection(snapshot: WorkspaceSnapshot): Promise<void>
 let guardedSaveQueue: Promise<void> = Promise.resolve();
 
 export function saveWorkspaceToCloud(snapshot: WorkspaceSnapshot): Promise<void> {
+  if(isEmployerDemo){localStorage.setItem(DEMO_WORKSPACE_KEY,JSON.stringify(snapshot));return Promise.resolve();}
   guardedSaveQueue = guardedSaveQueue.catch(() => undefined).then(() => saveWithSlrProtection(snapshot));
   return guardedSaveQueue;
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent } from 'react';
+import { isEmployerDemo } from '../lib/demo/config';
 
 export type DrawingToolShape = 'square' | 'triangle' | 'circle' | 'diamond';
 export type DrawingToolScope = 'global' | 'project';
@@ -15,6 +16,7 @@ export type DrawingTakeoffTool = {
   scope: DrawingToolScope;
   projectId?: string;
   formulaId?: string;
+  formulaQuantityBasis?: 'locations' | 'multiplied';
 };
 export type DrawingTakeoffMark = { id: string; docId: string; page: number; toolId: string; x: number; y: number };
 export type DrawingPoint = { x: number; y: number };
@@ -97,10 +99,26 @@ export default function DrawingTakeoffPage(props: Props) {
   const [spacePan, setSpacePan] = useState(false);
   const [fitMode, setFitMode] = useState<FitMode>('page');
   const [zoomInput, setZoomInput] = useState('35');
-  const [toolsOpen, setToolsOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(isEmployerDemo);
   const [summaryOpen, setSummaryOpen] = useState(true);
   const [summaryTab, setSummaryTab] = useState<SummaryTab>('takeoff');
   const [focusMode, setFocusMode] = useState(false);
+  const [summarySheet, setSummarySheet] = useState('all');
+  const [summarySystem, setSummarySystem] = useState('');
+  const [summaryTool, setSummaryTool] = useState('');
+  const [knownDistance, setKnownDistance] = useState('60');
+  const [moveSelected, setMoveSelected] = useState(false);
+  const history = useRef<{marks:DrawingTakeoffMark[];measurements:DrawingMeasurement[];calibrations:Record<string,DrawingPageCalibration>}[]>([]);
+  const previous = useRef({marks:props.marks,measurements:props.measurements,calibrations:props.calibrations});
+  const undoing = useRef(false);
+  useEffect(() => {
+    const next={marks:props.marks,measurements:props.measurements,calibrations:props.calibrations};
+    if(JSON.stringify(next)!==JSON.stringify(previous.current)) {
+      if(!undoing.current)history.current=[...history.current.slice(-19),previous.current];
+      undoing.current=false;previous.current=next;
+    }
+  },[props.marks,props.measurements,props.calibrations]);
+  const undo = () => {const prior=history.current.pop();if(!prior)return;undoing.current=true;props.setMarks(prior.marks);props.setMeasurements(prior.measurements);props.setCalibrations(prior.calibrations);setSelectedMark('');};
 
   useEffect(() => {
     if (docId && !pdfDocs.some((doc) => doc.id === docId)) setDocId(pdfDocs[0]?.id || '');
@@ -133,7 +151,7 @@ export default function DrawingTakeoffPage(props: Props) {
   }, [docId]);
 
   useEffect(() => {
-    let cancelled = false;
+    let cancelled = false; let renderTask: {cancel:()=>void;promise:Promise<unknown>} | undefined;
     const pdf = pdfRef.current;
     if (!pdf || !canvasRef.current) return;
     (async () => {
@@ -156,9 +174,9 @@ export default function DrawingTakeoffPage(props: Props) {
       canvas.style.height = `${displayHeight}px`;
       setBasePagePx({ w: baseViewport.width, h: baseViewport.height });
       setPagePx({ w: displayWidth, h: displayHeight });
-      await page.render({ canvasContext: context, viewport }).promise;
+      renderTask = page.render({ canvasContext: context, viewport }); await renderTask!.promise; if(!cancelled)setLoadError('');
     })().catch((cause) => { if (!cancelled) setLoadError(cause instanceof Error ? cause.message : 'The PDF page could not be rendered.'); });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; renderTask?.cancel(); };
   }, [docId, pageNum, renderScale, pageCount]);
 
   useEffect(() => setZoomInput(String(Math.round(renderScale * 100))), [renderScale]);
@@ -209,15 +227,18 @@ export default function DrawingTakeoffPage(props: Props) {
     const byTool = new Map<string, { tool: DrawingTakeoffTool; locations: number; qty: number }>();
     for (const mark of props.marks) {
       if (!currentDocIds.has(mark.docId)) continue;
+      if (isEmployerDemo && summarySheet==='page' && (mark.docId!==docId || mark.page!==pageNum)) continue;
+      if (isEmployerDemo && summaryTool && mark.toolId!==summaryTool) continue;
       const tool = availableTools.find((item) => item.id === mark.toolId);
       if (!tool) continue;
+      if (isEmployerDemo && summarySystem && tool.system!==summarySystem) continue;
       const current = byTool.get(tool.id) || { tool, locations: 0, qty: 0 };
       current.locations += 1;
       current.qty += Math.max(0, Number(tool.multiplier) || 0);
       byTool.set(tool.id, current);
     }
     return [...byTool.values()].sort((a, b) => a.tool.system.localeCompare(b.tool.system) || a.tool.name.localeCompare(b.tool.name));
-  }, [props.marks, availableTools, currentDocIds]);
+  }, [props.marks, availableTools, currentDocIds, summarySheet, summarySystem, summaryTool, docId, pageNum]);
 
   const point = (event: ReactMouseEvent<SVGSVGElement>) => {
     const rect = overlayRef.current?.getBoundingClientRect();
@@ -229,6 +250,7 @@ export default function DrawingTakeoffPage(props: Props) {
   const isPanMode = mode === 'pan' || spacePan;
 
   const clickOverlay = (event: ReactMouseEvent<SVGSVGElement>) => {
+    if (isEmployerDemo && moveSelected && selectedMark) {const p=point(event);props.setMarks(props.marks.map(m=>m.id===selectedMark?{...m,x:p.x,y:p.y}:m));setMoveSelected(false);return;}
     if (isPanMode) return;
     const p = point(event);
     if (mode === 'count') {
@@ -310,7 +332,7 @@ export default function DrawingTakeoffPage(props: Props) {
     if (mode === 'calibrate' && draft.length >= 2) {
       const [a, b] = draft.slice(0, 2).map(pixelPoint);
       const pixels = Math.hypot(b.x - a.x, b.y - a.y);
-      const real = Number(window.prompt('Known real distance in feet:', '10'));
+      const real = Number(isEmployerDemo ? knownDistance : window.prompt('Known real distance in feet:', '10'));
       if (real > 0 && pixels > 0) {
         props.setCalibrations({ ...props.calibrations, [pageKey]: { pxPerFoot: pixels / real, label: `${fmt(real)} ft calibration` } });
         props.message('Saved', `Page ${pageNum} was calibrated to ${fmt(real)} ft.`);
@@ -358,7 +380,7 @@ export default function DrawingTakeoffPage(props: Props) {
       const formula = props.formulas.find((item) => item.id === tool.formulaId);
       if (!formula) continue;
       const current = totals.get(formula.id) || { qty: 0, tools: new Set<string>() };
-      current.qty += Math.max(0, Number(tool.multiplier) || 0);
+      current.qty += tool.formulaQuantityBasis === 'locations' ? 1 : Math.max(0, Number(tool.multiplier) || 0);
       current.tools.add(tool.name);
       totals.set(formula.id, current);
     }
@@ -389,6 +411,16 @@ export default function DrawingTakeoffPage(props: Props) {
   };
 
   return <section className={`drawing-takeoff-page ${focusMode ? 'drawing-focus-mode' : ''}`}>
+    {isEmployerDemo && <div className="demo-takeoff-controls">
+      <b>Drawing → Takeoff → Formula → BOM → Quote</b><span>24 dual outlets = 48 complete channels</span>
+      <button className="secondary" onClick={undo}>Undo</button>
+      <label>Totals<select aria-label="Totals sheet filter" value={summarySheet} onChange={e=>setSummarySheet(e.target.value)}><option value="all">All sheets</option><option value="page">Current sheet</option></select></label>
+      <label>System<select aria-label="Totals system filter" value={summarySystem} onChange={e=>setSummarySystem(e.target.value)}><option value="">All systems</option>{props.projectSystems.map(s=><option key={s}>{s}</option>)}</select></label>
+      <label>Tool<select aria-label="Totals tool filter" value={summaryTool} onChange={e=>setSummaryTool(e.target.value)}><option value="">All tools</option>{availableTools.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+      {mode==='calibrate' && <label>Known distance (ft)<input aria-label="Known calibration distance" type="number" min="0.01" value={knownDistance} onChange={e=>setKnownDistance(e.target.value)}/><small>Click the two endpoints of the 60 ft dimension, then Finish.</small></label>}
+      {selectedTool && <label>Tool multiplier<input aria-label="Tool multiplier" type="number" min="0.01" step="0.01" value={selectedTool.multiplier} onChange={e=>props.setTools(props.tools.map(t=>t.id===selectedTool.id?{...t,multiplier:Math.max(.01,Number(e.target.value))}:t))}/></label>}
+      {selectedMark && <><button onClick={()=>setMoveSelected(true)}>{moveSelected?'Click new position':'Move selected mark'}</button><button className="danger-button" onClick={deleteSelectedMark}>Delete selected mark</button><select aria-label="Selected mark tool" value={props.marks.find(m=>m.id===selectedMark)?.toolId||''} onChange={e=>props.setMarks(props.marks.map(m=>m.id===selectedMark?{...m,toolId:e.target.value}:m))}>{availableTools.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></>}
+    </div>}
     <div className="section-head"><div><span>ESTIMATING / DRAWINGS</span><h1>PDF Drawing Take Off</h1><p>Count drawing symbols, calibrate sheets, measure routes and areas, and feed drawing quantities directly into selected Take Off rules.</p></div><div className="drawing-takeoff-head-actions"><button className="secondary" onClick={() => setToolModal(true)}>+ Create Tool</button><button onClick={syncCounts}>Sync Counts to Take Off</button><button className="secondary" aria-pressed={focusMode} onClick={toggleFocus}>{focusMode ? 'Exit Focus' : 'Focus Drawing'}</button></div></div>
     <div className="drawing-document-bar">
       <label>Drawing PDF<select value={docId} onChange={(event) => setDocId(event.target.value)}><option value="">Select project PDF...</option>{pdfDocs.map((doc) => <option key={doc.id} value={doc.id}>{doc.fileName}</option>)}</select></label>
@@ -410,13 +442,13 @@ export default function DrawingTakeoffPage(props: Props) {
         {!docId && !loading && <div className="drawing-empty"><h2>Select a project drawing PDF</h2><p>PDF drawing files already uploaded to Project Documents are available above.</p></div>}
         {docId && <div ref={scrollRef} tabIndex={0} aria-label="PDF drawing viewer" className={`drawing-scroll ${isPanMode?'pan-ready':''} ${isPanning?'panning':''}`} onKeyDown={drawingKeyDown} onMouseDown={beginPan} onMouseMove={movePan} onMouseUp={endPan} onMouseLeave={endPan} onWheel={wheelZoom}><div className="drawing-stage"><div className="drawing-sheet" style={{ width: pagePx.w, height: pagePx.h }}><canvas ref={canvasRef} /><svg ref={overlayRef} width={pagePx.w} height={pagePx.h} viewBox={`0 0 ${pagePx.w} ${pagePx.h}`} onClick={clickOverlay} className={isPanMode ? 'drawing-overlay pan' : 'drawing-overlay'}>
           {pageMarks.map((mark) => { const tool = availableTools.find((item) => item.id === mark.toolId); if (!tool) return null; const x = mark.x * pagePx.w, y = mark.y * pagePx.h; const common = { key: mark.id, onClick: (event: ReactMouseEvent<SVGElement>) => { event.stopPropagation(); setSelectedMark(mark.id); }, className: selectedMark === mark.id ? 'drawing-mark selected' : 'drawing-mark' }; if (tool.shape === 'circle') return <circle {...common} cx={x} cy={y} r="9" fill={tool.color} />; if (tool.shape === 'square') return <rect {...common} x={x - 9} y={y - 9} width="18" height="18" fill={tool.color} />; if (tool.shape === 'diamond') return <rect {...common} x={x - 7} y={y - 7} width="14" height="14" fill={tool.color} transform={`rotate(45 ${x} ${y})`} />; return <polygon {...common} points={`${x},${y - 10} ${x - 10},${y + 9} ${x + 10},${y + 9}`} fill={tool.color} />; })}
-          {pageMeasurements.map((measurement) => <polyline key={measurement.id} points={measurement.points.map((p) => `${p.x * pagePx.w},${p.y * pagePx.h}`).join(' ')} fill={measurement.type === 'area' ? 'rgba(71,126,123,.16)' : 'none'} stroke="#477e7b" strokeWidth="2" />)}
+          {pageMeasurements.map((measurement) => <polyline style={isEmployerDemo?{pointerEvents:'none'}:undefined} key={measurement.id} points={measurement.points.map((p) => `${p.x * pagePx.w},${p.y * pagePx.h}`).join(' ')} fill={measurement.type === 'area' ? 'rgba(71,126,123,.16)' : 'none'} stroke="#477e7b" strokeWidth="2" />)}
           {pageAnnotations.map(drawAnnotation)}
           {draft.length > 0 && <polyline points={draft.map((p) => `${p.x * pagePx.w},${p.y * pagePx.h}`).join(' ')} fill="none" stroke="#b45309" strokeWidth="2" strokeDasharray="6 5" />}
         </svg></div></div></div>}
         {draft.length > 0 && <div className="drawing-finish-bar"><span>{draft.length} point{draft.length === 1 ? '' : 's'} selected</span><button onClick={finishDraft}>Finish</button><button className="secondary" onClick={() => setDraft([])}>Cancel</button></div>}
       </main>
-      <section className={`drawing-dock drawing-summary-dock ${summaryOpen ? 'open' : 'collapsed'}`}><div className="drawing-dock-head"><button className="drawing-dock-toggle" aria-expanded={summaryOpen} onClick={() => setSummaryOpen((current) => !current)}><span><b>Take Off Summary</b><small>{summary.length} count group{summary.length === 1 ? '' : 's'} · {pageMeasurements.length} page measurement{pageMeasurements.length === 1 ? '' : 's'}</small></span><strong>{summaryOpen ? 'Hide' : 'Show'}</strong></button>{summaryOpen && <div className="drawing-summary-tabs" role="tablist" aria-label="Take Off Summary views">{([['takeoff', 'Live Take Off'], ['measurements', 'Measurements'], ['rules', 'Rule Links']] as [SummaryTab, string][]).map(([id, label]) => <button key={id} role="tab" aria-selected={summaryTab === id} className={summaryTab === id ? 'active' : ''} onClick={() => setSummaryTab(id)}>{label}</button>)}</div>}</div>{summaryOpen && <div className="drawing-summary-content">{summaryTab === 'takeoff' && <div className="drawing-summary-list">{!summary.length && <div className="compact-empty">Placed count symbols will summarize here.</div>}{summary.map(({ tool, locations, qty }) => <div className="drawing-summary-row" key={tool.id}><span><Shape shape={tool.shape} color={tool.color} /><span><b>{tool.name}</b><small>{tool.system}</small></span></span><span><b>{locations}</b><small>locations</small></span><span><b>{fmt(qty)}</b><small>{tool.unit}</small></span></div>)}</div>}{summaryTab === 'measurements' && <div className="drawing-summary-list">{!pageMeasurements.length && <div className="compact-empty">No measurements on this page.</div>}{pageMeasurements.map((measurement) => <div className="drawing-measure-row" key={measurement.id}><span><b>{measurement.name}</b><small>{measurement.type}</small></span><strong>{fmt(measurement.value)} {measurement.unit}</strong></div>)}</div>}{summaryTab === 'rules' && <div className="drawing-summary-list"><p className="drawing-help">Link each count tool to a Take Off rule. Syncing replaces the prior drawing-sourced quantity instead of stacking it again.</p>{!availableTools.some((tool) => tool.formulaId) && <div className="compact-empty">No drawing tools are linked to Take Off rules.</div>}{availableTools.filter((tool) => tool.formulaId).map((tool) => <div className="drawing-link-row" key={tool.id}><b>{tool.name}</b><span>→ {props.formulas.find((formula) => formula.id === tool.formulaId)?.name || 'Missing rule'}</span></div>)}</div>}</div>}</section>
+      <section className={`drawing-dock drawing-summary-dock ${summaryOpen ? 'open' : 'collapsed'}`}><div className="drawing-dock-head"><button className="drawing-dock-toggle" aria-expanded={summaryOpen} onClick={() => setSummaryOpen((current) => !current)}><span><b>Take Off Summary</b><small>{summary.length} count group{summary.length === 1 ? '' : 's'} · {pageMeasurements.length} page measurement{pageMeasurements.length === 1 ? '' : 's'}</small></span><strong>{summaryOpen ? 'Hide' : 'Show'}</strong></button>{summaryOpen && <div className="drawing-summary-tabs" role="tablist" aria-label="Take Off Summary views">{([['takeoff', 'Live Take Off'], ['measurements', 'Measurements'], ['rules', 'Rule Links']] as [SummaryTab, string][]).map(([id, label]) => <button key={id} role="tab" aria-selected={summaryTab === id} className={summaryTab === id ? 'active' : ''} onClick={() => setSummaryTab(id)}>{label}</button>)}</div>}</div>{summaryOpen && <div className="drawing-summary-content">{summaryTab === 'takeoff' && <div className="drawing-summary-list">{!summary.length && <div className="compact-empty">Placed count symbols will summarize here.</div>}{summary.map(({ tool, locations, qty }) => <div className="drawing-summary-row" key={tool.id}><span><Shape shape={tool.shape} color={tool.color} /><span><b>{tool.name}</b><small>{tool.system}</small></span></span><span><b>{locations}</b><small>locations</small></span><span><b>{fmt(qty)}</b><small>{tool.unit}</small></span></div>)}</div>}{summaryTab === 'measurements' && <div className="drawing-summary-list">{!pageMeasurements.length && <div className="compact-empty">No measurements on this page.</div>}{pageMeasurements.map((measurement) => <div className="drawing-measure-row" key={measurement.id}><span><b>{measurement.name}</b><small>{measurement.type}</small></span><strong>{fmt(measurement.value)} {measurement.unit}</strong>{isEmployerDemo&&<button className="danger-button" aria-label={`Delete ${measurement.type} measurement`} onClick={()=>props.setMeasurements(props.measurements.filter(m=>m.id!==measurement.id))}>Delete</button>}</div>)}</div>}{summaryTab === 'rules' && <div className="drawing-summary-list"><p className="drawing-help">Link each count tool to a Take Off rule. Syncing replaces the prior drawing-sourced quantity instead of stacking it again.</p>{!availableTools.some((tool) => tool.formulaId) && <div className="compact-empty">No drawing tools are linked to Take Off rules.</div>}{availableTools.filter((tool) => tool.formulaId).map((tool) => <div className="drawing-link-row" key={tool.id}><b>{tool.name}</b><span>→ {props.formulas.find((formula) => formula.id === tool.formulaId)?.name || 'Missing rule'}</span></div>)}</div>}</div>}</section>
     </div>
     {toolModal && <ToolModal projectId={props.projectId} systems={props.projectSystems} formulas={props.formulas} onClose={() => setToolModal(false)} onCreate={(tool) => { props.setTools([...props.tools, tool]); setSelectedToolId(tool.id); setMode('count'); setToolModal(false); props.message('Saved', `“${tool.name}” was added to the Drawing Take Off Tool Chest.`); }} />}
   </section>;

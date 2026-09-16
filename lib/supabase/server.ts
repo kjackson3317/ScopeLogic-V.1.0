@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { isEmployerDemo } from '../demo/config';
 
 function readSupabaseConfig() {
   const url = String(process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
@@ -13,6 +14,7 @@ export function isSupabaseConfigured() {
 }
 
 export async function createClient() {
+  if (isEmployerDemo) throw new Error('Server database access is disabled for this demo.');
   const { url, key } = readSupabaseConfig();
   if (!url || !key) {
     throw new Error('Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY to the active Vercel environment, then redeploy.');

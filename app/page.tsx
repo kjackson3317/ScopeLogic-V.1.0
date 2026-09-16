@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { connection } from 'next/server';
 import { createClient, isSupabaseConfigured } from '../lib/supabase/server';
 import Workspace from './workspace';
+import { isEmployerDemo } from '../lib/demo/config';
 
 // Authentication depends on request cookies and deployment environment variables.
 // Prevent Next.js from attempting to prerender this protected page during build.
@@ -23,6 +24,7 @@ function ConfigurationRequired() {
 }
 
 export default async function HomePage() {
+  if (isEmployerDemo) return <Workspace userEmail="Demo Presenter" userId="demo-presenter" />;
   // Next.js 16: wait for a real request before reading deployment environment values.
   await connection();
 

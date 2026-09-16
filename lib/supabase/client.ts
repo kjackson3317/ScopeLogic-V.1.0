@@ -1,4 +1,6 @@
 import { createBrowserClient } from '@supabase/ssr';
+import { isEmployerDemo } from '../demo/config';
+import { createDemoClient } from '../demo/client';
 
 type WorkspaceIdentity = {
   actualUserId: string;
@@ -7,6 +9,11 @@ type WorkspaceIdentity = {
 };
 
 export function createClient() {
+  if (isEmployerDemo) return createDemoClient() as unknown as ReturnType<typeof createProductionClient>;
+  return createProductionClient();
+}
+
+function createProductionClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if (!url || !key) throw new Error('Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in Vercel.');
