@@ -29,8 +29,12 @@ All edits stay in the current browser/profile on the demo origin. Clearing site 
 
 ## Verification
 
-Next production build and TypeScript pass. The repository's current recovery-source verifier passes. The older verify-clean-source script is stale against the existing production wrapper and reports pre-existing assertions/native-dialog debt; it is not the active prebuild verifier.
+Verified on Vercel on 2026-09-16: the recovery-source verifier passed, the Next.js production build compiled successfully, TypeScript completed successfully, all static pages generated, and the deployment reached READY. The rendered root uses Technology Preconstruction Workspace branding, neutral Presentation Workspace loading copy, demo icon/wordmark assets, same-origin CSP, and the `x-demo-storage: browser-local-only` response header. No production branch, production deployment, or production Supabase migration was changed.
 
-Browser checks cover calibrated distance/polyline/area/perimeter, count/edit/delete/undo, assembly quantities, repeated quote updates, navigation and reload persistence, review-note-to-SLR, all review views, PDF releases and absence of external browser requests. See `scripts/demo-flow-check.cjs` and local `.verification` artifacts.
+Browser-flow coverage is defined in `scripts/demo-flow-check.cjs`: calibrated distance/polyline/area/perimeter, count/edit/delete/undo, assembly quantities, repeated quote updates, navigation and reload persistence, review-note-to-SLR, all review views, PDF releases and absence of external browser requests.
+
+## Neutral deployment target
+
+The branch is ready to deploy to a separate neutral Vercel project. An existing unlinked project named `estimating-workspace-demo` is suitable and already owns the neutral domain `estimating-workspace-demo.vercel.app`. Connect that Vercel project to `kjackson3317/ScopeLogic-V.1.0`, set its production branch to `demo/employer-presentation`, and deploy. The demo branch's ignore script blocks builds in the existing SLC Vercel projects while allowing a different neutral project ID to build normally.
 
 Rollback: retire the separate demo deployment or redeploy its previous commit. Production remains on its existing branch, deployment and database.
