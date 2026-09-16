@@ -5,8 +5,22 @@ module.exports = function(source) {
     source = source.replaceAll('\r\n', '\n');
     const edits = require('./demo-workspace-transform.json');
     edits.forEach((edit, index) => {
-      if (source.split(edit.before).length !== 2) throw new Error(`Demo workspace adapter needs review against the current source (edit ${index + 1}).`);
-      source = source.replace(edit.before, edit.after);
+      const exactMatches = source.split(edit.before).length;
+      if (exactMatches === 2) {
+        source = source.replace(edit.before, edit.after);
+        return;
+      }
+      // The final helper cleanup only removes trailing blank lines. Be tolerant of
+      // harmless whitespace drift there, while keeping every functional edit exact.
+      if (index === edits.length - 1) {
+        const before = edit.before.trimEnd();
+        const after = edit.after.trimEnd();
+        if (source.split(before).length === 2) {
+          source = source.replace(before, after);
+          return;
+        }
+      }
+      throw new Error(`Demo workspace adapter needs review against the current source (edit ${index + 1}).`);
     });
   }
   return source
