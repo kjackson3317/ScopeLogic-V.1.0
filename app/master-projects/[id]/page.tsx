@@ -21,11 +21,19 @@ export default async function MasterWorkspacePage({ params }: { params: Promise<
     .eq('id', user.id)
     .maybeSingle();
 
-  return <MasterWorkspaceClientV3
-    masterProjectId={resolved.id}
-    actualUserId={user.id}
-    workspaceOwnerId={String(profile?.workspace_owner_id || user.id)}
-    role={String(profile?.role || 'user')}
-    userName={String(profile?.full_name || user.email || 'User')}
-  />;
+  return <>
+    <a
+      href={`/master-projects/${resolved.id}/deliverables`}
+      style={{position:'fixed',right:20,top:14,zIndex:80,background:'#173e63',color:'#fff',padding:'9px 13px',borderRadius:7,textDecoration:'none',fontSize:12,fontWeight:700,boxShadow:'0 2px 8px rgba(0,0,0,.16)'}}
+    >
+      Review Deliverables
+    </a>
+    <MasterWorkspaceClientV3
+      masterProjectId={resolved.id}
+      actualUserId={user.id}
+      workspaceOwnerId={String(profile?.workspace_owner_id || user.id)}
+      role={String(profile?.role || 'user')}
+      userName={String(profile?.full_name || user.email || 'User')}
+    />
+  </>;
 }
