@@ -1,11 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "git": {
-    "deploymentEnabled": {
-      "*": false,
-      "main": true,
-      "preview/*": true
-    }
-  },
-  "ignoreCommand": "if [ \"$VERCEL_PROJECT_ID\" = \"prj_TFZgqoOD7pnm1tC0LefH8QF6An5W\" ]; then [ \"$VERCEL_GIT_COMMIT_REF\" = \"main\" ] && exit 1 || exit 0; elif [ \"$VERCEL_PROJECT_ID\" = \"prj_fwTBCNUFRDKl3CUSFxp9wkkQiFlO\" ]; then case \"$VERCEL_GIT_COMMIT_REF\" in preview/*) exit 1 ;; *) exit 0 ;; esac; else exit 0; fi"
+  "ignoreCommand": "if [ \"$VERCEL_PROJECT_ID\" = \"prj_TFZgqoOD7pnm1tC0LefH8QF6An5W\" ] && [ \"$VERCEL_GIT_COMMIT_REF\" = \"main\" ]; then exit 1; fi; if [ \"$VERCEL_PROJECT_ID\" = \"prj_fwTBCNUFRDKl3CUSFxp9wkkQiFlO\" ] && printf '%s' \"$VERCEL_GIT_COMMIT_REF\" | grep -q '^preview/'; then exit 1; fi; exit 0"
 }
