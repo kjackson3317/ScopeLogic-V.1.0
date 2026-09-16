@@ -3,10 +3,11 @@
 module.exports = function(source) {
   if (this.resourcePath.replaceAll('\\', '/').endsWith('/app/workspace.tsx')) {
     source = source.replaceAll('\r\n', '\n');
-    for (const edit of require('./demo-workspace-transform.json')) {
-      if (source.split(edit.before).length !== 2) throw new Error('Demo workspace adapter needs review against the current source.');
+    const edits = require('./demo-workspace-transform.json');
+    edits.forEach((edit, index) => {
+      if (source.split(edit.before).length !== 2) throw new Error(`Demo workspace adapter needs review against the current source (edit ${index + 1}).`);
       source = source.replace(edit.before, edit.after);
-    }
+    });
   }
   return source
     .replaceAll('/brand/scopelogic-logo-full.png', '/demo/wordmark.png')
