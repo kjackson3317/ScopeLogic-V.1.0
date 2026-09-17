@@ -62,6 +62,14 @@ export default function SlrTemplateSearchEnhancer() {
   const [selected, setSelected] = useState('');
   const [loadError, setLoadError] = useState('');
 
+  const [quoteMount, setQuoteMount] = useState<HTMLElement | null>(null);
+  const [quoteList, setQuoteList] = useState<HTMLElement | null>(null);
+  const [quoteQuery, setQuoteQuery] = useState('');
+  const [quoteSystem, setQuoteSystem] = useState('All');
+  const [quoteSystems, setQuoteSystems] = useState<string[]>([]);
+  const [quoteVisibleCount, setQuoteVisibleCount] = useState(0);
+  const [quoteTotalCount, setQuoteTotalCount] = useState(0);
+
   useEffect(() => {
     let observer: MutationObserver | null = null;
     const attach = () => {
@@ -88,6 +96,57 @@ export default function SlrTemplateSearchEnhancer() {
     }
     return () => observer?.disconnect();
   }, []);
+
+  useEffect(() => {
+    let bodyObserver: MutationObserver | null = null;
+    let listObserver: MutationObserver | null = null;
+    const attach = () => {
+      const lists = Array.from(document.querySelectorAll<HTMLElement>('.quote-list'));
+      const list = lists.find((candidate) => lower(candidate.querySelector('button.primary')?.textContent).includes('new template'));
+      if (!list) return false;
+      let host = list.querySelector<HTMLElement>('[data-quote-template-search-host]');
+      if (!host) {
+        host = document.createElement('div');
+        host.dataset.quoteTemplateSearchHost = 'true';
+        list.querySelector('button.primary')?.after(host);
+      }
+      list.classList.add('quote-template-list-search-enabled');
+      setQuoteMount(host);
+      setQuoteList(list);
+      const refreshSystems = () => {
+        const values = Array.from(list.querySelectorAll<HTMLButtonElement>(':scope > button:not(.primary)'))
+          .map((button) => text(button.querySelector('small')?.textContent))
+          .filter((value) => value && value !== 'NEW DRAFT');
+        setQuoteSystems(Array.from(new Set(values)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })));
+      };
+      refreshSystems();
+      listObserver?.disconnect();
+      listObserver = new MutationObserver(refreshSystems);
+      listObserver.observe(list, { childList: true, subtree: true, characterData: true });
+      return true;
+    };
+    if (!attach()) {
+      bodyObserver = new MutationObserver(() => { if (attach()) bodyObserver?.disconnect(); });
+      bodyObserver.observe(document.body, { childList: true, subtree: true });
+    }
+    return () => { bodyObserver?.disconnect(); listObserver?.disconnect(); };
+  }, []);
+
+  useEffect(() => {
+    if (!quoteList) return;
+    const buttons = Array.from(quoteList.querySelectorAll<HTMLButtonElement>(':scope > button:not(.primary)'));
+    const needle = quoteQuery.trim().toLowerCase();
+    let visibleCount = 0;
+    for (const button of buttons) {
+      const buttonText = lower(button.textContent);
+      const buttonSystem = text(button.querySelector('small')?.textContent);
+      const matches = (!needle || buttonText.includes(needle)) && (quoteSystem === 'All' || buttonSystem === quoteSystem);
+      button.hidden = !matches;
+      if (matches) visibleCount += 1;
+    }
+    setQuoteTotalCount(buttons.length);
+    setQuoteVisibleCount(visibleCount);
+  }, [quoteList, quoteQuery, quoteSystem, quoteSystems]);
 
   useEffect(() => {
     let active = true;
@@ -127,24 +186,34 @@ export default function SlrTemplateSearchEnhancer() {
     setSelected(matchingOption.value);
   };
 
-  if (!mount) return null;
-  return createPortal(
-    <section className="slr-template-search" aria-label="Search SLR templates">
-      <div className="slr-template-search-controls">
-        <label><span>Search templates</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, concern, recommendation, RFI text, reference…" /></label>
-        <label><span>System</span><select value={system} onChange={(event) => setSystem(event.target.value)}><option>All</option>{systems.map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label><span>Output</span><select value={action} onChange={(event) => setAction(event.target.value as ActionFilter)}><option>All</option><option>RBB</option><option>GC Clarification</option><option>Formal RFI</option><option>Checklist</option></select></label>
-      </div>
-      <div className="slr-template-search-meta"><b>{visible.length}</b><span>of {records.length} templates</span>{(query || system !== 'All' || action !== 'All') && <button type="button" onClick={() => { setQuery(''); setSystem('All'); setAction('All'); }}>Clear filters</button>}</div>
-      {loadError ? <div className="slr-template-search-empty">Template search could not refresh: {loadError}</div> : visible.length ? <div className="slr-template-search-results">{visible.slice(0, 100).map((record) => {
-        const value = text(record.legacy_id) || record.id;
-        const isSelected = selected === value || Array.from(nativeSelect?.options || []).some((option) => option.value === selected && lower(option.textContent) === lower(record.name));
-        const systems = systemsFor(record);
-        const actions = actionsFor(record);
-        return <button type="button" key={record.id} className={isSelected ? 'selected' : ''} onClick={() => choose(record)}><span><b>{record.name}</b><small>{systems.join(' · ') || 'No system assigned'}</small></span><span className="slr-template-badges">{actions.map((item) => <em key={item}>{item}</em>)}</span></button>;
-      })}</div> : <div className="slr-template-search-empty">No SLR templates match the current filters.</div>}
-      {visible.length > 100 && <div className="slr-template-search-limit">Showing the first 100 matches. Narrow the search to find a specific template.</div>}
-    </section>,
-    mount,
-  );
+  return <>
+    {mount && createPortal(
+      <section className="slr-template-search" aria-label="Search SLR templates">
+        <div className="slr-template-search-controls">
+          <label><span>Search templates</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, concern, recommendation, RFI text, reference…" /></label>
+          <label><span>System</span><select value={system} onChange={(event) => setSystem(event.target.value)}><option>All</option>{systems.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label><span>Output</span><select value={action} onChange={(event) => setAction(event.target.value as ActionFilter)}><option>All</option><option>RBB</option><option>GC Clarification</option><option>Formal RFI</option><option>Checklist</option></select></label>
+        </div>
+        <div className="slr-template-search-meta"><b>{visible.length}</b><span>of {records.length} templates</span>{(query || system !== 'All' || action !== 'All') && <button type="button" onClick={() => { setQuery(''); setSystem('All'); setAction('All'); }}>Clear filters</button>}</div>
+        {loadError ? <div className="slr-template-search-empty">Template search could not refresh: {loadError}</div> : visible.length ? <div className="slr-template-search-results">{visible.slice(0, 100).map((record) => {
+          const value = text(record.legacy_id) || record.id;
+          const isSelected = selected === value || Array.from(nativeSelect?.options || []).some((option) => option.value === selected && lower(option.textContent) === lower(record.name));
+          const recordSystems = systemsFor(record);
+          const actions = actionsFor(record);
+          return <button type="button" key={record.id} className={isSelected ? 'selected' : ''} onClick={() => choose(record)}><span><b>{record.name}</b><small>{recordSystems.join(' · ') || 'No system assigned'}</small></span><span className="slr-template-badges">{actions.map((item) => <em key={item}>{item}</em>)}</span></button>;
+        })}</div> : <div className="slr-template-search-empty">No SLR templates match the current filters.</div>}
+        {visible.length > 100 && <div className="slr-template-search-limit">Showing the first 100 matches. Narrow the search to find a specific template.</div>}
+      </section>,
+      mount,
+    )}
+    {quoteMount && createPortal(
+      <section className="quote-template-search" aria-label="Search quote templates">
+        <input value={quoteQuery} onChange={(event) => setQuoteQuery(event.target.value)} placeholder="Search quote templates…" />
+        <select value={quoteSystem} onChange={(event) => setQuoteSystem(event.target.value)}><option>All Systems</option>{quoteSystems.map((item) => <option key={item} value={item}>{item}</option>)}</select>
+        <small>{quoteVisibleCount} of {quoteTotalCount} templates</small>
+        {(quoteQuery || quoteSystem !== 'All') && <button type="button" onClick={() => { setQuoteQuery(''); setQuoteSystem('All'); }}>Clear</button>}
+      </section>,
+      quoteMount,
+    )}
+  </>;
 }
