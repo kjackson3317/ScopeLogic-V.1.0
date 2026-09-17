@@ -7,9 +7,9 @@ fn recovery_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let directory = app
         .path()
         .app_data_dir()
-        .map_err(|error| format!("Could not resolve ScopeLogic application data directory: {error}"))?;
+        .map_err(|error| format!("Could not resolve application data directory: {error}"))?;
     fs::create_dir_all(&directory)
-        .map_err(|error| format!("Could not create ScopeLogic application data directory: {error}"))?;
+        .map_err(|error| format!("Could not create application data directory: {error}"))?;
     Ok(directory.join(RECOVERY_FILE))
 }
 
@@ -58,5 +58,5 @@ pub fn run() {
             clear_takeoff_recovery,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running ScopeLogic Takeoff");
+        .expect("error while running Technology Preconstruction Takeoff");
 }
