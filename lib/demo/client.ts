@@ -1,11 +1,17 @@
 import { DEMO_PROJECT_ID, DEMO_TABLES_KEY, DEMO_WORKSPACE_KEY } from './config';
 import { makeDemoSeed, makeDemoTables } from './seed';
+import { demoWorkspaceSlrTemplates } from './slr-template-library';
+
+function ensureDemoTemplates(seed:any){
+ seed.templates = demoWorkspaceSlrTemplates.map((template)=>({ ...template, issue:{...template.issue,systems:[...(template.issue.systems||[])],recommendations:{...(template.issue.recommendations||{})},checklistItems:{...(template.issue.checklistItems||{})},rfis:[],recommendBaseBids:[],checklistQuestions:[]} }));
+ return seed;
+}
 
 export function readDemoWorkspace(): any {
- if (typeof window === 'undefined') return makeDemoSeed();
+ if (typeof window === 'undefined') return ensureDemoTemplates(makeDemoSeed());
  const raw=localStorage.getItem(DEMO_WORKSPACE_KEY);
- if(raw) return JSON.parse(raw);
- const seed=makeDemoSeed();localStorage.setItem(DEMO_WORKSPACE_KEY,JSON.stringify(seed));return seed;
+ if(raw){const parsed=ensureDemoTemplates(JSON.parse(raw));localStorage.setItem(DEMO_WORKSPACE_KEY,JSON.stringify(parsed));return parsed;}
+ const seed=ensureDemoTemplates(makeDemoSeed());localStorage.setItem(DEMO_WORKSPACE_KEY,JSON.stringify(seed));return seed;
 }
 export function resetDemo() {
  localStorage.removeItem(DEMO_WORKSPACE_KEY);localStorage.removeItem(DEMO_TABLES_KEY);
