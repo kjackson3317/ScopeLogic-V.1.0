@@ -45,3 +45,18 @@ The employer browser demo must show Technology Preconstruction Workspace brandin
 The neutral Vercel project is `estimating-workspace-demo`, using `estimating-workspace-demo.vercel.app`, connected to `kjackson3317/ScopeLogic-V.1.0` with production branch `demo/employer-presentation`.
 
 Rollback: retire the separate demo deployment or redeploy its previous commit. Production remains on its existing branch, deployment and database.
+
+## Resource naming standard
+
+Future repositories, branches, deployment projects, installer artifacts, and test environments should use descriptive names that identify the product, purpose, and environment at a glance. Avoid opaque suffix-only names when creating new resources.
+
+Preferred patterns:
+- Repository: `scopelogic-app`, `scopelogic-desktop-takeoff`, `scopelogic-demo-assets`
+- Branch: `demo/employer-presentation`, `feature/desktop-takeoff-pan-zoom`, `fix/slr-template-search`
+- Vercel project: `scopelogic-production`, `scopelogic-employer-demo`, `scopelogic-preview`
+- GitHub Actions artifact: `Technology-Preconstruction-Takeoff-Windows`
+- Generated document: `Technology_Preconstruction_Workspace_Employer_Demo_Guide_v3.docx`
+
+Existing resources may retain their current names to avoid unnecessary deployment risk, but newly created resources should follow this convention.
+
+Deployment validation marker: 2026-09-17 controlled employer-demo rollout after redundant Vercel Git connections were removed.
