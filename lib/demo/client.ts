@@ -1,11 +1,21 @@
 import { DEMO_PROJECT_ID, DEMO_TABLES_KEY, DEMO_WORKSPACE_KEY } from './config';
 import { makeDemoSeed, makeDemoTables } from './seed';
+import { demoSlrTemplates } from './slr-templates';
+
+const DEMO_TEMPLATE_SEED_VERSION = 1;
+
+function hydrateDemoTemplates(workspace:any){
+ if(workspace?.demoSlrTemplateSeedVersion===DEMO_TEMPLATE_SEED_VERSION)return workspace;
+ workspace.templates=JSON.parse(JSON.stringify(demoSlrTemplates));
+ workspace.demoSlrTemplateSeedVersion=DEMO_TEMPLATE_SEED_VERSION;
+ return workspace;
+}
 
 export function readDemoWorkspace(): any {
- if (typeof window === 'undefined') return makeDemoSeed();
+ if (typeof window === 'undefined') return hydrateDemoTemplates(makeDemoSeed());
  const raw=localStorage.getItem(DEMO_WORKSPACE_KEY);
- if(raw) return JSON.parse(raw);
- const seed=makeDemoSeed();localStorage.setItem(DEMO_WORKSPACE_KEY,JSON.stringify(seed));return seed;
+ if(raw){const workspace=hydrateDemoTemplates(JSON.parse(raw));localStorage.setItem(DEMO_WORKSPACE_KEY,JSON.stringify(workspace));return workspace;}
+ const seed=hydrateDemoTemplates(makeDemoSeed());localStorage.setItem(DEMO_WORKSPACE_KEY,JSON.stringify(seed));return seed;
 }
 export function resetDemo() {
  localStorage.removeItem(DEMO_WORKSPACE_KEY);localStorage.removeItem(DEMO_TABLES_KEY);
