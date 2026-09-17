@@ -1,10 +1,11 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './AppNext';
+import App from './AppBluebeam';
 import { isNativeTakeoffShell, loadNativeTakeoffRecovery } from './native-persistence';
 import { recoveryStorageKey } from './persistence';
 import type { TakeoffRecoverySnapshot } from './takeoff-model';
 import './styles.css';
+import './bluebeam.css';
 
 function parseLocalRecovery(): TakeoffRecoverySnapshot | null {
   try {
