@@ -1,12 +1,12 @@
 [package]
-name = "scopelogic-takeoff"
+name = "technology-preconstruction-takeoff"
 version = "0.1.0"
-description = "ScopeLogic Takeoff desktop application"
-authors = ["ScopeLogic"]
+description = "Technology Preconstruction Takeoff desktop application"
+authors = ["Technology Preconstruction"]
 edition = "2021"
 
 [lib]
-name = "scopelogic_takeoff_lib"
+name = "technology_preconstruction_takeoff_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
