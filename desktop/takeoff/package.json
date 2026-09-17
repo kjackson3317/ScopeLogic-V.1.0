@@ -1,5 +1,5 @@
 {
-  "name": "scopelogic-takeoff-desktop",
+  "name": "technology-preconstruction-takeoff-desktop",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "desktop:dev": "tauri dev",
-    "desktop:build": "tauri build --no-bundle"
+    "desktop:build": "tauri build --no-bundle",
+    "desktop:bundle": "tauri build"
   },
   "dependencies": {
     "@tauri-apps/api": "2.11.1",
