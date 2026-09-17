@@ -289,3 +289,8 @@
   .button { padding-left: 7px; padding-right: 7px; }
   .scale-chip { max-width: 92px; }
 }
+
+.measurement-graphic polyline,.measurement-graphic polygon{stroke:currentColor;stroke-width:var(--measurement-line-width,2.25)}
+.measurement-graphic.area polygon{fill:color-mix(in srgb,currentColor 13%,transparent)}
+.measurement-graphic.perimeter polygon{fill:color-mix(in srgb,currentColor 4%,transparent)}
+.measurement-node{stroke:currentColor}

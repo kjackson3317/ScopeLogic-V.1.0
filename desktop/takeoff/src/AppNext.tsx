@@ -6,6 +6,8 @@ import {
   type ChangeEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
+  type WheelEvent as ReactWheelEvent,
+  type DragEvent as ReactDragEvent,
 } from 'react';
 import * as pdfjs from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -51,9 +53,11 @@ import './annotations.css';
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
-type Mode = 'pan' | 'count' | 'calibrate' | 'snippet' | MeasurementKind | MarkupKind;
-type RightTab = 'takeoff' | 'annotations' | 'sync';
+type Mode = 'select' | 'pan' | 'count' | 'calibrate' | 'snippet' | MeasurementKind | MarkupKind;
+type DockPanel = 'measurements' | 'markups' | 'sync';
+type DockLocation = 'right' | 'top';
 type SummaryRow = { tool: Tool; locations: number; qty: number };
+type CountRow = { key: string; tool: Tool; category: string; page: number; locations: number; qty: number; unit: string };
 
 const COLORS = ['#4B6623', '#31513b', '#2563eb', '#b45309', '#b91c1c', '#6d28d9', '#111827', '#0e7490'];
 const SHAPES: Shape[] = ['circle', 'square', 'triangle', 'diamond'];
@@ -61,6 +65,8 @@ const MULTI_POINT_MODES: MeasurementKind[] = ['polyline', 'area', 'perimeter'];
 const MEASUREMENT_MODES: MeasurementKind[] = ['distance', 'polyline', 'area', 'perimeter'];
 const MARKUP_MODES: MarkupKind[] = ['text', 'line', 'arrow', 'rectangle', 'cloud', 'highlight', 'freehand'];
 const TWO_POINT_MARKUPS: MarkupKind[] = ['line', 'arrow', 'rectangle', 'cloud', 'highlight'];
+const PANEL_LABELS: Record<DockPanel, string> = { measurements: 'Measurements', markups: 'Markups', sync: 'Sync Review' };
+const DEFAULT_TOOL_CATEGORY = 'General';
 const uid = () => crypto.randomUUID();
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const fmt = (value: number) => Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.00$/, '');
@@ -77,7 +83,10 @@ function ShapeMark({ shape, color, size = 14 }: { shape: Shape; color: string; s
 export default function AppNext() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<SVGSVGElement>(null);
+  const drawingViewportRef = useRef<HTMLDivElement>(null);
   const pointerDrawingRef = useRef(false);
+  const panGestureRef = useRef<{ pointerId: number; x: number; y: number; originX: number; originY: number } | null>(null);
+  const bottomResizeRef = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);
 
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [fileName, setFileName] = useState('');
@@ -96,7 +105,9 @@ export default function AppNext() {
   const [recoveryDecisionMade, setRecoveryDecisionMade] = useState(false);
   const [pendingRecoveredDrawing, setPendingRecoveredDrawing] = useState(false);
 
-  const [mode, setMode] = useState<Mode>('count');
+  const [mode, setMode] = useState<Mode>('select');
+  const [viewOffset, setViewOffset] = useState({ x: 0, y: 0 });
+  const [spaceDown, setSpaceDown] = useState(false);
   const [marks, setMarks] = useState<Mark[]>([]);
   const [selectedMarkId, setSelectedMarkId] = useState('');
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
@@ -108,11 +119,13 @@ export default function AppNext() {
   const [calibrationKnownUnit, setCalibrationKnownUnit] = useState<'ft' | 'in'>('ft');
 
   const [tools, setTools] = useState<Tool[]>([
-    { id: 'default-count', name: 'Count Item', shape: 'circle', color: '#4B6623', multiplier: 1, unit: 'qty' },
+    { id: 'default-count', name: 'Count Item', category: DEFAULT_TOOL_CATEGORY, shape: 'circle', color: '#4B6623', multiplier: 1, unit: 'qty', size: 16, opacity: 1 },
   ]);
   const [selectedToolId, setSelectedToolId] = useState('default-count');
   const [showToolForm, setShowToolForm] = useState(false);
-  const [newTool, setNewTool] = useState({ name: '', shape: 'circle' as Shape, color: '#4B6623', multiplier: 1, unit: 'qty' });
+  const [newTool, setNewTool] = useState({ name: '', category: DEFAULT_TOOL_CATEGORY, shape: 'circle' as Shape, color: '#4B6623', multiplier: 1, unit: 'qty', size: 16, opacity: 1 });
+  const [collapsedToolsets, setCollapsedToolsets] = useState<Record<string, boolean>>({});
+  const [toolSearch, setToolSearch] = useState('');
 
   const [markups, setMarkups] = useState<DrawingMarkup[]>([]);
   const [snippets, setSnippets] = useState<DrawingSnippet[]>([]);
@@ -122,10 +135,45 @@ export default function AppNext() {
   const [annotationColor, setAnnotationColor] = useState(DEFAULT_ANNOTATION_COLOR);
   const [annotationText, setAnnotationText] = useState('');
 
-  const [rightTab, setRightTab] = useState<RightTab>('takeoff');
+  const [panelDock, setPanelDock] = useState<Record<DockPanel, DockLocation>>({ measurements: 'right', markups: 'right', sync: 'right' });
+  const [activeRightPanel, setActiveRightPanel] = useState<DockPanel>('measurements');
+  const [activeTopPanel, setActiveTopPanel] = useState<DockPanel>('measurements');
   const [estimateQty, setEstimateQty] = useState<Record<string, number>>({});
   const [syncSelection, setSyncSelection] = useState<Record<string, boolean>>({});
   const [activity, setActivity] = useState('Open a PDF drawing set to begin.');
+  const [bottomHeight, setBottomHeight] = useState(210);
+  const [bottomCollapsed, setBottomCollapsed] = useState(false);
+  const [countFilters, setCountFilters] = useState({ category: '', tool: '', page: '', unit: '' });
+
+  useEffect(() => {
+    const keyDown = (event: KeyboardEvent) => {
+      if (event.code === 'Space' && !(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement) && !(event.target instanceof HTMLSelectElement)) {
+        event.preventDefault();
+        setSpaceDown(true);
+      }
+    };
+    const keyUp = (event: KeyboardEvent) => { if (event.code === 'Space') setSpaceDown(false); };
+    window.addEventListener('keydown', keyDown);
+    window.addEventListener('keyup', keyUp);
+    return () => { window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp); };
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('technology-takeoff-ui-layout-v2');
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (saved.panelDock) setPanelDock(saved.panelDock);
+        if (Number.isFinite(saved.bottomHeight)) setBottomHeight(clamp(saved.bottomHeight, 120, 520));
+        if (typeof saved.bottomCollapsed === 'boolean') setBottomCollapsed(saved.bottomCollapsed);
+        if (saved.collapsedToolsets) setCollapsedToolsets(saved.collapsedToolsets);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem('technology-takeoff-ui-layout-v2', JSON.stringify({ panelDock, bottomHeight, bottomCollapsed, collapsedToolsets })); } catch {}
+  }, [panelDock, bottomHeight, bottomCollapsed, collapsedToolsets]);
 
   useEffect(() => {
     const recovered = loadTakeoffRecovery();
@@ -187,6 +235,45 @@ export default function AppNext() {
     return [...rows.values()].sort((a, b) => a.tool.name.localeCompare(b.tool.name));
   }, [marks, tools]);
 
+  const countRows = useMemo<CountRow[]>(() => {
+    const rows = new Map<string, CountRow>();
+    for (const mark of marks) {
+      const tool = tools.find((item) => item.id === mark.toolId);
+      if (!tool) continue;
+      const category = tool.category?.trim() || DEFAULT_TOOL_CATEGORY;
+      const key = `${tool.id}|${mark.page}`;
+      const current = rows.get(key) || { key, tool, category, page: mark.page, locations: 0, qty: 0, unit: tool.unit };
+      current.locations += 1;
+      current.qty += Number(tool.multiplier) || 0;
+      rows.set(key, current);
+    }
+    return [...rows.values()].sort((a, b) => a.category.localeCompare(b.category) || a.tool.name.localeCompare(b.tool.name) || a.page - b.page);
+  }, [marks, tools]);
+
+  const filteredCountRows = useMemo(() => countRows.filter((row) => {
+    const categoryNeedle = countFilters.category.trim().toLowerCase();
+    const toolNeedle = countFilters.tool.trim().toLowerCase();
+    const pageNeedle = countFilters.page.trim().toLowerCase();
+    const unitNeedle = countFilters.unit.trim().toLowerCase();
+    return (!categoryNeedle || row.category.toLowerCase().includes(categoryNeedle))
+      && (!toolNeedle || row.tool.name.toLowerCase().includes(toolNeedle))
+      && (!pageNeedle || String(row.page).includes(pageNeedle))
+      && (!unitNeedle || row.unit.toLowerCase().includes(unitNeedle));
+  }), [countRows, countFilters]);
+
+  const toolCategories = useMemo(() => {
+    const search = toolSearch.trim().toLowerCase();
+    const groups = new Map<string, Tool[]>();
+    for (const tool of tools) {
+      const category = tool.category?.trim() || DEFAULT_TOOL_CATEGORY;
+      if (search && !`${category} ${tool.name} ${tool.unit}`.toLowerCase().includes(search)) continue;
+      const list = groups.get(category) || [];
+      list.push(tool);
+      groups.set(category, list);
+    }
+    return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([category, items]) => ({ category, items: items.sort((a, b) => a.name.localeCompare(b.name)) }));
+  }, [tools, toolSearch]);
+
   const syncRows = useMemo(() => summary.map((row) => {
     const current = estimateQty[row.tool.id] || 0;
     return { ...row, current, difference: row.qty - current };
@@ -227,6 +314,7 @@ export default function AppNext() {
     pointerDrawingRef.current = false;
     setSelectedMarkId('');
     setSelectedMeasurementId('');
+    setViewOffset({ x: 0, y: 0 });
   }, [page]);
 
   useEffect(() => {
@@ -369,9 +457,10 @@ export default function AppNext() {
     setAnnotationDraft([]);
     pointerDrawingRef.current = false;
 
-    if (nextMode === 'calibrate') setActivity(`Calibration mode. Pick two points on page ${page}, enter the known distance, then set the scale.`);
+    if (nextMode === 'select') setActivity('Select mode. Click a count, measurement, markup, or snippet to edit its properties.');
+    else if (nextMode === 'calibrate') setActivity(`Calibration mode. Pick two points on page ${page}, enter the known distance, then set the scale.`);
     else if (nextMode === 'count') setActivity('Count mode. Select a Tool Chest item and place count marks.');
-    else if (nextMode === 'pan') setActivity('Pan mode. Use the drawing scroll bars to navigate the sheet.');
+    else if (nextMode === 'pan') setActivity('Pan mode. Drag the drawing freely in any direction. Mouse wheel zooms toward the cursor.');
     else if (MEASUREMENT_MODES.includes(nextMode as MeasurementKind)) setActivity(`${measurementKindLabel(nextMode as MeasurementKind)} mode. ${nextMode === 'distance' ? 'Pick two points.' : 'Pick points, then use Finish.'}`);
     else if (nextMode === 'snippet') setActivity('Snippet mode. Pick two corners of the drawing region to capture.');
     else if (nextMode === 'freehand') setActivity('Freehand markup. Press and drag on the drawing.');
@@ -385,7 +474,7 @@ export default function AppNext() {
       return;
     }
     const ordinal = measurements.filter((item) => item.kind === kind).length + 1;
-    const measurement: Measurement = { id: uid(), page, kind, name: `${measurementKindLabel(kind)} ${ordinal}`, points };
+    const measurement: Measurement = { id: uid(), page, kind, name: `${measurementKindLabel(kind)} ${ordinal}`, points, color: '#4B6623', lineWidth: 2.25, opacity: 1 };
     setMeasurements((items) => [...items, measurement]);
     clearSelections();
     setSelectedMeasurementId(measurement.id);
@@ -431,6 +520,7 @@ export default function AppNext() {
 
   const clickOverlay = (event: ReactMouseEvent<SVGSVGElement>) => {
     if (!pdfDoc || mode === 'pan' || mode === 'freehand') return;
+    if (mode === 'select') { clearSelections(); setActivity('Nothing selected.'); return; }
     const point = normalizeOverlayPoint(event);
     if (!point) return;
 
@@ -475,7 +565,7 @@ export default function AppNext() {
       setMarkups((items) => [...items, markup]);
       clearSelections();
       setSelectedMarkupId(markup.id);
-      setRightTab('annotations');
+      activatePanel('markups');
       setActivity(`Text note added on page ${page}. Drawing annotations do not affect takeoff quantities.`);
       return;
     }
@@ -496,7 +586,7 @@ export default function AppNext() {
         setAnnotationDraft([]);
         clearSelections();
         setSelectedSnippetId(snippet.id);
-        setRightTab('annotations');
+        activatePanel('markups');
         setActivity(`Snippet captured on page ${page}. The source bounds and optional preview are stored independently from quantity takeoff.`);
       }
       return;
@@ -512,7 +602,7 @@ export default function AppNext() {
         setAnnotationDraft([]);
         clearSelections();
         setSelectedMarkupId(markup.id);
-        setRightTab('annotations');
+        activatePanel('markups');
         setActivity(`${markupLabel(mode as MarkupKind)} added on page ${page}. Drawing annotations do not affect takeoff quantities.`);
       }
     }
@@ -548,7 +638,7 @@ export default function AppNext() {
         setMarkups((items) => [...items, markup]);
         clearSelections();
         setSelectedMarkupId(markup.id);
-        setRightTab('annotations');
+        activatePanel('markups');
         setActivity(`Freehand markup added on page ${page}. It remains an annotation only.`);
       } else setActivity('Freehand stroke was too short and was discarded.');
       return [];
@@ -625,15 +715,18 @@ export default function AppNext() {
     const tool: Tool = {
       id: uid(),
       name,
+      category: newTool.category.trim() || DEFAULT_TOOL_CATEGORY,
       shape: newTool.shape,
       color: newTool.color,
       multiplier: Math.max(0, Number(newTool.multiplier) || 1),
       unit: newTool.unit.trim() || 'qty',
+      size: clamp(Number(newTool.size) || 16, 8, 40),
+      opacity: clamp(Number(newTool.opacity) || 1, 0.1, 1),
     };
     setTools((items) => [...items, tool]);
     setSelectedToolId(tool.id);
     changeMode('count');
-    setNewTool({ name: '', shape: 'circle', color: '#4B6623', multiplier: 1, unit: 'qty' });
+    setNewTool({ name: '', category: tool.category || DEFAULT_TOOL_CATEGORY, shape: 'circle', color: '#4B6623', multiplier: 1, unit: 'qty', size: 16, opacity: 1 });
     setShowToolForm(false);
     setActivity(`${tool.name} added to the local Tool Chest.`);
   };
@@ -674,13 +767,119 @@ export default function AppNext() {
     setActivity('Selected Takeoff quantities applied to the local estimate preview. Cloud Quote/BOM connection remains an explicit later integration step.');
   };
 
+  const activatePanel = (panel: DockPanel) => {
+    if (panelDock[panel] === 'top') setActiveTopPanel(panel);
+    else setActiveRightPanel(panel);
+  };
+
+  const dockPanel = (event: ReactDragEvent<HTMLElement>, location: DockLocation) => {
+    event.preventDefault();
+    const panel = event.dataTransfer.getData('text/takeoff-panel') as DockPanel;
+    if (!PANEL_LABELS[panel]) return;
+    setPanelDock((current) => ({ ...current, [panel]: location }));
+    if (location === 'top') setActiveTopPanel(panel);
+    else setActiveRightPanel(panel);
+  };
+
+  const dragPanel = (event: ReactDragEvent<HTMLButtonElement>, panel: DockPanel) => {
+    event.dataTransfer.setData('text/takeoff-panel', panel);
+    event.dataTransfer.effectAllowed = 'move';
+  };
+
+  const fitPage = () => {
+    const viewport = drawingViewportRef.current;
+    const base = pageBaseSizes[page];
+    if (!viewport || !base) return;
+    const rect = viewport.getBoundingClientRect();
+    const next = clamp(Math.min((rect.width - 44) / base.width, (rect.height - 44) / base.height), 0.2, 4);
+    setZoom(next);
+    setViewOffset({ x: 0, y: 0 });
+    setActivity(`Fit Page · ${Math.round(next * 100)}%`);
+  };
+
+  const fitWidth = () => {
+    const viewport = drawingViewportRef.current;
+    const base = pageBaseSizes[page];
+    if (!viewport || !base) return;
+    const rect = viewport.getBoundingClientRect();
+    const next = clamp((rect.width - 44) / base.width, 0.2, 4);
+    setZoom(next);
+    setViewOffset({ x: 0, y: 0 });
+    setActivity(`Fit Width · ${Math.round(next * 100)}%`);
+  };
+
+  const wheelZoom = (event: ReactWheelEvent<HTMLDivElement>) => {
+    if (!pdfDoc) return;
+    event.preventDefault();
+    const viewport = drawingViewportRef.current;
+    if (!viewport) return;
+    const rect = viewport.getBoundingClientRect();
+    const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+    const nextZoom = clamp(zoom * factor, 0.2, 4);
+    if (Math.abs(nextZoom - zoom) < 0.0001) return;
+    const ratio = nextZoom / zoom;
+    const cursorX = event.clientX - rect.left - rect.width / 2;
+    const cursorY = event.clientY - rect.top - rect.height / 2;
+    setViewOffset((current) => ({
+      x: current.x + (cursorX - current.x) * (1 - ratio),
+      y: current.y + (cursorY - current.y) * (1 - ratio),
+    }));
+    setZoom(nextZoom);
+  };
+
+  const panPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const canPan = mode === 'pan' || spaceDown || event.button === 1;
+    if (!canPan) return;
+    event.preventDefault();
+    panGestureRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, originX: viewOffset.x, originY: viewOffset.y };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+  const panPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const gesture = panGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    setViewOffset({ x: gesture.originX + event.clientX - gesture.x, y: gesture.originY + event.clientY - gesture.y });
+  };
+  const panPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (panGestureRef.current?.pointerId !== event.pointerId) return;
+    panGestureRef.current = null;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  };
+
+  const beginBottomResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    bottomResizeRef.current = { pointerId: event.pointerId, startY: event.clientY, startHeight: bottomHeight };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+  const moveBottomResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = bottomResizeRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    setBottomCollapsed(false);
+    setBottomHeight(clamp(drag.startHeight + (drag.startY - event.clientY), 120, Math.max(180, window.innerHeight * 0.58)));
+  };
+  const endBottomResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (bottomResizeRef.current?.pointerId !== event.pointerId) return;
+    bottomResizeRef.current = null;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  };
+
   const pageMarks = marks.filter((mark) => mark.page === page);
   const pageMeasurements = measurementRows.filter((row) => row.measurement.page === page);
   const selectedTool = tools.find((item) => item.id === selectedToolId);
+  const selectedMark = marks.find((item) => item.id === selectedMarkId);
+  const selectedMarkTool = selectedMark ? tools.find((item) => item.id === selectedMark.toolId) : undefined;
+  const selectedMeasurement = measurements.find((item) => item.id === selectedMeasurementId);
+  const selectedMarkup = markups.find((item) => item.id === selectedMarkupId);
+  const selectedSnippet = snippets.find((item) => item.id === selectedSnippetId);
+  const propertyTool = selectedMarkTool || (!selectedMeasurement && !selectedMarkup && !selectedSnippet ? selectedTool : undefined);
+  const patchTool = (toolId: string, patch: Partial<Tool>) => setTools((items) => items.map((item) => item.id === toolId ? { ...item, ...patch } : item));
+  const patchMeasurement = (patch: Partial<Measurement>) => selectedMeasurementId && setMeasurements((items) => items.map((item) => item.id === selectedMeasurementId ? { ...item, ...patch } : item));
+  const patchMarkup = (patch: Partial<DrawingMarkup>) => selectedMarkupId && setMarkups((items) => items.map((item) => item.id === selectedMarkupId ? { ...item, ...patch, updatedAt: new Date().toISOString() } : item));
+  const patchSnippet = (patch: Partial<DrawingSnippet>) => selectedSnippetId && setSnippets((items) => items.map((item) => item.id === selectedSnippetId ? { ...item, ...patch, updatedAt: new Date().toISOString() } : item));
   const draftPointCount = mode === 'calibrate' ? calibrationDraft.length : MEASUREMENT_MODES.includes(mode as MeasurementKind) ? measurementDraft.length : annotationDraft.length;
-  const modeLabel = mode === 'count'
-    ? `COUNT · ${selectedTool?.name || 'No Tool'}`
-    : mode === 'pan'
+  const modeLabel = mode === 'select'
+    ? 'SELECT'
+    : mode === 'count'
+      ? `COUNT · ${selectedTool?.name || 'No Tool'}`
+      : mode === 'pan'
       ? 'PAN'
       : mode === 'calibrate'
         ? `CALIBRATE · ${draftPointCount}/2`
@@ -712,8 +911,8 @@ export default function AppNext() {
 
       <header className="desktop-topbar">
         <div className="desktop-brand">
-          <div className="brand-mark">S</div>
-          <div><strong>ScopeLogic</strong><span>Takeoff Desktop</span></div>
+          <div className="brand-mark">T</div>
+          <div><strong>Technology Preconstruction</strong><span>Takeoff Desktop</span></div>
         </div>
         <div className="project-strip">
           <span>WORKSPACE</span>
@@ -732,6 +931,7 @@ export default function AppNext() {
         </label>
         <div className="command-separator" />
 
+        <button className={mode === 'select' ? 'button active' : 'button'} onClick={() => changeMode('select')}>Select</button>
         <button className={mode === 'pan' ? 'button active' : 'button'} onClick={() => changeMode('pan')}>Pan</button>
         <button className={mode === 'count' ? 'button active' : 'button'} onClick={() => changeMode('count')}>Count</button>
         <button className={mode === 'calibrate' ? 'button active' : 'button'} disabled={!pdfDoc} onClick={() => changeMode('calibrate')}>Calibrate</button>
@@ -792,10 +992,43 @@ export default function AppNext() {
         <button className="button" disabled={!pdfDoc} onClick={() => setZoom((value) => clamp(value / 1.2, 0.2, 4))}>−</button>
         <div className="zoom-readout">{Math.round(zoom * 100)}%</div>
         <button className="button" disabled={!pdfDoc} onClick={() => setZoom((value) => clamp(value * 1.2, 0.2, 4))}>+</button>
-        <button className="button" disabled={!pdfDoc} onClick={() => setZoom(1)}>100%</button>
+        <button className="button" disabled={!pdfDoc} onClick={() => { setZoom(1); setViewOffset({ x: 0, y: 0 }); }}>100%</button>
+        <button className="button" disabled={!pdfDoc} onClick={fitPage}>Fit Page</button>
+        <button className="button" disabled={!pdfDoc} onClick={fitWidth}>Fit Width</button>
         <div className="command-spacer" />
-        <button className="button primary" disabled={!summary.length} onClick={() => setRightTab('sync')}>Review Sync</button>
+        <button className="button primary" disabled={!summary.length} onClick={() => activatePanel('sync')}>Review Sync</button>
       </div>
+
+      <section
+        className={Object.values(panelDock).includes('top') ? 'panel-dock-top has-panels' : 'panel-dock-top'}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => dockPanel(event, 'top')}
+      >
+        {Object.values(panelDock).includes('top') && (
+          <>
+            <div className="dock-tabbar">
+              {(Object.keys(PANEL_LABELS) as DockPanel[]).filter((panel) => panelDock[panel] === 'top').map((panel) => (
+                <button key={panel} draggable onDragStart={(event) => dragPanel(event, panel)} className={activeTopPanel === panel ? 'active' : ''} onClick={() => setActiveTopPanel(panel)}>
+                  {PANEL_LABELS[panel]}
+                </button>
+              ))}
+              <span>Drag tabs between the top and right docks.</span>
+            </div>
+            <div className="top-dock-content">
+              {activeTopPanel === 'measurements' && (
+                <div className="dock-list">
+                  {measurementRows.map(({ measurement, value }) => <button key={measurement.id} className={measurement.id === selectedMeasurementId ? 'dock-row selected' : 'dock-row'} onClick={() => { setPage(measurement.page); clearSelections(); setSelectedMeasurementId(measurement.id); }}><span>{measurement.name}</span><small>Page {measurement.page}</small><b>{formatMeasurement(value, measurement.kind)}</b></button>)}
+                  {!measurementRows.length && <div className="empty-compact">No measurements yet.</div>}
+                </div>
+              )}
+              {activeTopPanel === 'markups' && <AnnotationPanel markups={markups} snippets={snippets} selectedMarkupId={selectedMarkupId} selectedSnippetId={selectedSnippetId} onSelectMarkup={(id) => { clearSelections(); setSelectedMarkupId(id); }} onSelectSnippet={(id) => { clearSelections(); setSelectedSnippetId(id); }} onChangeMarkups={setMarkups} onChangeSnippets={setSnippets} onGoToPage={setPage} onDeleteSelected={deleteSelected} />}
+              {activeTopPanel === 'sync' && (
+                <div className="sync-table compact-dock">{syncRows.map((row) => <label className="sync-row" key={row.tool.id}><input type="checkbox" checked={syncSelection[row.tool.id] ?? true} onChange={(event) => setSyncSelection({ ...syncSelection, [row.tool.id]: event.target.checked })}/><span><b>{row.tool.name}</b><small>{row.tool.unit}</small></span><span><small>Takeoff</small><b>{fmt(row.qty)}</b></span><span><small>Estimate</small><b>{fmt(row.current)}</b></span><span className={row.difference === 0 ? 'diff zero' : 'diff'}><small>Difference</small><b>{row.difference > 0 ? '+' : ''}{fmt(row.difference)}</b></span></label>)}</div>
+              )}
+            </div>
+          </>
+        )}
+      </section>
 
       <div className="desktop-workspace">
         <aside className="left-rail">
@@ -811,27 +1044,86 @@ export default function AppNext() {
 
           <section className="rail-section tool-section">
             <div className="rail-heading"><b>Tool Chest</b><button onClick={() => setShowToolForm((value) => !value)}>+ Tool</button></div>
+            <div className="tool-search"><input value={toolSearch} onChange={(event) => setToolSearch(event.target.value)} placeholder="Search tool sets / tools…" /></div>
             {showToolForm && (
               <div className="tool-form">
                 <label><span>Name</span><input value={newTool.name} onChange={(event) => setNewTool({ ...newTool, name: event.target.value })} placeholder="Count tool name" /></label>
+                <label><span>Tool Set / Category</span><input value={newTool.category} onChange={(event) => setNewTool({ ...newTool, category: event.target.value })} placeholder="Structured Cabling, CCTV, Access Control…" /></label>
                 <div className="tool-form-grid">
                   <label><span>Shape</span><select value={newTool.shape} onChange={(event) => setNewTool({ ...newTool, shape: event.target.value as Shape })}>{SHAPES.map((shape) => <option key={shape}>{shape}</option>)}</select></label>
                   <label><span>Multiplier</span><input type="number" min="0" step="0.01" value={newTool.multiplier} onChange={(event) => setNewTool({ ...newTool, multiplier: Number(event.target.value) })} /></label>
+                  <label><span>Size</span><input type="number" min="8" max="40" value={newTool.size} onChange={(event) => setNewTool({ ...newTool, size: Number(event.target.value) })} /></label>
+                  <label><span>Unit</span><input value={newTool.unit} onChange={(event) => setNewTool({ ...newTool, unit: event.target.value })} /></label>
                 </div>
-                <label><span>Unit</span><input value={newTool.unit} onChange={(event) => setNewTool({ ...newTool, unit: event.target.value })} /></label>
                 <div className="color-row">{COLORS.map((color) => <button key={color} className={newTool.color === color ? 'selected' : ''} style={{ background: color }} aria-label={`Use ${color}`} onClick={() => setNewTool({ ...newTool, color })} />)}</div>
                 <div className="tool-form-actions"><button className="button" onClick={() => setShowToolForm(false)}>Cancel</button><button className="button primary" disabled={!newTool.name.trim()} onClick={addTool}>Add Tool</button></div>
               </div>
             )}
-            <div className="tool-list">
-              {tools.map((tool) => (
-                <button key={tool.id} className={tool.id === selectedToolId ? 'tool-row active' : 'tool-row'} onClick={() => { setSelectedToolId(tool.id); changeMode('count'); }}>
-                  <ShapeMark shape={tool.shape} color={tool.color} />
-                  <span><b>{tool.name}</b><small>×{fmt(tool.multiplier)} {tool.unit}</small></span>
-                </button>
+            <div className="tool-list grouped">
+              {toolCategories.map(({ category, items }) => (
+                <section className="tool-set" key={category}>
+                  <div className="tool-set-heading">
+                    <button className="tool-set-toggle" onClick={() => setCollapsedToolsets((current) => ({ ...current, [category]: !current[category] }))}><span>{collapsedToolsets[category] ? '▶' : '▼'}</span><b>{category}</b><small>{items.length}</small></button>
+                    <button className="tool-set-gear" title="Tool set settings" onClick={() => setCollapsedToolsets((current) => ({ ...current, [category]: false }))}>⚙</button>
+                  </div>
+                  {!collapsedToolsets[category] && <div className="tool-set-items">{items.map((tool) => (
+                    <button key={tool.id} className={tool.id === selectedToolId ? 'tool-row active' : 'tool-row'} onClick={() => { setSelectedToolId(tool.id); clearSelections(); changeMode('count'); }}>
+                      <ShapeMark shape={tool.shape} color={tool.color} size={tool.size || 14} />
+                      <span><b>{tool.name}</b><small>×{fmt(tool.multiplier)} {tool.unit}</small></span>
+                    </button>
+                  ))}</div>}
+                </section>
               ))}
             </div>
-            {selectedTool && <div className="active-tool"><span>Active count tool</span><b>{selectedTool.name}</b></div>}
+          </section>
+
+          <section className="rail-section properties-section">
+            <div className="rail-heading"><b>⚙ Properties</b><span>{selectedMeasurement ? 'Measurement' : selectedMarkup ? 'Markup' : selectedSnippet ? 'Snippet' : propertyTool ? 'Count Tool' : 'Nothing selected'}</span></div>
+            <div className="properties-body">
+              {propertyTool && (
+                <>
+                  <label><span>Name</span><input value={propertyTool.name} onChange={(event) => patchTool(propertyTool.id, { name: event.target.value })} /></label>
+                  <label><span>Tool Set / Category</span><input value={propertyTool.category || DEFAULT_TOOL_CATEGORY} onChange={(event) => patchTool(propertyTool.id, { category: event.target.value })} /></label>
+                  <div className="property-grid">
+                    <label><span>Shape</span><select value={propertyTool.shape} onChange={(event) => patchTool(propertyTool.id, { shape: event.target.value as Shape })}>{SHAPES.map((shape) => <option key={shape}>{shape}</option>)}</select></label>
+                    <label><span>Color</span><input type="color" value={propertyTool.color} onChange={(event) => patchTool(propertyTool.id, { color: event.target.value })} /></label>
+                    <label><span>Size</span><input type="number" min="8" max="40" value={propertyTool.size || 16} onChange={(event) => patchTool(propertyTool.id, { size: clamp(Number(event.target.value), 8, 40) })} /></label>
+                    <label><span>Opacity</span><input type="number" min="0.1" max="1" step="0.1" value={propertyTool.opacity ?? 1} onChange={(event) => patchTool(propertyTool.id, { opacity: clamp(Number(event.target.value), .1, 1) })} /></label>
+                    <label><span>Multiplier</span><input type="number" min="0" step="0.01" value={propertyTool.multiplier} onChange={(event) => patchTool(propertyTool.id, { multiplier: Math.max(0, Number(event.target.value)) })} /></label>
+                    <label><span>Unit</span><input value={propertyTool.unit} onChange={(event) => patchTool(propertyTool.id, { unit: event.target.value })} /></label>
+                  </div>
+                </>
+              )}
+              {selectedMeasurement && (
+                <>
+                  <label><span>Name</span><input value={selectedMeasurement.name} onChange={(event) => patchMeasurement({ name: event.target.value })} /></label>
+                  <div className="property-grid">
+                    <label><span>Type</span><input value={measurementKindLabel(selectedMeasurement.kind)} readOnly /></label>
+                    <label><span>Color</span><input type="color" value={selectedMeasurement.color || '#4B6623'} onChange={(event) => patchMeasurement({ color: event.target.value })} /></label>
+                    <label><span>Line Width</span><input type="number" min="1" max="8" step=".25" value={selectedMeasurement.lineWidth || 2.25} onChange={(event) => patchMeasurement({ lineWidth: Number(event.target.value) })} /></label>
+                    <label><span>Opacity</span><input type="number" min=".1" max="1" step=".1" value={selectedMeasurement.opacity ?? 1} onChange={(event) => patchMeasurement({ opacity: Number(event.target.value) })} /></label>
+                  </div>
+                </>
+              )}
+              {selectedMarkup && (
+                <>
+                  <label><span>Type</span><input value={markupLabel(selectedMarkup.kind)} readOnly /></label>
+                  {selectedMarkup.kind === 'text' && <label><span>Text</span><textarea value={selectedMarkup.text || ''} onChange={(event) => patchMarkup({ text: event.target.value })} /></label>}
+                  <div className="property-grid">
+                    <label><span>Color</span><input type="color" value={selectedMarkup.color} onChange={(event) => patchMarkup({ color: event.target.value })} /></label>
+                    <label><span>Line Width</span><input type="number" min="1" max="10" step=".5" value={selectedMarkup.strokeWidth} onChange={(event) => patchMarkup({ strokeWidth: Number(event.target.value) })} /></label>
+                    <label><span>Opacity</span><input type="number" min=".1" max="1" step=".1" value={selectedMarkup.opacity} onChange={(event) => patchMarkup({ opacity: Number(event.target.value) })} /></label>
+                  </div>
+                </>
+              )}
+              {selectedSnippet && (
+                <>
+                  <label><span>Title</span><input value={selectedSnippet.title} onChange={(event) => patchSnippet({ title: event.target.value })} /></label>
+                  <label><span>Note</span><textarea value={selectedSnippet.note} onChange={(event) => patchSnippet({ note: event.target.value })} /></label>
+                </>
+              )}
+              {!propertyTool && !selectedMeasurement && !selectedMarkup && !selectedSnippet && <div className="empty-compact">Select a count symbol, measurement, markup, or snippet. Appearance and naming controls will appear here.</div>}
+            </div>
             <button className="button danger wide" disabled={!selectedMarkId && !selectedMeasurementId && !selectedMarkupId && !selectedSnippetId} onClick={deleteSelected}>Delete Selected</button>
           </section>
         </aside>
@@ -846,8 +1138,16 @@ export default function AppNext() {
             </div>
           )}
           {pdfDoc && (
-            <div className={mode === 'pan' ? 'drawing-scroll pan-mode' : 'drawing-scroll count-mode'}>
-              <div className="drawing-stage" style={{ width: pageSize.width, height: pageSize.height }}>
+            <div
+              ref={drawingViewportRef}
+              className={mode === 'pan' || spaceDown ? 'drawing-scroll pan-mode' : mode === 'count' ? 'drawing-scroll count-mode' : 'drawing-scroll'}
+              onWheel={wheelZoom}
+              onPointerDown={panPointerDown}
+              onPointerMove={panPointerMove}
+              onPointerUp={panPointerUp}
+              onPointerCancel={panPointerUp}
+            >
+              <div className="drawing-stage" style={{ width: pageSize.width, height: pageSize.height, transform: `translate(calc(-50% + ${viewOffset.x}px), calc(-50% + ${viewOffset.y}px))` }}>
                 <canvas ref={canvasRef} />
                 <svg
                   ref={overlayRef}
@@ -870,12 +1170,12 @@ export default function AppNext() {
                     onSelectMarkup={(id) => {
                       clearSelections();
                       setSelectedMarkupId(id);
-                      setRightTab('annotations');
+                      activatePanel('markups');
                     }}
                     onSelectSnippet={(id) => {
                       clearSelections();
                       setSelectedSnippetId(id);
-                      setRightTab('annotations');
+                      activatePanel('markups');
                     }}
                   />
 
@@ -890,7 +1190,7 @@ export default function AppNext() {
                       setSelectedMeasurementId(measurement.id);
                     };
                     return (
-                      <g key={measurement.id} className={selected ? `measurement-graphic ${measurement.kind} selected` : `measurement-graphic ${measurement.kind}`}>
+                      <g key={measurement.id} className={selected ? `measurement-graphic ${measurement.kind} selected` : `measurement-graphic ${measurement.kind}`} style={{ color: measurement.color || '#4B6623', opacity: measurement.opacity ?? 1, ['--measurement-line-width' as string]: `${measurement.lineWidth || 2.25}` }}>
                         {measurement.kind === 'area' && <polygon points={points} onClick={clickMeasurement} />}
                         {measurement.kind === 'perimeter' && <polygon points={points} onClick={clickMeasurement} />}
                         {(measurement.kind === 'distance' || measurement.kind === 'polyline') && <polyline points={points} onClick={clickMeasurement} />}
@@ -917,10 +1217,13 @@ export default function AppNext() {
                         setSelectedMarkId(mark.id);
                       },
                     };
-                    if (tool.shape === 'circle') return <circle key={mark.id} {...common} cx={x} cy={y} r="8" fill={tool.color} />;
-                    if (tool.shape === 'square') return <rect key={mark.id} {...common} x={x - 8} y={y - 8} width="16" height="16" fill={tool.color} />;
-                    if (tool.shape === 'diamond') return <rect key={mark.id} {...common} x={x - 7} y={y - 7} width="14" height="14" fill={tool.color} transform={`rotate(45 ${x} ${y})`} />;
-                    return <polygon key={mark.id} {...common} points={`${x},${y - 9} ${x - 9},${y + 8} ${x + 9},${y + 8}`} fill={tool.color} />;
+                    const symbolSize = clamp(tool.size || 16, 8, 40);
+                    const radius = symbolSize / 2;
+                    const opacity = tool.opacity ?? 1;
+                    if (tool.shape === 'circle') return <circle key={mark.id} {...common} cx={x} cy={y} r={radius} fill={tool.color} opacity={opacity} />;
+                    if (tool.shape === 'square') return <rect key={mark.id} {...common} x={x - radius} y={y - radius} width={symbolSize} height={symbolSize} fill={tool.color} opacity={opacity} />;
+                    if (tool.shape === 'diamond') return <rect key={mark.id} {...common} x={x - radius * .88} y={y - radius * .88} width={radius * 1.76} height={radius * 1.76} fill={tool.color} opacity={opacity} transform={`rotate(45 ${x} ${y})`} />;
+                    return <polygon key={mark.id} {...common} points={`${x},${y - radius} ${x - radius},${y + radius * .9} ${x + radius},${y + radius * .9}`} fill={tool.color} opacity={opacity} />;
                   })}
 
                   {measurementDraft.length > 0 && (
@@ -959,94 +1262,63 @@ export default function AppNext() {
           </div>
         </main>
 
-        <aside className="right-rail">
-          <div className="right-tabs">
-            <button className={rightTab === 'takeoff' ? 'active' : ''} onClick={() => setRightTab('takeoff')}>Live Takeoff</button>
-            <button className={rightTab === 'annotations' ? 'active' : ''} onClick={() => setRightTab('annotations')}>Annotations</button>
-            <button className={rightTab === 'sync' ? 'active' : ''} onClick={() => setRightTab('sync')}>Sync Review</button>
+        <aside
+          className="right-rail"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => dockPanel(event, 'right')}
+        >
+          <div className="right-tabs dock-tabbar">
+            {(Object.keys(PANEL_LABELS) as DockPanel[]).filter((panel) => panelDock[panel] === 'right').map((panel) => (
+              <button key={panel} draggable onDragStart={(event) => dragPanel(event, panel)} className={activeRightPanel === panel ? 'active' : ''} onClick={() => setActiveRightPanel(panel)}>{PANEL_LABELS[panel]}</button>
+            ))}
           </div>
-
-          {rightTab === 'takeoff' && (
-            <div className="right-content">
-              <div className="panel-title"><b>Takeoff Summary</b><span>{marks.length} marks · {measurements.length} measurements</span></div>
-              <div className={pageCalibration ? 'scale-card scaled' : 'scale-card'}>
-                <span>Page {page} scale</span>
-                <b>{pageCalibration?.label || 'Unscaled'}</b>
-                <small>{pageCalibration ? (pageCalibration.source === 'manual' ? 'Two-point calibration' : 'Architectural preset') : 'Set a scale before using measurement tools.'}</small>
-              </div>
-
-              <div className="subsection-title"><b>Count quantities</b><span>{summary.length} tools</span></div>
-              {!summary.length && <div className="empty-compact">Placed count marks will summarize here.</div>}
-              <div className="summary-table">
-                {summary.map((row) => (
-                  <div className="summary-row" key={row.tool.id}>
-                    <span><ShapeMark shape={row.tool.shape} color={row.tool.color} /><span><b>{row.tool.name}</b><small>{row.locations} locations</small></span></span>
-                    <strong>{fmt(row.qty)}</strong>
-                    <small>{row.tool.unit}</small>
-                  </div>
-                ))}
-              </div>
-
-              <div className="subsection-title"><b>Measurements</b><span>{measurementRows.length}</span></div>
-              {!measurementRows.length && <div className="empty-compact">Distance, polyline, area, and perimeter measurements will appear here.</div>}
-              <div className="measurement-list">
-                {measurementRows.map(({ measurement, value }) => (
-                  <button
-                    key={measurement.id}
-                    className={measurement.id === selectedMeasurementId ? 'measurement-row selected' : 'measurement-row'}
-                    onClick={() => {
-                      setPage(measurement.page);
-                      clearSelections();
-                      setSelectedMeasurementId(measurement.id);
-                    }}
-                  >
-                    <span className={`measurement-kind-icon ${measurement.kind}`} />
-                    <span><b>{measurement.name}</b><small>Page {measurement.page} · {measurement.points.length} points</small></span>
-                    <strong>{formatMeasurement(value, measurement.kind)}</strong>
-                  </button>
-                ))}
-              </div>
-
-              <div className="rule-placeholder"><span>Controlled downstream connection</span><b>Takeoff → Sync Review → Estimate / BOM</b><p>Count and measurement data remain takeoff records until an explicit downstream sync is approved.</p></div>
-            </div>
-          )}
-
-          {rightTab === 'annotations' && (
-            <AnnotationPanel
-              markups={markups}
-              snippets={snippets}
-              selectedMarkupId={selectedMarkupId}
-              selectedSnippetId={selectedSnippetId}
-              onSelectMarkup={(id) => { clearSelections(); setSelectedMarkupId(id); }}
-              onSelectSnippet={(id) => { clearSelections(); setSelectedSnippetId(id); }}
-              onChangeMarkups={setMarkups}
-              onChangeSnippets={setSnippets}
-              onGoToPage={setPage}
-              onDeleteSelected={deleteSelected}
-            />
-          )}
-
-          {rightTab === 'sync' && (
-            <div className="right-content">
-              <div className="panel-title"><b>Sync Review</b><span>{syncRequired ? 'Changes pending' : 'No changes'}</span></div>
-              <p className="sync-help">Drawing changes never overwrite Estimate/BOM quantities automatically. Review each difference and apply only the rows you intend to change.</p>
-              {!syncRows.length && <div className="empty-compact">Complete a count takeoff first.</div>}
-              <div className="sync-table">
-                {syncRows.map((row) => (
-                  <label className="sync-row" key={row.tool.id}>
-                    <input type="checkbox" checked={syncSelection[row.tool.id] ?? true} onChange={(event) => setSyncSelection({ ...syncSelection, [row.tool.id]: event.target.checked })} />
-                    <span><b>{row.tool.name}</b><small>{row.tool.unit}</small></span>
-                    <span><small>Takeoff</small><b>{fmt(row.qty)}</b></span>
-                    <span><small>Estimate</small><b>{fmt(row.current)}</b></span>
-                    <span className={row.difference === 0 ? 'diff zero' : 'diff'}><small>Difference</small><b>{row.difference > 0 ? '+' : ''}{fmt(row.difference)}</b></span>
-                  </label>
-                ))}
-              </div>
-              <button className="button primary wide" disabled={!syncRows.some((row) => (syncSelection[row.tool.id] ?? true) && row.difference !== 0)} onClick={applySelectedSync}>Apply Selected Changes</button>
-              <div className="local-preview-note">The current desktop phase applies approved changes to a local estimate preview only. Shared ScopeLogic Quote/BOM writeback remains an explicit later integration step.</div>
-            </div>
-          )}
+          <div className="right-content dock-content">
+            {activeRightPanel === 'measurements' && panelDock.measurements === 'right' && (
+              <>
+                <div className="panel-title"><b>Measurements</b><span>{measurementRows.length}</span></div>
+                <div className="measurement-list">{measurementRows.map(({ measurement, value }) => <button key={measurement.id} className={measurement.id === selectedMeasurementId ? 'measurement-row selected' : 'measurement-row'} onClick={() => { setPage(measurement.page); clearSelections(); setSelectedMeasurementId(measurement.id); }}><span className={`measurement-kind-icon ${measurement.kind}`} /><span><b>{measurement.name}</b><small>Page {measurement.page} · {measurement.points.length} points</small></span><strong>{formatMeasurement(value, measurement.kind)}</strong></button>)}</div>
+                {!measurementRows.length && <div className="empty-compact">Distance, polyline, area, and perimeter measurements appear here.</div>}
+              </>
+            )}
+            {activeRightPanel === 'markups' && panelDock.markups === 'right' && <AnnotationPanel markups={markups} snippets={snippets} selectedMarkupId={selectedMarkupId} selectedSnippetId={selectedSnippetId} onSelectMarkup={(id) => { clearSelections(); setSelectedMarkupId(id); }} onSelectSnippet={(id) => { clearSelections(); setSelectedSnippetId(id); }} onChangeMarkups={setMarkups} onChangeSnippets={setSnippets} onGoToPage={setPage} onDeleteSelected={deleteSelected} />}
+            {activeRightPanel === 'sync' && panelDock.sync === 'right' && (
+              <>
+                <div className="panel-title"><b>Sync Review</b><span>{syncRequired ? 'Changes pending' : 'No changes'}</span></div>
+                <p className="sync-help">Drawing changes never overwrite Estimate/BOM quantities automatically. Review each difference and apply only the rows you intend to change.</p>
+                <div className="sync-table">{syncRows.map((row) => <label className="sync-row" key={row.tool.id}><input type="checkbox" checked={syncSelection[row.tool.id] ?? true} onChange={(event) => setSyncSelection({ ...syncSelection, [row.tool.id]: event.target.checked })}/><span><b>{row.tool.name}</b><small>{row.tool.unit}</small></span><span><small>Takeoff</small><b>{fmt(row.qty)}</b></span><span><small>Estimate</small><b>{fmt(row.current)}</b></span><span className={row.difference === 0 ? 'diff zero' : 'diff'}><small>Difference</small><b>{row.difference > 0 ? '+' : ''}{fmt(row.difference)}</b></span></label>)}</div>
+                <button className="button primary wide" disabled={!syncRows.some((row) => (syncSelection[row.tool.id] ?? true) && row.difference !== 0)} onClick={applySelectedSync}>Apply Selected Changes</button>
+                <div className="local-preview-note">This desktop demo applies approved changes to a local estimate preview. Browser Quote/BOM writeback remains a later integration step.</div>
+              </>
+            )}
+          </div>
         </aside>
+
+        <section className={bottomCollapsed ? 'bottom-dock collapsed' : 'bottom-dock'} style={{ height: bottomCollapsed ? 38 : bottomHeight }}>
+          <div className="bottom-resize-handle" onPointerDown={beginBottomResize} onPointerMove={moveBottomResize} onPointerUp={endBottomResize} onPointerCancel={endBottomResize} onDoubleClick={() => setBottomCollapsed((value) => !value)} />
+          <div className="bottom-dock-head" onDoubleClick={() => setBottomCollapsed((value) => !value)}>
+            <button onClick={() => setBottomCollapsed((value) => !value)}>{bottomCollapsed ? '▲' : '▼'}</button>
+            <b>Takeoff Totals</b>
+            <span>{filteredCountRows.length} of {countRows.length} rows · {marks.length} count marks</span>
+            <small>Drag the divider to resize. Double-click to collapse / restore.</small>
+          </div>
+          {!bottomCollapsed && (
+            <div className="count-table-wrap">
+              <div className="count-grid count-header"><span>Category</span><span>Tool</span><span>Page</span><span>Locations</span><span>Qty</span><span>Unit</span></div>
+              <div className="count-grid count-filters">
+                <input value={countFilters.category} onChange={(event) => setCountFilters({ ...countFilters, category: event.target.value })} placeholder="Filter…" />
+                <input value={countFilters.tool} onChange={(event) => setCountFilters({ ...countFilters, tool: event.target.value })} placeholder="Filter…" />
+                <input value={countFilters.page} onChange={(event) => setCountFilters({ ...countFilters, page: event.target.value })} placeholder="Page…" />
+                <span />
+                <span />
+                <input value={countFilters.unit} onChange={(event) => setCountFilters({ ...countFilters, unit: event.target.value })} placeholder="Unit…" />
+              </div>
+              <div className="count-table-body">
+                {filteredCountRows.map((row) => <button key={row.key} className="count-grid count-row" onClick={() => { setPage(row.page); setSelectedToolId(row.tool.id); clearSelections(); changeMode('select'); }}><span>{row.category}</span><span><ShapeMark shape={row.tool.shape} color={row.tool.color} size={12}/><b>{row.tool.name}</b></span><span>{row.page}</span><strong>{row.locations}</strong><strong>{fmt(row.qty)}</strong><span>{row.unit}</span></button>)}
+                {!filteredCountRows.length && <div className="empty-compact">No count rows match the active column filters.</div>}
+              </div>
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );

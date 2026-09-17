@@ -13,10 +13,13 @@ export type ToolDownstreamLink = {
 export type Tool = {
   id: string;
   name: string;
+  category?: string;
   shape: Shape;
   color: string;
   multiplier: number;
   unit: string;
+  size?: number;
+  opacity?: number;
   downstream?: ToolDownstreamLink;
 };
 

@@ -14,6 +14,9 @@ export type Measurement = {
   kind: MeasurementKind;
   name: string;
   points: Point[];
+  color?: string;
+  lineWidth?: number;
+  opacity?: number;
 };
 
 export const PRESET_SCALES = [
