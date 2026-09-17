@@ -31,16 +31,8 @@ jobs:
       - name: Validate frontend
         run: npm run build
 
-      - name: Generate neutral Windows icon
-        shell: pwsh
-        run: |
-          Add-Type -AssemblyName System.Drawing
-          $source = Join-Path (Get-Location) 'src-tauri/icons/icon.png'
-          $target = Join-Path (Get-Location) 'src-tauri/icons/icon.ico'
-          $bitmap = New-Object System.Drawing.Bitmap $source
-          $icon = [System.Drawing.Icon]::FromHandle($bitmap.GetHicon())
-          $stream = [System.IO.File]::Open($target, [System.IO.FileMode]::Create)
-          try { $icon.Save($stream) } finally { $stream.Dispose(); $icon.Dispose(); $bitmap.Dispose() }
+      - name: Generate native application icons
+        run: npx tauri icon src-tauri/icons/icon.png
 
       - name: Build Tauri Windows installers
         run: npm run desktop:bundle
