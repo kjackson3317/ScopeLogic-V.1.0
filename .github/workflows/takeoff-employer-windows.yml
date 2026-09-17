@@ -45,7 +45,6 @@ jobs:
           $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::White,28)
           $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
           $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-          $g.FillRoundedRectangle = $null
           $g.FillRectangle($green,64,64,384,384)
           $g.DrawLine($pen,156,168,356,168)
           $g.DrawLine($pen,256,168,256,356)
