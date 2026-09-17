@@ -1,0 +1,47 @@
+name: Employer Takeoff Windows Installer
+
+on:
+  push:
+    branches:
+      - demo/employer-takeoff-desktop
+    paths:
+      - 'desktop/takeoff/**'
+      - '.github/workflows/takeoff-employer-windows.yml'
+  workflow_dispatch:
+
+jobs:
+  windows-installer:
+    name: Build Windows installer
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop/takeoff
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/takeoff/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Validate frontend
+        run: npm run build
+
+      - name: Build Tauri Windows installers
+        run: npm run desktop:bundle
+
+      - name: Upload Windows installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: Technology-Preconstruction-Takeoff-Windows
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            desktop/takeoff/src-tauri/target/release/bundle/msi/*.msi
+            desktop/takeoff/src-tauri/target/release/bundle/nsis/*.exe
