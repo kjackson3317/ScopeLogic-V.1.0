@@ -5,7 +5,7 @@ const nextConfig: NextConfig = demo ? {
   // Never inline real connection values into a demo build.
   env: { NEXT_PUBLIC_SUPABASE_URL: '', NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: '' },
   turbopack: { rules: {
-    '*.{ts,tsx}': { loaders: ['./scripts/demo-branding-loader.cjs'] },
+    '*.{ts,tsx}': { loaders: ['./scripts/demo-workspace-v2-loader.cjs'] },
   } },
   async headers() { return [{ source: '/:path*', headers: [
     { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'self' blob:; base-uri 'self'; form-action 'self'" },
