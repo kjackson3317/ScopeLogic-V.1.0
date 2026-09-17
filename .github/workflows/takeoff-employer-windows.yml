@@ -31,6 +31,28 @@ jobs:
       - name: Validate frontend
         run: npm run build
 
+      - name: Generate neutral source icon
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $path = Join-Path (Resolve-Path 'src-tauri/icons').Path 'icon.png'
+          $bmp = New-Object System.Drawing.Bitmap 512,512
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+          $g.Clear([System.Drawing.Color]::FromArgb(245,247,248))
+          $green = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(49,81,59))
+          $white = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+          $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::White,28)
+          $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+          $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+          $g.FillRoundedRectangle = $null
+          $g.FillRectangle($green,64,64,384,384)
+          $g.DrawLine($pen,156,168,356,168)
+          $g.DrawLine($pen,256,168,256,356)
+          $g.FillEllipse($white,226,326,60,60)
+          $bmp.Save($path,[System.Drawing.Imaging.ImageFormat]::Png)
+          $pen.Dispose(); $green.Dispose(); $white.Dispose(); $g.Dispose(); $bmp.Dispose()
+
       - name: Generate native application icons
         run: npx tauri icon src-tauri/icons/icon.png
 
