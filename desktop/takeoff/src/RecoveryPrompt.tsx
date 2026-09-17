@@ -14,7 +14,7 @@ export default function RecoveryPrompt({ snapshot, onRestore, onStartFresh }: Pr
     <div className="recovery-banner" role="dialog" aria-modal="true" aria-labelledby="recovery-title">
       <div className="recovery-card">
         <h2 id="recovery-title">Recovered Takeoff Session</h2>
-        <p>ScopeLogic found locally preserved Takeoff work. Restoring is always explicit; nothing will be pushed to the cloud or Quote/BOM by this action.</p>
+        <p>Technology Preconstruction Takeoff found locally preserved drawing work. Restoring is always explicit; nothing is pushed to an estimate or BOM by this action.</p>
         <div className="recovery-meta">
           <span>Project</span><b>{summary.name || 'Takeoff Project'}</b>
           <span>Drawing</span><b>{summary.drawingName || 'Unknown drawing'}</b>
