@@ -60,3 +60,9 @@ Preferred patterns:
 Existing resources may retain their current names to avoid unnecessary deployment risk, but newly created resources should follow this convention.
 
 Deployment validation marker: 2026-09-17 controlled employer-demo rollout after redundant Vercel Git connections were removed.
+
+## Compact hierarchy / contrast trial
+
+The employer demo now uses a denser folder-style sidebar: top-level work areas expand/collapse to compact child links, and the active child remains visually highlighted. Panel borders, section headers, nested cards, editor regions and list selections use stronger neutral contrast so adjacent work areas do not visually blend together. Typography is intentionally smaller in the demo to test an information-dense workstation layout before any equivalent production-wide visual change is adopted.
+
+Internal Notes is a two-column workspace in the demo: free-form notes remain on the left, while structured Project Review observations remain on the right. Review observations are searchable/filterable and can be promoted into a new SLR. Browser Drawing Takeoff is omitted from demo navigation because the Windows Technology Preconstruction Takeoff application is the drawing/takeoff environment.
