@@ -22,6 +22,28 @@ function remember(label: string) { window.sessionStorage.setItem(STORAGE_KEY, la
 function heading(group: Element) {
   return group.querySelector<HTMLElement>(':scope > span, :scope > .nav-label');
 }
+function setFolderOpen(group: HTMLElement, open: boolean) {
+  group.classList.toggle('open', open);
+  heading(group)?.setAttribute('aria-expanded', String(open));
+}
+function prepareFolder(group: HTMLElement) {
+  const folderHeading = heading(group);
+  if (!folderHeading) return;
+  group.classList.add('sl-nav-folder');
+  folderHeading.classList.add('sl-nav-folder-heading');
+  if (group.dataset.demoFolderReady === 'true') return;
+  group.dataset.demoFolderReady = 'true';
+  folderHeading.setAttribute('role', 'button');
+  folderHeading.setAttribute('tabindex', '0');
+  const toggle = () => setFolderOpen(group, !group.classList.contains('open'));
+  folderHeading.addEventListener('click', toggle);
+  folderHeading.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    toggle();
+  });
+  setFolderOpen(group, true);
+}
 function hubTabButtons() {
   const hub = document.querySelector<HTMLElement>('section[aria-label="Deliverables"]');
   if (!hub) return new Map<string, HTMLButtonElement>();
@@ -44,7 +66,7 @@ function syncCustomSelection(group: HTMLElement) {
   group.querySelectorAll<HTMLButtonElement>(':scope > button[data-demo-deliverable]').forEach((button) => {
     const active = button.dataset.hubLabel === current;
     button.classList.toggle('active', active);
-    button.setAttribute('aria-current', active ? 'page' : 'false');
+    if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
 }
 function syncHubSelection() {
@@ -59,6 +81,7 @@ function syncHubSelection() {
 }
 function openHubTab(nativeDeliverablesButton: HTMLButtonElement, item: Item, group: HTMLElement) {
   remember(item.hubLabel);
+  setFolderOpen(group, true);
   syncCustomSelection(group);
   nativeDeliverablesButton.click();
   let attempts = 0;
@@ -82,6 +105,7 @@ function install() {
     heading(candidate)?.textContent?.trim().toUpperCase() === 'DELIVERABLES'
   );
   if (!group) return false;
+  prepareFolder(group);
   const native = Array.from(group.querySelectorAll<HTMLButtonElement>(':scope > button')).find((button) => button.textContent?.trim() === 'Deliverables');
   if (!native) return false;
   native.style.display = 'none';
