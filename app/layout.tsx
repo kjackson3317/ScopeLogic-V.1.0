@@ -5,6 +5,7 @@ import './workspace-density.css';
 import './slr-template-search.css';
 import './review-observation-enhancer.css';
 import './workstation-uniformity-v2.css';
+import './workstation-uniformity-v3.css';
 import type { Metadata } from 'next';
 import WorkspaceSidebarLinks from './workspace-sidebar-links';
 import DismissibleUiBehavior from './dismissible-ui-behavior';
