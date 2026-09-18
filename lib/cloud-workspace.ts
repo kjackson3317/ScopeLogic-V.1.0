@@ -5,27 +5,42 @@ import type { WorkspaceSnapshot } from './cloud-workspace-legacy';
 
 const slrUid = (projectId: string, issue: { uid?: string }, index: number) => issue.uid || `${projectId}-slr-${index + 1}`;
 
+function slrRemovalsByProject(previous: WorkspaceSnapshot, snapshot: WorkspaceSnapshot) {
+  const currentProjectIds = new Set((snapshot.projects || []).map((project) => project.id));
+  const removed = new Map<string, string[]>();
+
+  for (const project of previous.projects || []) {
+    if (!currentProjectIds.has(project.id)) continue;
+    const before = previous.issuesByProject?.[project.id] || [];
+    const after = snapshot.issuesByProject?.[project.id] || [];
+    const afterUids = new Set(after.map((issue, index) => slrUid(project.id, issue, index)));
+    const removedUids = before
+      .map((issue, index) => slrUid(project.id, issue, index))
+      .filter((uid) => !afterUids.has(uid));
+    if (removedUids.length) removed.set(project.id, removedUids);
+  }
+
+  return removed;
+}
+
 async function saveWithSlrProtection(snapshot: WorkspaceSnapshot): Promise<void> {
   const current = await legacy.loadWorkspaceFromCloud();
   const previous = current.snapshot;
 
   if (previous) {
-    const currentProjectIds = new Set((snapshot.projects || []).map((project) => project.id));
-    const removedUids = new Set<string>();
+    const removedByProject = slrRemovalsByProject(previous, snapshot);
 
-    for (const project of previous.projects || []) {
-      if (!currentProjectIds.has(project.id)) continue;
-      const before = previous.issuesByProject?.[project.id] || [];
-      const after = snapshot.issuesByProject?.[project.id] || [];
-      const afterUids = new Set(after.map((issue, index) => slrUid(project.id, issue, index)));
-      before.forEach((issue, index) => {
-        const uid = slrUid(project.id, issue, index);
-        if (!afterUids.has(uid)) removedUids.add(uid);
-      });
-    }
-
-    if (removedUids.size > 1) {
-      throw new Error(`Cloud save blocked because the browser copy would remove ${removedUids.size} SLRs at once. Reload ScopeLogic to use the current cloud workspace before saving.`);
+    // Intentional cleanup inside one project is valid, including copied projects
+    // where users commonly remove several inherited SLRs at once. The old guard
+    // blocked any save that removed more than one SLR, which left those copied
+    // SLRs in cloud storage and made them reappear after reload.
+    //
+    // Keep a broad stale-tab safety check: a single browser save should never
+    // remove SLRs from multiple projects at once. That pattern is much more
+    // consistent with an outdated whole-workspace snapshot than normal editing.
+    if (removedByProject.size > 1) {
+      const removedCount = [...removedByProject.values()].reduce((sum, items) => sum + items.length, 0);
+      throw new Error(`Cloud save blocked because this browser copy would remove ${removedCount} SLRs across ${removedByProject.size} projects at once. Reload ScopeLogic to use the current cloud workspace before saving.`);
     }
   }
 
