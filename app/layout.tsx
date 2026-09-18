@@ -14,6 +14,7 @@ import DismissibleUiBehavior from './dismissible-ui-behavior';
 import SlrTemplateSearchEnhancer from './slr-template-search-enhancer';
 import ReviewObservationEnhancer from './review-observation-enhancer';
 import WorkstationUniformityBehavior from './workstation-uniformity-behavior';
+import DeliverablesNavigationEnhancer from './deliverables-navigation-enhancer';
 
 export const metadata: Metadata = {
   title: 'ScopeLogic v1.0',
@@ -25,5 +26,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body><DismissibleUiBehavior /><WorkspaceSidebarLinks /><SlrTemplateSearchEnhancer /><ReviewObservationEnhancer /><WorkstationUniformityBehavior />{children}</body></html>;
+  return <html lang="en"><body><DismissibleUiBehavior /><WorkspaceSidebarLinks /><SlrTemplateSearchEnhancer /><ReviewObservationEnhancer /><WorkstationUniformityBehavior /><DeliverablesNavigationEnhancer />{children}</body></html>;
 }
