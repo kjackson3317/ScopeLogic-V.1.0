@@ -1,0 +1,151 @@
+/* ScopeLogic workstation uniformity v5 — SLR deliverable ownership + inline preview. */
+:root{
+  --sl-green-ink:#26351a;
+  --sl-green-dark:#465d29;
+  --sl-green-mid:#667d42;
+  --sl-green-line:#87996c;
+  --sl-green-line-soft:#b8c5a6;
+  --sl-green-pale:#e6eddd;
+  --sl-green-pale-2:#f1f5ed;
+  --sl-workspace-bg:#f7f9f4;
+}
+
+/* Table banners: eliminate remaining gray header bands. */
+body .app-shell table thead th,
+body .workspace-shell table thead th,
+body main table thead th{
+  background:var(--sl-green-mid)!important;
+  color:#fff!important;
+  border-color:var(--sl-green-dark)!important;
+  font-weight:800!important;
+}
+body .app-shell table thead tr,
+body .workspace-shell table thead tr,
+body main table thead tr{background:var(--sl-green-mid)!important;}
+
+/* SLR identity/reference fields and disabled ID values should read as part of the green workstation, not gray controls. */
+body .app-shell .matrix-reference-grid .field>span,
+body .app-shell .matrix-reference-grid label>span,
+body .app-shell .matrix-editor-full .field>span{
+  color:var(--sl-green-ink)!important;
+  font-weight:800!important;
+}
+body .app-shell .matrix-reference-grid input:disabled,
+body .app-shell .matrix-editor-full input:disabled{
+  background:var(--sl-green-pale-2)!important;
+  color:var(--sl-green-ink)!important;
+  border-color:var(--sl-green-line)!important;
+  opacity:1!important;
+}
+
+/* SLR child/output banners. */
+body .app-shell .recommendation-heading,
+body .app-shell .slr-child-card-head,
+body .app-shell .rbb-system-section>.slr-child-card-head,
+body .app-shell .deliverable-rule-note,
+body .app-shell .detail-tabs{
+  background:var(--sl-green-pale)!important;
+  border-color:var(--sl-green-line)!important;
+  color:var(--sl-green-ink)!important;
+}
+body .app-shell .recommendation-sections,
+body .app-shell .slr-child-card,
+body .app-shell .rbb-system-section,
+body .app-shell .tab-panel,
+body .app-shell .deliverable-rule-note{
+  border-color:var(--sl-green-line)!important;
+  box-shadow:none!important;
+}
+body .app-shell .detail-tabs button{
+  background:var(--sl-green-pale-2)!important;
+  color:var(--sl-green-ink)!important;
+  border-color:var(--sl-green-line)!important;
+}
+body .app-shell .detail-tabs button.active{
+  background:var(--sl-green-mid)!important;
+  color:#fff!important;
+  border-color:var(--sl-green-dark)!important;
+}
+body .app-shell .tab-panel.checklist,
+body .app-shell .tab-panel{
+  background:#fff!important;
+}
+body .app-shell .tab-panel.checklist label,
+body .app-shell .deliverable-rule-note{
+  background:var(--sl-green-pale-2)!important;
+}
+
+/* Deliverables dropdown entries behave like compact preview selectors, never navigation links. */
+body .app-shell .nav-group>.sl-deliverable-nav-link{
+  display:block!important;
+  width:100%!important;
+  min-height:27px!important;
+  margin:0!important;
+  padding:5px 9px 5px 18px!important;
+  border:0!important;
+  border-left:2px solid transparent!important;
+  border-radius:0!important;
+  background:transparent!important;
+  color:inherit!important;
+  text-align:left!important;
+  font:inherit!important;
+  cursor:pointer!important;
+}
+body .app-shell .nav-group>.sl-deliverable-nav-link:hover{background:rgba(230,237,221,.12)!important;border-left-color:var(--sl-green-line)!important;}
+body .app-shell .nav-group>.sl-deliverable-nav-link.active{background:rgba(230,237,221,.18)!important;border-left-color:#b9d589!important;color:#fff!important;font-weight:800!important;}
+
+/* Replace the normal root workspace body with an in-place deliverable preview while selected. */
+body.sl-deliverable-preview-open .app-shell .main>*:not(.topbar):not(.sl-inline-deliverables-host){display:none!important;}
+.sl-inline-deliverables-host{display:block!important;width:100%;padding:12px 16px 30px;box-sizing:border-box;background:var(--sl-workspace-bg);}
+.sl-deliverable-preview{border:1px solid var(--sl-green-line);background:#fff;border-radius:3px;box-shadow:none;overflow:hidden;}
+.sl-deliverable-preview>header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:10px 12px;background:var(--sl-green-pale);border-bottom:1px solid var(--sl-green-line);}
+.sl-deliverable-preview>header span{display:block;font-size:9px;font-weight:900;letter-spacing:.08em;color:var(--sl-green-dark);}
+.sl-deliverable-preview>header h1{margin:2px 0 2px;font-size:19px;color:var(--sl-green-ink);}
+.sl-deliverable-preview>header p{margin:0;font-size:11px;color:#4b5840;}
+.sl-preview-actions{display:flex;gap:6px;align-items:center;}
+.sl-preview-actions button,.sl-slr-deliverables button{min-height:27px;padding:4px 8px;border:1px solid var(--sl-green-line);border-radius:3px;background:var(--sl-green-pale-2);color:var(--sl-green-ink);font-size:10px;font-weight:800;cursor:pointer;}
+.sl-preview-actions button.primary,.sl-slr-deliverables button.primary{background:var(--sl-green-mid);color:#fff;border-color:var(--sl-green-dark);}
+.sl-deliverable-preview-table-wrap{overflow:auto;padding:8px;}
+.sl-deliverable-preview-table{width:100%;border-collapse:collapse;font-size:10px;}
+.sl-deliverable-preview-table th,.sl-deliverable-preview-table td{padding:5px 6px;border:1px solid var(--sl-green-line-soft);vertical-align:top;text-align:left;line-height:1.3;}
+.sl-deliverable-preview-table tbody tr:nth-child(even){background:#fafcf8;}
+.sl-empty-deliverable,.sl-preview-state{padding:18px!important;text-align:center!important;color:#66705f!important;background:var(--sl-green-pale-2)!important;}
+.sl-preview-state.error{color:#7d2d2d!important;background:#fff4f2!important;}
+.sl-release-note{display:flex;gap:10px;align-items:center;margin:0 8px 8px;padding:8px 10px;border:1px solid var(--sl-green-line);background:var(--sl-green-pale-2);font-size:10px;}
+.sl-release-note b{color:var(--sl-green-ink);}
+
+/* CL + VE now live inside the SLR record and use the same green banner language as RFI/RBB/CSC. */
+.sl-slr-deliverables-host{margin-top:8px;}
+.sl-slr-deliverables{border:1px solid var(--sl-green-line);border-radius:3px;background:#fff;overflow:hidden;}
+.sl-slr-deliverables-heading{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:8px 10px;background:var(--sl-green-pale);border-bottom:1px solid var(--sl-green-line);}
+.sl-slr-deliverables-heading>div:last-child{display:flex;gap:5px;flex-wrap:wrap;}
+.sl-slr-deliverables-heading span{display:block;font-size:8px;font-weight:900;letter-spacing:.08em;color:var(--sl-green-dark);}
+.sl-slr-deliverables-heading h3{margin:2px 0;font-size:13px;color:var(--sl-green-ink);}
+.sl-slr-deliverables-heading p{margin:0;font-size:9px;color:#56604f;}
+.sl-slr-subhead{padding:5px 9px;background:var(--sl-green-mid);color:#fff;font-size:9px;font-weight:900;letter-spacing:.05em;border-top:1px solid var(--sl-green-dark);border-bottom:1px solid var(--sl-green-dark);}
+.sl-slr-deliverable-card{margin:7px;border:1px solid var(--sl-green-line);border-radius:3px;background:#fff;overflow:hidden;}
+.sl-slr-deliverable-card.new{border-style:dashed;}
+.sl-slr-deliverable-card-head{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:5px 7px;background:var(--sl-green-pale-2);border-bottom:1px solid var(--sl-green-line);}
+.sl-slr-deliverable-card-head>div{display:flex;gap:7px;align-items:baseline;}
+.sl-slr-deliverable-card-head b{color:var(--sl-green-ink);font-size:10px;}
+.sl-slr-deliverable-card-head span{font-size:9px;color:#59634f;}
+.sl-slr-deliverable-card-head select{min-height:25px;height:25px;padding:2px 5px;border:1px solid var(--sl-green-line);background:#fff;color:var(--sl-green-ink);font-size:9px;}
+.sl-slr-deliverable-grid{display:grid;grid-template-columns:1fr 2fr;gap:5px;padding:7px;}
+.sl-slr-deliverable-grid label{display:flex;flex-direction:column;gap:2px;min-width:0;}
+.sl-slr-deliverable-grid label.wide{grid-column:1/-1;}
+.sl-slr-deliverable-grid label>span{font-size:8px;font-weight:800;color:var(--sl-green-ink);text-transform:uppercase;letter-spacing:.03em;}
+.sl-slr-deliverable-grid input,.sl-slr-deliverable-grid textarea{width:100%;box-sizing:border-box;border:1px solid var(--sl-green-line);border-radius:2px;background:#fff;color:#20281c;font-size:10px;padding:4px 6px;line-height:1.25;}
+.sl-slr-deliverable-grid textarea{min-height:48px!important;resize:vertical;}
+.sl-slr-deliverable-actions{display:flex;justify-content:flex-end;gap:5px;padding:0 7px 7px;}
+.sl-slr-message{margin:7px;padding:6px 8px;border:1px solid var(--sl-green-line);background:var(--sl-green-pale-2);font-size:9px;color:var(--sl-green-ink);}
+
+/* If an old /master-projects/.../deliverables URL is opened directly, it is a read-only preview only. */
+body.sl-deliverables-readonly-page main input:disabled,
+body.sl-deliverables-readonly-page main textarea:disabled,
+body.sl-deliverables-readonly-page main select:disabled{background:var(--sl-green-pale-2)!important;color:var(--sl-green-ink)!important;opacity:1!important;}
+
+@media(max-width:900px){
+  .sl-deliverable-preview>header,.sl-slr-deliverables-heading{flex-direction:column;}
+  .sl-slr-deliverable-grid{grid-template-columns:1fr;}
+  .sl-slr-deliverable-grid label.wide{grid-column:auto;}
+}
