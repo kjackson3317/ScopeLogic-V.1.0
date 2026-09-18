@@ -33,21 +33,32 @@ function deliverablesGroup(sidebar: HTMLElement) {
 function renderDeliverables(group: HTMLElement) {
   const heading = folderHeading(group);
   if (!heading) return;
-  if (group.dataset.deliverablesInline === 'true' && group.querySelector(':scope > .sl-deliverable-nav-link')) return;
-  Array.from(group.children).forEach((child) => { if (child !== heading) child.remove(); });
+  const existing = Array.from(group.querySelectorAll<HTMLButtonElement>(':scope > .sl-deliverable-nav-link'));
+  const existingByTab = new Map(existing.map((button) => [button.dataset.deliverablePreview || '', button]));
+
+  // React may restore the original navigation buttons during a workspace rerender. Remove every native child
+  // every pass so Deliverables remains a preview-only folder instead of quietly regaining page navigation.
+  Array.from(group.children).forEach((child) => {
+    if (child === heading || child.classList.contains('sl-deliverable-nav-link')) return;
+    child.remove();
+  });
+
   for (const [tab, label] of DELIVERABLE_ITEMS) {
-    const button = document.createElement('button');
-    button.type = 'button';
+    let button = existingByTab.get(tab);
+    if (!button || !group.contains(button)) {
+      button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'sl-deliverable-nav-link';
+      button.dataset.deliverablePreview = tab;
+      styleControl(button);
+      button.addEventListener('click', () => {
+        group.querySelectorAll<HTMLElement>(':scope > .sl-deliverable-nav-link').forEach((item) => item.classList.toggle('active', item === button));
+        setFolderOpen(group, true);
+        window.dispatchEvent(new CustomEvent('scopelogic:deliverable-preview', { detail: { tab, label } }));
+      });
+      group.appendChild(button);
+    }
     button.textContent = label;
-    button.className = 'sl-deliverable-nav-link';
-    button.dataset.deliverablePreview = tab;
-    styleControl(button);
-    button.addEventListener('click', () => {
-      group.querySelectorAll<HTMLElement>(':scope > .sl-deliverable-nav-link').forEach((item) => item.classList.toggle('active', item === button));
-      setFolderOpen(group, true);
-      window.dispatchEvent(new CustomEvent('scopelogic:deliverable-preview', { detail: { tab, label } }));
-    });
-    group.appendChild(button);
   }
   group.dataset.deliverablesInline = 'true';
 }
@@ -99,11 +110,15 @@ export default function WorkspaceSidebarLinks() {
     refresh();
     const observer = new MutationObserver(refresh);
     observer.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true, attributeFilter: ['class', 'aria-current'] });
-    const close = () => {
-      document.querySelectorAll<HTMLElement>('.sl-deliverable-nav-link').forEach((item) => item.classList.remove('active'));
+    const close = () => document.querySelectorAll<HTMLElement>('.sl-deliverable-nav-link').forEach((item) => item.classList.remove('active'));
+    const sidebarClick = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target || target.closest('.sl-deliverable-nav-link')) return;
+      if (document.body.classList.contains('sl-deliverable-preview-open')) window.dispatchEvent(new Event('scopelogic:close-deliverable-preview'));
     };
     window.addEventListener('scopelogic:close-deliverable-preview', close);
-    return () => { observer.disconnect(); window.removeEventListener('scopelogic:close-deliverable-preview', close); };
+    document.addEventListener('click', sidebarClick, true);
+    return () => { observer.disconnect(); window.removeEventListener('scopelogic:close-deliverable-preview', close); document.removeEventListener('click', sidebarClick, true); };
   }, []);
   return null;
 }
