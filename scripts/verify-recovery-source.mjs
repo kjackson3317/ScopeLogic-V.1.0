@@ -34,7 +34,7 @@ for (const filePath of sourceFiles) {
 }
 
 const wrapper = await readFile(join(root, 'lib', 'cloud-workspace.ts'), 'utf8');
-for (const requiredText of ['saveWithSlrProtection', 'removedUids.size > 1', 'guardedSaveQueue', 'loadWorkspaceFromCloud', 'saveWorkspaceToCloud']) {
+for (const requiredText of ['saveWithSlrProtection', 'slrRemovalsByProject', 'removedByProject.size > 1', 'guardedSaveQueue', 'loadWorkspaceFromCloud', 'saveWorkspaceToCloud']) {
   if (!wrapper.includes(requiredText)) violations.push(`lib/cloud-workspace.ts: missing recovery data-protection guard ${requiredText}`);
 }
 
