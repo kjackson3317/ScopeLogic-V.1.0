@@ -1,5 +1,6 @@
 /* Workstation uniformity v4 — final anti-drift layer for legacy selectors. */
 :root{
+  --line:var(--sl-green-line-soft);
   --sl-border:var(--sl-green-line);
   --sl-border-strong:var(--sl-green-dark);
   --sl-canvas:var(--sl-workspace-bg);
