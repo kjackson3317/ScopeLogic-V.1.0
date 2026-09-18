@@ -1,0 +1,35 @@
+/* ScopeLogic workstation uniformity v3 — catches remaining legacy/CSS-module surfaces. */
+body main :is(button:not(.danger-button):not(.danger),.secondary,.link-button){border-color:var(--sl-green-line)!important;box-shadow:none!important;}
+body :is(.topbar,.page-head,.workspace-head,.workspaceHead){border-color:var(--sl-green-dark)!important;box-shadow:none!important;}
+body .topbar{border-bottom:2px solid var(--sl-green-dark)!important;}
+body .page-head{border-bottom:1px solid var(--sl-green-line)!important;}
+body hr{border-color:var(--sl-green-line-soft)!important;}
+body fieldset{border:1px solid var(--sl-green-line)!important;border-radius:3px!important;box-shadow:none!important;}
+body details{border-color:var(--sl-green-line)!important;border-radius:3px!important;box-shadow:none!important;}
+body details>summary{background:var(--sl-green-pale)!important;border-color:var(--sl-green-line)!important;}
+
+/* CSS module pages: anchor their primary panels/tables even when class names are hashed. */
+body main section[class*="panel"],body main article[class*="card"]{border-color:var(--sl-green-line)!important;border-radius:3px!important;box-shadow:none!important;}
+body main div[class*="tableWrap"],body main div[class*="table-wrap"]{border:1px solid var(--sl-green-line)!important;border-radius:3px!important;box-shadow:none!important;}
+body main div[class*="toolbar"],body main div[class*="Toolbar"],body main div[class*="controls"],body main div[class*="Controls"]{border-color:var(--sl-green-line)!important;box-shadow:none!important;}
+body main div[class*="header"],body main div[class*="Header"]{border-color:var(--sl-green-line)!important;}
+
+/* Remove legacy gray card spacing and oversized form fields across all workspaces. */
+body .workspace-shell .main,body .workspace-shell main{background:var(--sl-workspace-bg)!important;}
+body .workspace-shell :is(.form-grid,.setup-grid,.summary-grid,.dashboard-grid,.cards,.card-grid,.settings-grid,.control-grid){gap:7px!important;}
+body .workspace-shell :is(.form-card,.dashboard-card,.summary-card,.project-card,.quote-panel,.template-card){margin-bottom:7px!important;}
+body .workspace-shell :is(input:not([type=checkbox]):not([type=radio]),select){height:27px!important;min-height:27px!important;}
+body .workspace-shell textarea{min-height:48px!important;}
+
+/* Make headers and selections read as one connected workstation. */
+body :is(.quote-items-head,.quote-savebar,.quote-switcher-bar,.project-total-summary,.quote-project-summary,.breakout-manager,.breakout-source-tabs,.breakout-summary-head,.bom-bulk-actions,.takeoff-project-setup,.compact-rule-library){border-color:var(--sl-green-line)!important;box-shadow:none!important;}
+body :is(.quote-items-head,.breakout-summary-head,.takeoff-system-title){background:var(--sl-green-pale)!important;}
+body :is(.template-library,.rule-library-select,.takeoff-control-grid){border-radius:3px!important;}
+
+/* System choices must all be small controls, never large pills/cards. */
+body .system-filter-chips label,body .system-chip-grid label,body .combined-system-list label{max-width:max-content!important;min-width:0!important;height:24px!important;min-height:24px!important;padding:2px 6px!important;border-radius:3px!important;font-size:9px!important;line-height:1!important;}
+body .system-filter-chips{align-content:flex-start!important;}
+
+/* Long libraries: compact search-first presentation. */
+body .quote-template-search,body .takeoff-rule-search{padding:4px!important;border:1px solid var(--sl-green-line)!important;border-radius:3px!important;background:var(--sl-green-pale-2)!important;}
+body .sl-library-show-all{min-height:25px!important;font-size:9px!important;}
