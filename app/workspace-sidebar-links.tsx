@@ -113,7 +113,7 @@ export default function WorkspaceSidebarLinks() {
     const close = () => document.querySelectorAll<HTMLElement>('.sl-deliverable-nav-link').forEach((item) => item.classList.remove('active'));
     const sidebarClick = (event: Event) => {
       const target = event.target as HTMLElement | null;
-      if (!target || target.closest('.sl-deliverable-nav-link')) return;
+      if (!target || !target.closest('aside.sidebar') || target.closest('.sl-deliverable-nav-link')) return;
       if (document.body.classList.contains('sl-deliverable-preview-open')) window.dispatchEvent(new Event('scopelogic:close-deliverable-preview'));
     };
     window.addEventListener('scopelogic:close-deliverable-preview', close);
