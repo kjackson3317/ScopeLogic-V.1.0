@@ -4,8 +4,10 @@ import App from './AppBluebeam';
 import { isNativeTakeoffShell, loadNativeTakeoffRecovery } from './native-persistence';
 import { recoveryStorageKey } from './persistence';
 import type { TakeoffRecoverySnapshot } from './takeoff-model';
+import { installCountColumnChooser } from './count-column-chooser';
 import './styles.css';
 import './bluebeam.css';
+import './count-column-chooser.css';
 
 function parseLocalRecovery(): TakeoffRecoverySnapshot | null {
   try {
@@ -42,6 +44,7 @@ async function bootstrap() {
       <App />
     </React.StrictMode>,
   );
+  installCountColumnChooser();
 }
 
 void bootstrap();
