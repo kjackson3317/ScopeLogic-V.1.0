@@ -29,3 +29,5 @@ body .app-shell .matrix-editor-full .sl-slr-deliverables-host{
 
 /* Inline Deliverables preview controller owns the main workspace when a Deliverables child is selected. */
 body.sl-deliverable-preview-open .app-shell .main > .sl-inline-deliverables-host-v2{display:block!important;}
+
+/* Consolidated deployment marker: inline SLR editor + read-only Deliverables preview controller. */
