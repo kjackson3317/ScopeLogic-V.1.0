@@ -46,7 +46,7 @@ function dedicatedDeliverablesNav() {
   if (!/^\/master-projects\/[^/]+\/deliverables\/?$/.test(window.location.pathname)) return false;
   const nav = Array.from(document.querySelectorAll<HTMLElement>('aside nav')).find((candidate) => {
     const text = candidate.textContent || '';
-    return text.includes('ScopeLogic Matrix') && text.includes('Bid Alignment');
+    return (text.includes('ScopeLogic Matrix') || text.includes('Scope Matrix / RBB')) && text.includes('Bid Alignment');
   });
   if (!nav) return false;
 
@@ -68,6 +68,7 @@ function dedicatedDeliverablesNav() {
     if (button.dataset.deliverableQueryBound !== 'true') {
       button.dataset.deliverableQueryBound = 'true';
       button.addEventListener('click', () => {
+        nav.dataset.appliedDeliverableTab = tab;
         setTabQuery(tab);
         if (tab === 'clarifications') window.requestAnimationFrame(() => filterClarificationRows('CL'));
       });
@@ -86,6 +87,7 @@ function dedicatedDeliverablesNav() {
     rfi.textContent = DELIVERABLE_LABELS.rfi;
     rfi.dataset.deliverableTab = 'rfi';
     rfi.addEventListener('click', () => {
+      nav.dataset.appliedDeliverableTab = 'rfi';
       setTabQuery('rfi');
       clickAfterRender(clarifications, 'RFI');
       Array.from(nav.querySelectorAll(':scope > button')).forEach((item) => item.classList.toggle('active', item === rfi));
@@ -104,20 +106,36 @@ function dedicatedDeliverablesNav() {
 
   const requested = new URLSearchParams(window.location.search).get('tab') || 'matrix';
   const rfiButton = nav.querySelector<HTMLButtonElement>('[data-deliverable-tab="rfi"]');
+  const targetMap: Record<string,HTMLButtonElement|undefined> = {
+    matrix,
+    clarifications,
+    checklist,
+    ve,
+    'bid-internal': bidInternal,
+    'bid-report': bidReport,
+  };
+
   if (requested === 'rfi' && clarifications && rfiButton) {
-    const alreadyRfi = rfiButton.classList.contains('active') && Array.from(document.querySelectorAll('table tbody tr')).some((row) => /^RFI-/i.test(row.firstElementChild?.textContent?.trim() || '') && !(row as HTMLTableRowElement).hidden);
-    if (!alreadyRfi) {
+    if (nav.dataset.appliedDeliverableTab !== 'rfi') {
+      nav.dataset.appliedDeliverableTab = 'rfi';
       clickAfterRender(clarifications, 'RFI');
-      Array.from(nav.querySelectorAll(':scope > button')).forEach((item) => item.classList.toggle('active', item === rfiButton));
+    } else {
+      filterClarificationRows('RFI');
     }
-  } else if (requested === 'clarifications' && clarifications) {
-    window.requestAnimationFrame(() => filterClarificationRows('CL'));
+    Array.from(nav.querySelectorAll(':scope > button')).forEach((item) => item.classList.toggle('active', item === rfiButton));
+  } else {
+    const target = targetMap[requested];
+    if (target && nav.dataset.appliedDeliverableTab !== requested) {
+      nav.dataset.appliedDeliverableTab = requested;
+      clickAfterRender(target, requested === 'clarifications' ? 'CL' : undefined);
+    } else if (requested === 'clarifications') {
+      filterClarificationRows('CL');
+    }
   }
 
   if (requested === 'bid-report') {
-    const workspace = document.querySelector<HTMLElement>('section main, section[class*="workspace"], div[class*="workspace"]');
     const reportTitle = Array.from(document.querySelectorAll<HTMLElement>('h1,h2')).find((item) => /Bid Alignment Report/i.test(item.textContent || ''));
-    const host = reportTitle?.parentElement?.parentElement || workspace;
+    const host = reportTitle?.parentElement?.parentElement;
     if (host && !host.querySelector('.sl-official-release-link')) {
       const link = document.createElement('a');
       link.className = 'sl-official-release-link';
