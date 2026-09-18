@@ -17,14 +17,15 @@ const DELIVERABLE_ITEMS = [
   ['bid-report', 'Reports / Official Releases'],
 ] as const;
 
+function folderHeading(group: Element) {
+  return group.querySelector<HTMLElement>(':scope > .nav-label, :scope > span');
+}
 function styleLink(link: HTMLAnchorElement) { Object.assign(link.style, LINK_STYLE); }
-
 function addLink(group: Element, href: string, label: string, id: string) {
   if (document.getElementById(id)) return;
   const link = document.createElement('a');
   link.id = id; link.href = href; link.textContent = label; styleLink(link); group.appendChild(link);
 }
-
 function masterProjectIdFromPath() {
   return window.location.pathname.match(/^\/master-projects\/([^/]+)/)?.[1] || '';
 }
@@ -33,10 +34,10 @@ function installMasterDeliverables(sidebar: HTMLElement) {
   const masterId = masterProjectIdFromPath();
   if (!masterId) return;
   const group = Array.from(sidebar.querySelectorAll<HTMLElement>('.nav-group')).find((item) =>
-    item.querySelector(':scope > span')?.textContent?.trim().toUpperCase() === 'DELIVERABLES'
+    folderHeading(item)?.textContent?.trim().toUpperCase() === 'DELIVERABLES'
   );
   if (!group || group.dataset.deliverablesV2 === 'true') return;
-  const heading = group.querySelector(':scope > span');
+  const heading = folderHeading(group);
   if (!heading) return;
 
   Array.from(group.children).forEach((child) => { if (child !== heading) child.remove(); });
@@ -57,7 +58,7 @@ function installMasterDeliverables(sidebar: HTMLElement) {
 
 function installWorkspaceLinks(sidebar: HTMLElement) {
   const adminGroup = Array.from(sidebar.querySelectorAll('.nav-group')).find((group) =>
-    group.querySelector(':scope > span')?.textContent?.trim().toUpperCase() === 'ADMINISTRATION'
+    folderHeading(group)?.textContent?.trim().toUpperCase() === 'ADMINISTRATION'
   );
   if (adminGroup) addLink(adminGroup, '/admin/users', 'User Management', 'scopelogic-user-management-link');
 
@@ -73,12 +74,11 @@ function installWorkspaceLinks(sidebar: HTMLElement) {
 
 function setFolderOpen(group: HTMLElement, open: boolean) {
   group.classList.toggle('open', open);
-  group.querySelector<HTMLElement>(':scope > span')?.setAttribute('aria-expanded', String(open));
+  folderHeading(group)?.setAttribute('aria-expanded', String(open));
 }
-
 function prepareFolder(group: HTMLElement) {
   if (group.dataset.folderReady === 'true') return;
-  const heading = group.querySelector<HTMLElement>(':scope > span'); if (!heading) return;
+  const heading = folderHeading(group); if (!heading) return;
   group.dataset.folderReady = 'true'; group.classList.add('sl-nav-folder'); heading.classList.add('sl-nav-folder-heading');
   heading.setAttribute('role', 'button'); heading.setAttribute('tabindex', '0'); heading.setAttribute('aria-expanded', 'false');
   const toggle = () => setFolderOpen(group, !group.classList.contains('open'));
@@ -86,12 +86,10 @@ function prepareFolder(group: HTMLElement) {
   heading.addEventListener('keydown', (event) => { if (event.key !== 'Enter' && event.key !== ' ') return; event.preventDefault(); toggle(); });
   setFolderOpen(group, Boolean(group.querySelector(':scope > button.active, :scope > a[aria-current="page"], :scope > a.active')));
 }
-
 function syncFolderStates(sidebar: HTMLElement) {
   const groups = Array.from(sidebar.querySelectorAll<HTMLElement>('.nav-group')); groups.forEach(prepareFolder);
   for (const group of groups) if (group.querySelector(':scope > button.active, :scope > a[aria-current="page"], :scope > a.active')) setFolderOpen(group, true);
 }
-
 function installWorkspaceNavigation() {
   const sidebar = document.querySelector<HTMLElement>('aside.sidebar'); if (!sidebar) return false;
   installWorkspaceLinks(sidebar); syncFolderStates(sidebar); return true;
