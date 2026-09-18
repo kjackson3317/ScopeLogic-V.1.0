@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 
 type Item = { label: string; hubLabel: string };
+const STORAGE_KEY = 'technology-preconstruction-demo-deliverable';
 const ITEMS: Item[] = [
   { label: 'Scope Matrix / RBB', hubLabel: 'Recommended Base Bid' },
   { label: 'GC Clarifications', hubLabel: 'GC Clarifications' },
@@ -13,10 +14,14 @@ const ITEMS: Item[] = [
   { label: 'Reports / Official Releases', hubLabel: 'Reports / Releases' },
 ];
 
+function selectedLabel() {
+  const saved = window.sessionStorage.getItem(STORAGE_KEY) || ITEMS[0].hubLabel;
+  return ITEMS.some((item) => item.hubLabel === saved) ? saved : ITEMS[0].hubLabel;
+}
+function remember(label: string) { window.sessionStorage.setItem(STORAGE_KEY, label); }
 function heading(group: Element) {
   return group.querySelector<HTMLElement>(':scope > span, :scope > .nav-label');
 }
-
 function hubTabButtons() {
   const hub = document.querySelector<HTMLElement>('section[aria-label="Deliverables"]');
   if (!hub) return new Map<string, HTMLButtonElement>();
@@ -34,20 +39,42 @@ function hubTabButtons() {
   }
   return map;
 }
-
-function openHubTab(nativeDeliverablesButton: HTMLButtonElement, item: Item, customButtons: HTMLButtonElement[]) {
+function syncCustomSelection(group: HTMLElement) {
+  const current = selectedLabel();
+  group.querySelectorAll<HTMLButtonElement>(':scope > button[data-demo-deliverable]').forEach((button) => {
+    const active = button.dataset.hubLabel === current;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-current', active ? 'page' : 'false');
+  });
+}
+function syncHubSelection() {
+  const hub = document.querySelector<HTMLElement>('section[aria-label="Deliverables"]');
+  if (!hub) return;
+  const current = selectedLabel();
+  if (hub.dataset.demoDeliverableSelected === current) { hubTabButtons(); return; }
+  const target = hubTabButtons().get(current);
+  if (!target) return;
+  hub.dataset.demoDeliverableSelected = current;
+  target.click();
+}
+function openHubTab(nativeDeliverablesButton: HTMLButtonElement, item: Item, group: HTMLElement) {
+  remember(item.hubLabel);
+  syncCustomSelection(group);
   nativeDeliverablesButton.click();
-  customButtons.forEach((button) => button.classList.toggle('active', button.dataset.hubLabel === item.hubLabel));
   let attempts = 0;
   const choose = () => {
     attempts += 1;
     const target = hubTabButtons().get(item.hubLabel);
-    if (target) { target.click(); return; }
+    if (target) {
+      const hub = document.querySelector<HTMLElement>('section[aria-label="Deliverables"]');
+      if (hub) hub.dataset.demoDeliverableSelected = item.hubLabel;
+      target.click();
+      return;
+    }
     if (attempts < 30) window.requestAnimationFrame(choose);
   };
   window.requestAnimationFrame(choose);
 }
-
 function install() {
   const sidebar = document.querySelector<HTMLElement>('aside.sidebar');
   if (!sidebar) return false;
@@ -68,16 +95,13 @@ function install() {
       button.dataset.demoDeliverable = 'true';
       button.dataset.hubLabel = item.hubLabel;
       button.textContent = item.label;
+      button.addEventListener('click', () => openHubTab(native, item, group));
       group.appendChild(button);
-      custom.push(button);
     }
-    custom.forEach((button) => {
-      const item = ITEMS.find((candidate) => candidate.hubLabel === button.dataset.hubLabel);
-      if (item) button.addEventListener('click', () => openHubTab(native, item, custom));
-    });
-    custom[0]?.classList.add('active');
+    custom = Array.from(group.querySelectorAll<HTMLButtonElement>(':scope > button[data-demo-deliverable]'));
   }
-  hubTabButtons();
+  syncCustomSelection(group);
+  syncHubSelection();
   return true;
 }
 
