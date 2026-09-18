@@ -4,11 +4,13 @@ import './destructive-action-contrast.css';
 import './workspace-density.css';
 import './slr-template-search.css';
 import './review-observation-enhancer.css';
+import './workstation-uniformity-v2.css';
 import type { Metadata } from 'next';
 import WorkspaceSidebarLinks from './workspace-sidebar-links';
 import DismissibleUiBehavior from './dismissible-ui-behavior';
 import SlrTemplateSearchEnhancer from './slr-template-search-enhancer';
 import ReviewObservationEnhancer from './review-observation-enhancer';
+import WorkstationUniformityBehavior from './workstation-uniformity-behavior';
 
 export const metadata: Metadata = {
   title: 'ScopeLogic v1.0',
@@ -20,5 +22,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body><DismissibleUiBehavior /><WorkspaceSidebarLinks /><SlrTemplateSearchEnhancer /><ReviewObservationEnhancer />{children}</body></html>;
+  return <html lang="en"><body><DismissibleUiBehavior /><WorkspaceSidebarLinks /><SlrTemplateSearchEnhancer /><ReviewObservationEnhancer /><WorkstationUniformityBehavior />{children}</body></html>;
 }
