@@ -87,7 +87,11 @@ function takeoffRuleRecentFive() {
     const note = document.createElement('small'); note.className = 'sl-rule-recent-note'; note.textContent = 'Showing the first 5 rules until you search or filter.';
     panel.querySelector('[data-takeoff-rule-search-host]')?.after(note);
   }
-  if (!filtering) options.forEach((option, index) => { if (index >= 5 && option.value !== select.value) option.hidden = true; });
+  if (filtering) {
+    options.forEach((option) => { option.hidden = false; });
+  } else {
+    options.forEach((option, index) => { option.hidden = index >= 5 && option.value !== select.value; });
+  }
 }
 
 function bindSearchRefresh() {
