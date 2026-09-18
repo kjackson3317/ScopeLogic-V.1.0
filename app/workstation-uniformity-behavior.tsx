@@ -2,8 +2,8 @@
 
 import { useEffect } from 'react';
 
-const PANEL_SELECTOR = '.quote-panel,.panel,.form-card,.contract-section,.revision-box,.dashboard-card,.takeoff-quantity-group';
-const HEADER_SELECTOR = ':scope > .quote-panel-head,:scope > .panel-head,:scope > .dashboard-card-head,:scope > .contract-section-title,:scope > .takeoff-system-title';
+const PANEL_SELECTOR = '.quote-panel,.panel,.form-card,.contract-section,.revision-box,.dashboard-card,.takeoff-quantity-group,.summary-card,.template-card,.part-database-card,.customer-card,.calendar-panel,.document-panel,.notes-panel,.scope-card,.pricing-card,.settings-card';
+const HEADER_SELECTOR = ':scope > .quote-panel-head,:scope > .panel-head,:scope > .dashboard-card-head,:scope > .contract-section-title,:scope > .takeoff-system-title,:scope > .section-head,:scope > .card-head';
 
 function installPanelToggle(panel: HTMLElement) {
   if (panel.dataset.uniformityCollapse === 'true' || panel.closest('[role="dialog"],.quote-picker-backdrop,.modal-backdrop')) return;
