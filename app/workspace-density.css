@@ -1,58 +1,125 @@
-/* Canonical workstation typography. Keep links, buttons and inputs on the same role scale. */
+/* Canonical compact workstation design system. Shared by the entire authenticated app. */
 :root {
-  --sl-font-body: 13px;
-  --sl-font-nav: 12px;
-  --sl-font-label: 11px;
-  --sl-font-data: 12px;
-  --sl-font-section: 16px;
-  --sl-font-title: 24px;
-  --sl-input-height: 30px;
-  --sl-input-radius: 6px;
-  --sl-panel-radius: 10px;
+  --sl-font-body: 11px;
+  --sl-font-nav: 9px;
+  --sl-font-label: 9px;
+  --sl-font-data: 10px;
+  --sl-font-section: 13px;
+  --sl-font-title: 20px;
+  --sl-input-height: 28px;
+  --sl-input-radius: 4px;
+  --sl-panel-radius: 5px;
+  --sl-line-soft: #d7dde2;
+  --sl-line: #aeb6bf;
+  --sl-line-strong: #8f99a3;
+  --sl-panel-head: #e9edf0;
+  --sl-panel-subhead: #f4f6f7;
+  --sl-workspace-bg: #e6e9ec;
+  --sl-row-hover: #f2f5f6;
+  --sl-selected: #edf3ed;
+  --sl-selected-line: #49632e;
 }
-.rbb-system-section { display: block; margin-bottom: 8px; }
+.rbb-system-section { display: block; margin-bottom: 6px; }
 .rbb-system-section > strong, .rbb-system-section > span { display: block; }
-body { font-family: Arial, Helvetica, sans-serif; font-size: var(--sl-font-body); }
+body { font-family: Arial, Helvetica, sans-serif; font-size: var(--sl-font-body); background: var(--sl-workspace-bg); }
+body .page { padding: 18px 20px !important; }
+body .page-head { margin-bottom: 13px !important; gap: 16px !important; }
+body .page-head h1 { font-size: var(--sl-font-title) !important; margin: 3px 0 4px !important; letter-spacing: -.02em !important; }
+body .page-head p { font-size: 10px !important; line-height: 1.35 !important; }
+body .topbar { height: 58px !important; border-bottom-color: var(--sl-line-strong) !important; box-shadow: 0 1px 3px rgba(25,33,41,.09); }
+body .panel-head h2, body .quote-panel-head h2 { font-size: var(--sl-font-section) !important; }
+
+/* One panel language everywhere: strong edge, compact heading, light shadow. */
+body :is(.panel,.form-card,.dashboard-card,.project-card,.matrix-export,.template-bar,.matrix-toolbar,.documents-layout,.explorer-shell,.quote-panel,.quote-side-card,.bidder-card,.customer-database,.customer-editor,.revision-box,.takeoff-project-setup,.compact-rule-library) {
+  border-color: var(--sl-line) !important;
+  border-radius: var(--sl-panel-radius) !important;
+  box-shadow: 0 1px 3px rgba(27,35,44,.09) !important;
+}
+body :is(.panel-head,.dashboard-card-head,.quote-panel-head,.customer-list-head,.list-header,.file-row.file-head,.contacts-editor-head) {
+  border-color: var(--sl-line) !important;
+}
+body :is(.list-header,.file-row.file-head) { background: var(--sl-panel-head) !important; }
+body :is(.document-line,.issue-line,.file-row,.customer-list button,.quote-list>button,.measurement-row,.preview-line) { border-color: var(--sl-line-soft) !important; }
+body :is(.document-line,.issue-line,.file-table button.file-row,.customer-list button,.quote-list>button):hover { background: var(--sl-row-hover) !important; }
+body :is(.project-card.selected,.doc-list button.selected,.file-table button.file-row.selected,.customer-list button.selected,.issue-list>button.selected) { box-shadow: inset 3px 0 var(--sl-selected-line) !important; background: var(--sl-selected) !important; }
+
+/* Folder/tree navigation. Only the active work area stays open automatically. */
+body .sidebar { border-right: 1px solid #1d252d !important; }
+body .sidebar .nav-group { margin: 0 !important; padding: 0 !important; border-top: 1px solid rgba(255,255,255,.08); }
+body .sidebar .nav-group > span.sl-nav-folder-heading {
+  position: relative; display: flex !important; align-items: center; gap: 5px; width: 100%; min-height: 27px;
+  box-sizing: border-box; padding: 4px 20px 4px 10px !important; margin: 0 !important; cursor: pointer;
+  color: rgba(255,255,255,.77) !important; font-size: 9px !important; font-weight: 700 !important; letter-spacing: .07em !important;
+  user-select: none;
+}
+body .sidebar .nav-group > span.sl-nav-folder-heading:before { content: '▸'; color: #9cac8d; font-size: 9px; }
+body .sidebar .nav-group.open > span.sl-nav-folder-heading:before { content: '▾'; }
+body .sidebar .nav-group > span.sl-nav-folder-heading:after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; border-bottom: 1px solid rgba(255,255,255,.03); }
+body .sidebar .nav-group:not(.open) > :is(button,a) { display: none !important; }
 body .sidebar .nav-group :is(a,button), body .sidebar .sidebar-account button {
   font-family: inherit !important; font-size: var(--sl-font-nav) !important;
-  font-weight: 400 !important; line-height: 18px !important;
-  min-height: 30px !important; padding: 6px 8px !important; border-radius: 4px !important;
+  font-weight: 400 !important; line-height: 15px !important;
+  min-height: 24px !important; height: 24px; padding: 3px 8px 3px 25px !important; border-radius: 0 !important;
 }
-body .sidebar .nav-group > span, body .sidebar-account > span { font-size: 10px !important; }
-body .page-head h1 { font-size: var(--sl-font-title) !important; }
-body .panel-head h2, body .quote-panel-head h2 { font-size: var(--sl-font-section) !important; }
-body .quote-table { font-size: var(--sl-font-data) !important; }
-body .quote-table th { font-size: var(--sl-font-label) !important; padding: 4px 6px !important; }
-body .quote-table tbody tr:not(.bom-section-row) { height: 38px !important; }
-body .quote-table td { height: 38px !important; padding: 3px 6px !important; vertical-align: middle !important; }
+body .sidebar .nav-group :is(a,button):hover { background: rgba(255,255,255,.07) !important; }
+body .sidebar .nav-group :is(a.active,button.active) { background: rgba(112,139,82,.28) !important; box-shadow: inset 2px 0 #9ab475 !important; }
+body .sidebar .sidebar-account { border-top-color: rgba(255,255,255,.12) !important; }
+body .sidebar-account > span { font-size: 9px !important; }
+
+/* Forms and tables use the same sizing rules. */
+body :is(input:not([type=checkbox]):not([type=radio]),select,button,textarea) { font-family: inherit; }
+body :is(.field input,.field select,.editor-grid input,.editor-grid select,.issue-title select,.matrix-toolbar input,.matrix-toolbar select,.quote-panel input,.quote-panel select,.customer-editor input,.customer-editor select,.customer-editor textarea) {
+  border-color: var(--sl-line) !important; border-radius: var(--sl-input-radius) !important; font-size: var(--sl-font-data) !important;
+}
+body :is(.field input,.field select,.editor-grid input,.editor-grid select,.issue-title select,.matrix-toolbar input,.matrix-toolbar select) {
+  min-height: var(--sl-input-height) !important; padding: 4px 6px !important;
+}
+body .field span, body .editor-grid label, body .control-label { font-size: var(--sl-font-label) !important; }
+body .field textarea, body .editor-grid textarea { min-height: 60px !important; padding: 5px 7px !important; line-height: 1.32 !important; border-radius: var(--sl-input-radius) !important; }
+body :is(.primary,.secondary,.panel-head button,.danger-button,.template-delete-button) { border-radius: 4px !important; padding: 6px 9px !important; font-size: 10px !important; min-height: 28px; }
+
+body .quote-table, body .simple-estimating-table, body .matrix-table, body .picker-results-table { font-size: var(--sl-font-data) !important; }
+body :is(.quote-table,.simple-estimating-table,.picker-results-table) th { font-size: var(--sl-font-label) !important; padding: 4px 6px !important; background: var(--sl-panel-head); }
+body .quote-table tbody tr:not(.bom-section-row) { height: 34px !important; }
+body .quote-table td { height: 34px !important; padding: 3px 6px !important; vertical-align: middle !important; }
 body .quote-table td input:not([type=checkbox]) {
   box-sizing: border-box !important; height: var(--sl-input-height) !important;
   min-height: var(--sl-input-height) !important; max-height: var(--sl-input-height) !important;
-  font-size: var(--sl-font-data) !important; line-height: 18px !important;
+  font-size: var(--sl-font-data) !important; line-height: 17px !important;
   padding: 3px 6px !important; margin: 0 !important; border-radius: var(--sl-input-radius) !important;
 }
-body .quote-table td input[type=checkbox] {
-  width: 16px !important; min-width: 16px !important; height: 16px !important;
-  min-height: 16px !important; padding: 0 !important; margin: 0 !important;
-}
-body .quote-table .description-input { min-width: 260px !important; width: 100% !important; }
+body .quote-table td input[type=checkbox] { width: 15px !important; min-width: 15px !important; height: 15px !important; min-height: 15px !important; padding: 0 !important; margin: 0 !important; }
+body .quote-table .description-input { min-width: 240px !important; width: 100% !important; }
 body .quote-table .line-markup { display: flex !important; align-items: center; gap: 4px; }
-body .quote-table .line-markup small { font-size: 10px !important; margin: 0 !important; }
-body .quote-table .bom-section-row td { height: 28px !important; padding: 4px 6px !important; }
-body .matrix-editor-full { padding: 12px !important; border-radius: var(--sl-panel-radius) !important; }
-body .matrix-editor-full :is(input,textarea,select,button) { font-family: inherit !important; font-size: var(--sl-font-body) !important; }
-body .matrix-editor-full :is(input:not([type=checkbox]),select) { min-height: 32px !important; padding: 5px 7px !important; border-radius: var(--sl-input-radius) !important; }
-body .matrix-editor-full textarea { min-height: 58px !important; height: 58px; padding: 6px 8px !important; line-height: 1.35 !important; border-radius: var(--sl-input-radius) !important; resize: vertical; }
-body .matrix-editor-full .system-selector-block { padding: 8px !important; margin: 8px 0 !important; border-radius: var(--sl-panel-radius) !important; }
-body .matrix-editor-full .system-chip-grid { display: flex !important; flex-wrap: wrap; gap: 5px !important; }
-body .matrix-editor-full .system-chip-grid label { min-height: 30px !important; height: auto !important; padding: 5px 8px !important; margin: 0 !important; border-radius: 4px !important; gap: 6px !important; }
-body .matrix-editor-full .system-chip-grid label b { font-size: var(--sl-font-nav) !important; font-weight: 400 !important; }
-body .matrix-editor-full .system-chip-grid input { width: 16px !important; height: 16px !important; min-height: 16px !important; margin: 0 !important; }
-body .matrix-editor-full .matrix-writing-grid { gap: 8px !important; margin: 8px 0 !important; }
-body .matrix-editor-full .slr-child-card { padding: 8px !important; border-radius: 8px !important; }
-body .mp-button.danger, body .danger-button, body .template-delete-button {
-  color: #20262e !important; background: #fbeaea !important; border: 1px solid #b84b4b !important;
-}
-body .mp-button.danger:hover, body .danger-button:hover, body .template-delete-button:hover { color: #111827 !important; background: #f6dede !important; }
+body .quote-table .line-markup small { font-size: 9px !important; margin: 0 !important; }
+body .quote-table .bom-section-row td { height: 25px !important; padding: 3px 6px !important; }
 
-/* Deployment touch: 2026-09-15 — ensure Vercel's ignored-build check sees an app-scoped change. */
+/* Internal Review / SLR: stronger separation between list, parent record and child actions. */
+body .matrix-toolbar { padding: 7px !important; gap: 5px !important; background: var(--sl-panel-subhead) !important; border-color: var(--sl-line-strong) !important; }
+body .bluebeam-layout { border-color: var(--sl-line-strong) !important; box-shadow: 0 2px 5px rgba(24,31,39,.10) !important; }
+body .issue-list { background: #eef1f3 !important; border-right-color: var(--sl-line-strong) !important; }
+body .issue-list > button { padding: 8px 9px !important; border-bottom-color: #bbc2c8 !important; }
+body .issue-list b { font-size: 10px !important; }
+body .issue-list span { font-size: 8px !important; }
+body .issue-list strong { font-size: 11px !important; }
+body .issue-editor { background: #fff !important; padding: 13px 15px !important; }
+body .issue-title { padding-bottom: 8px !important; margin-bottom: 9px !important; border-bottom-color: var(--sl-line) !important; }
+body .issue-title input { font-size: 18px !important; }
+body .editor-grid { gap: 7px !important; margin-bottom: 8px !important; }
+body .matrix-editor-full { padding: 10px !important; border: 1px solid var(--sl-line-strong) !important; border-radius: var(--sl-panel-radius) !important; background: #f9fafb !important; box-shadow: 0 1px 3px rgba(24,31,39,.08); }
+body .matrix-editor-full :is(input,textarea,select,button) { font-family: inherit !important; font-size: var(--sl-font-body) !important; }
+body .matrix-editor-full :is(input:not([type=checkbox]),select) { min-height: 29px !important; padding: 4px 6px !important; border-radius: var(--sl-input-radius) !important; }
+body .matrix-editor-full textarea { min-height: 54px !important; height: 54px; padding: 5px 7px !important; line-height: 1.3 !important; border-radius: var(--sl-input-radius) !important; resize: vertical; }
+body .matrix-editor-full .system-selector-block { padding: 7px !important; margin: 7px 0 !important; border: 1px solid var(--sl-line) !important; background: #eef1f3 !important; border-radius: var(--sl-panel-radius) !important; }
+body .matrix-editor-full .system-chip-grid { display: flex !important; flex-wrap: wrap; gap: 4px !important; }
+body .matrix-editor-full .system-chip-grid label { min-height: 27px !important; height: auto !important; padding: 4px 7px !important; margin: 0 !important; border-radius: 3px !important; gap: 5px !important; }
+body .matrix-editor-full .system-chip-grid label b { font-size: 9px !important; font-weight: 400 !important; }
+body .matrix-editor-full .system-chip-grid input { width: 14px !important; height: 14px !important; min-height: 14px !important; margin: 0 !important; }
+body .matrix-editor-full .matrix-writing-grid { gap: 7px !important; margin: 7px 0 !important; }
+body .matrix-editor-full .slr-child-card { padding: 7px !important; border: 1px solid var(--sl-line) !important; border-radius: 4px !important; background: #fff !important; box-shadow: 0 1px 2px rgba(24,31,39,.06); }
+body .detail-tabs { margin-top: 10px !important; background: var(--sl-panel-head) !important; border: 1px solid var(--sl-line) !important; }
+body .detail-tabs button { padding: 5px 8px !important; font-size: 9px !important; border-right: 1px solid #c5cbd0 !important; }
+body .tab-panel { padding: 9px !important; border: 1px solid var(--sl-line) !important; border-top: 0 !important; background: #f8f9fa !important; }
+
+body .mp-button.danger, body .danger-button, body .template-delete-button { color: #20262e !important; background: #fbeaea !important; border: 1px solid #b84b4b !important; }
+body .mp-button.danger:hover, body .danger-button:hover, body .template-delete-button:hover { color: #111827 !important; background: #f6dede !important; }
