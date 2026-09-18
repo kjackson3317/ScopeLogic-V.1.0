@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect } from 'react';
+import { createClient } from '../lib/supabase/client';
 
 const LINK_STYLE: Partial<CSSStyleDeclaration> = {
   display: 'block', width: '100%', border: '0', background: 'transparent', color: 'inherit',
   textAlign: 'left', cursor: 'pointer', textDecoration: 'none', font: 'inherit',
 };
-
+const LOCAL_WORKSPACE_KEYS = ['scopelogic-r14-8', 'scopelogic-r14-7', 'scopelogic-r14-6', 'scopelogic-r14-5', 'scopelogic-r14-4', 'scopelogic-r14-3', 'scopelogic-r14-2'];
 const DELIVERABLE_ITEMS = [
   ['matrix', 'Scope Matrix / RBB'],
   ['clarifications', 'GC Clarifications'],
@@ -29,17 +30,36 @@ function addLink(group: Element, href: string, label: string, id: string) {
 function masterProjectIdFromPath() {
   return window.location.pathname.match(/^\/master-projects\/([^/]+)/)?.[1] || '';
 }
-
-function installMasterDeliverables(sidebar: HTMLElement) {
-  const masterId = masterProjectIdFromPath();
-  if (!masterId) return;
-  const group = Array.from(sidebar.querySelectorAll<HTMLElement>('.nav-group')).find((item) =>
+function activeLegacyProjectId() {
+  for (const key of LOCAL_WORKSPACE_KEYS) {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) continue;
+    try {
+      const snapshot = JSON.parse(raw) as { projectId?: string };
+      if (snapshot.projectId) return snapshot.projectId;
+    } catch { /* try the next workspace key */ }
+  }
+  return '';
+}
+async function resolveActiveMasterId() {
+  const pathId = masterProjectIdFromPath();
+  if (pathId) return pathId;
+  const legacyId = activeLegacyProjectId();
+  if (!legacyId) return '';
+  const supabase = createClient();
+  const { data, error } = await supabase.from('projects').select('master_project_id').eq('legacy_id', legacyId).maybeSingle();
+  if (error) return '';
+  return String(data?.master_project_id || '');
+}
+function deliverablesGroup(sidebar: HTMLElement) {
+  return Array.from(sidebar.querySelectorAll<HTMLElement>('.nav-group')).find((item) =>
     folderHeading(item)?.textContent?.trim().toUpperCase() === 'DELIVERABLES'
-  );
-  if (!group || group.dataset.deliverablesV2 === 'true') return;
+  ) || null;
+}
+function renderDeliverables(group: HTMLElement, masterId: string) {
   const heading = folderHeading(group);
   if (!heading) return;
-
+  if (group.dataset.deliverablesMasterId === masterId && group.querySelector(':scope > .sl-deliverable-nav-link')) return;
   Array.from(group.children).forEach((child) => { if (child !== heading) child.remove(); });
   const activeTab = new URLSearchParams(window.location.search).get('tab') || '';
   for (const [tab, label] of DELIVERABLE_ITEMS) {
@@ -53,7 +73,18 @@ function installMasterDeliverables(sidebar: HTMLElement) {
     }
     group.appendChild(link);
   }
-  group.dataset.deliverablesV2 = 'true';
+  group.dataset.deliverablesMasterId = masterId;
+}
+async function installDeliverables(sidebar: HTMLElement) {
+  const group = deliverablesGroup(sidebar);
+  if (!group || group.dataset.deliverablesResolving === 'true') return;
+  group.dataset.deliverablesResolving = 'true';
+  try {
+    const masterId = await resolveActiveMasterId();
+    if (masterId) renderDeliverables(group, masterId);
+  } finally {
+    delete group.dataset.deliverablesResolving;
+  }
 }
 
 function installWorkspaceLinks(sidebar: HTMLElement) {
@@ -69,7 +100,7 @@ function installWorkspaceLinks(sidebar: HTMLElement) {
     const account = sidebar.querySelector('.sidebar-account');
     if (adminGroup) sidebar.insertBefore(group, adminGroup); else if (account) sidebar.insertBefore(group, account); else sidebar.appendChild(group);
   }
-  installMasterDeliverables(sidebar);
+  void installDeliverables(sidebar);
 }
 
 function setFolderOpen(group: HTMLElement, open: boolean) {
@@ -101,8 +132,10 @@ export default function WorkspaceSidebarLinks() {
     const refresh = () => { if (queued) return; queued = true; window.requestAnimationFrame(() => { queued = false; installWorkspaceNavigation(); }); };
     refresh();
     const observer = new MutationObserver(refresh);
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'aria-current'] });
-    return () => observer.disconnect();
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true, attributeFilter: ['class', 'aria-current'] });
+    const storageRefresh = (event: StorageEvent) => { if (event.key && LOCAL_WORKSPACE_KEYS.includes(event.key)) refresh(); };
+    window.addEventListener('storage', storageRefresh);
+    return () => { observer.disconnect(); window.removeEventListener('storage', storageRefresh); };
   }, []);
   return null;
 }
