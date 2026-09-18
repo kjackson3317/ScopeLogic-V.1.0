@@ -60,7 +60,7 @@ body :is(.quote-table-wrap,.picker-results-wrap,.table-wrap,.matrix-table-wrap,.
 
 /* Navigation: compact folder rows and explicit deliverable children. */
 body .sidebar .nav-group{gap:1px!important;}
-body .sidebar .nav-group>span.sl-nav-folder-heading{min-height:25px!important;padding:4px 7px!important;border-bottom:1px solid rgba(164,182,140,.45)!important;}
+body .sidebar .nav-group>:is(span,.nav-label).sl-nav-folder-heading{min-height:25px!important;padding:4px 7px!important;border-bottom:1px solid rgba(164,182,140,.45)!important;}
 body .sidebar .nav-group :is(button,a){min-height:25px!important;padding:4px 7px 4px 18px!important;border-radius:2px!important;font-size:10px!important;line-height:16px!important;}
 body .sidebar .nav-group :is(button,a).active,body .sidebar .nav-group a[aria-current="page"]{background:#dfe9d4!important;color:#1f2c17!important;box-shadow:inset 3px 0 0 var(--sl-green-dark)!important;font-weight:700!important;}
 body .sidebar .sl-deliverable-nav-link{display:block!important;}
