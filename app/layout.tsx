@@ -9,6 +9,7 @@ import './workstation-uniformity-v4.css';
 import './workstation-uniformity-v5.css';
 import './slr-green-banners.css';
 import './sidebar-folder-controls.css';
+import './slr-inline-editor.css';
 import type { Metadata } from 'next';
 import WorkspaceSidebarLinks from './workspace-sidebar-links';
 import DismissibleUiBehavior from './dismissible-ui-behavior';
@@ -16,6 +17,7 @@ import SlrTemplateSearchEnhancer from './slr-template-search-enhancer';
 import WorkstationUniformityBehavior from './workstation-uniformity-behavior';
 import DemoDeliverablesSidebar from './demo-deliverables-sidebar';
 import SlrDeliverablesWorkflow from './slr-deliverables-workflow';
+import DeliverablesInlineController from './deliverables-inline-controller';
 import { isEmployerDemo } from '../lib/demo/config';
 
 export const metadata: Metadata = {
@@ -28,5 +30,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body><DismissibleUiBehavior />{!isEmployerDemo && <WorkspaceSidebarLinks />}<SlrTemplateSearchEnhancer /><WorkstationUniformityBehavior />{isEmployerDemo && <DemoDeliverablesSidebar />}<SlrDeliverablesWorkflow />{children}</body></html>;
+  return <html lang="en"><body><DismissibleUiBehavior />{!isEmployerDemo && <WorkspaceSidebarLinks />}<SlrTemplateSearchEnhancer /><WorkstationUniformityBehavior />{isEmployerDemo && <DemoDeliverablesSidebar />}<SlrDeliverablesWorkflow /><DeliverablesInlineController />{children}</body></html>;
 }
