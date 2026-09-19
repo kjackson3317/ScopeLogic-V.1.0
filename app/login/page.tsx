@@ -1,12 +1,11 @@
-import LoginForm from '../auth-components/login-form';
+import DemoGuestLogin from '../demo-guest-login';
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const params = await searchParams;
   const requested = params.next || '/';
   const nextPath = requested.startsWith('/') && !requested.startsWith('//') ? requested : '/';
   return <main className="auth-page"><section className="auth-card">
-    <img className="auth-logo" src="/brand/scopelogic-logo-full.png" alt="ScopeLogic LLC" />
-    <div className="auth-heading"><span>Production Workspace</span><h1>Sign in to ScopeLogic</h1><p>Access is restricted to authorized ScopeLogic users.</p></div>
-    <LoginForm nextPath={nextPath} initialError={params.error || ''} />
+    <div className="auth-heading"><span>Guest Test Access</span><h1>Technology Preconstruction Workspace</h1><p>Use the shared guest account below to review the browser-local test workspace. No production data is connected.</p></div>
+    <DemoGuestLogin nextPath={nextPath} />
   </section></main>;
 }
