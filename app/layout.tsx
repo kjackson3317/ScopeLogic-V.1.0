@@ -11,6 +11,7 @@ import './workstation-uniformity-v5.css';
 import './slr-green-banners.css';
 import './sidebar-folder-controls.css';
 import './slr-inline-editor.css';
+import './quote-modern-ui.css';
 import type { Metadata } from 'next';
 import WorkspaceSidebarLinks from './workspace-sidebar-links';
 import DismissibleUiBehavior from './dismissible-ui-behavior';
