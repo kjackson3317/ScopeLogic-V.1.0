@@ -4,6 +4,7 @@ import './destructive-action-contrast.css';
 import './workspace-density.css';
 import './slr-template-search.css';
 import './review-observation-enhancer.css';
+import './review-manual-overrides.css';
 import './workstation-uniformity-v2.css';
 import './workstation-uniformity-v3.css';
 import './workstation-uniformity-v4.css';
