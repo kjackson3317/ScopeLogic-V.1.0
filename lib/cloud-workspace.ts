@@ -1,9 +1,11 @@
 export * from './cloud-workspace-legacy';
 
+import { createClient } from './supabase/client';
 import * as legacy from './cloud-workspace-legacy';
 import type { WorkspaceSnapshot } from './cloud-workspace-legacy';
 
 const slrUid = (projectId: string, issue: { uid?: string }, index: number) => issue.uid || `${projectId}-slr-${index + 1}`;
+const slrSystem = (issue: { systems?: string[]; system?: string }) => issue.systems?.[0] || issue.system || 'Structured Cabling';
 
 function slrRemovalsByProject(previous: WorkspaceSnapshot, snapshot: WorkspaceSnapshot) {
   const currentProjectIds = new Set((snapshot.projects || []).map((project) => project.id));
@@ -21,6 +23,106 @@ function slrRemovalsByProject(previous: WorkspaceSnapshot, snapshot: WorkspaceSn
   }
 
   return removed;
+}
+
+type SlrIdentityRepair = {
+  projectId: string;
+  projectName: string;
+  oldUid: string;
+  newUid: string;
+};
+
+function slrIdentityRepairs(previous: WorkspaceSnapshot, snapshot: WorkspaceSnapshot): SlrIdentityRepair[] {
+  const repairs: SlrIdentityRepair[] = [];
+
+  for (const project of snapshot.projects || []) {
+    const before = previous.issuesByProject?.[project.id] || [];
+    const after = snapshot.issuesByProject?.[project.id] || [];
+    if (!before.length || !after.length) continue;
+
+    const beforeRows = before.map((issue, index) => ({ issue, uid: slrUid(project.id, issue, index) }));
+    const beforeUids = new Set(beforeRows.map((row) => row.uid));
+    const afterUids = new Set(after.map((issue, index) => slrUid(project.id, issue, index)));
+    const claimedOldUids = new Set<string>();
+
+    after.forEach((issue, index) => {
+      const newUid = slrUid(project.id, issue, index);
+      if (beforeUids.has(newUid)) return;
+
+      // A browser recovery/copy can occasionally preserve the logical SLR while
+      // regenerating its internal UID. Match only when the visible identity is
+      // exact and the old UID is no longer present in the browser snapshot. This
+      // preserves the linked Master Finding instead of attempting a duplicate insert.
+      const candidates = beforeRows.filter((row) =>
+        !afterUids.has(row.uid)
+        && !claimedOldUids.has(row.uid)
+        && row.issue.id === issue.id
+        && row.issue.title === issue.title
+        && slrSystem(row.issue) === slrSystem(issue)
+      );
+
+      if (candidates.length !== 1) return;
+      claimedOldUids.add(candidates[0].uid);
+      repairs.push({
+        projectId: project.id,
+        projectName: project.name || project.id,
+        oldUid: candidates[0].uid,
+        newUid,
+      });
+    });
+  }
+
+  return repairs;
+}
+
+async function reconcileSlrIdentityDrift(previous: WorkspaceSnapshot, snapshot: WorkspaceSnapshot): Promise<void> {
+  const repairs = slrIdentityRepairs(previous, snapshot);
+  if (!repairs.length) return;
+
+  const supabase = createClient();
+  const auth = await supabase.auth.getUser();
+  if (auth.error || !auth.data.user) throw new Error('Your ScopeLogic session expired. Sign in again.');
+
+  const repairsByProject = new Map<string, SlrIdentityRepair[]>();
+  for (const repair of repairs) repairsByProject.set(repair.projectId, [...(repairsByProject.get(repair.projectId) || []), repair]);
+
+  for (const [projectId, projectRepairs] of repairsByProject) {
+    const projectResult = await supabase.from('projects').select('id').eq('legacy_id', projectId).maybeSingle();
+    if (projectResult.error) throw new Error(`Reconcile SLR identity: ${projectResult.error.message}`);
+    if (!projectResult.data?.id) throw new Error(`Reconcile SLR identity: cloud project ${projectRepairs[0].projectName} could not be resolved.`);
+
+    for (const repair of projectRepairs) {
+      const existing = await supabase
+        .from('slr_entries')
+        .select('id,legacy_uid')
+        .eq('project_id', projectResult.data.id)
+        .eq('legacy_uid', repair.oldUid)
+        .maybeSingle();
+      if (existing.error) throw new Error(`Reconcile SLR identity: ${existing.error.message}`);
+
+      // A queued save may already have completed the repair. Treat that as success.
+      if (!existing.data?.id) {
+        const alreadyRepaired = await supabase
+          .from('slr_entries')
+          .select('id')
+          .eq('project_id', projectResult.data.id)
+          .eq('legacy_uid', repair.newUid)
+          .maybeSingle();
+        if (alreadyRepaired.error) throw new Error(`Reconcile SLR identity: ${alreadyRepaired.error.message}`);
+        if (alreadyRepaired.data?.id) continue;
+        throw new Error(`Reconcile SLR identity failed for ${projectRepairs[0].projectName}. Reload ScopeLogic before retrying.`);
+      }
+
+      const updated = await supabase
+        .from('slr_entries')
+        .update({ legacy_uid: repair.newUid })
+        .eq('id', existing.data.id)
+        .eq('project_id', projectResult.data.id)
+        .select('id');
+      if (updated.error) throw new Error(`Reconcile SLR identity: ${updated.error.message}`);
+      if (!updated.data?.length) throw new Error(`Reconcile SLR identity failed for ${projectRepairs[0].projectName}. Reload ScopeLogic before retrying.`);
+    }
+  }
 }
 
 async function saveWithSlrProtection(snapshot: WorkspaceSnapshot): Promise<void> {
@@ -42,6 +144,8 @@ async function saveWithSlrProtection(snapshot: WorkspaceSnapshot): Promise<void>
       const removedCount = [...removedByProject.values()].reduce((sum, items) => sum + items.length, 0);
       throw new Error(`Cloud save blocked because this browser copy would remove ${removedCount} SLRs across ${removedByProject.size} projects at once. Reload ScopeLogic to use the current cloud workspace before saving.`);
     }
+
+    await reconcileSlrIdentityDrift(previous, snapshot);
   }
 
   await legacy.saveWorkspaceToCloud(snapshot);
