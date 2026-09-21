@@ -1,17 +1,19 @@
-import { DEMO_PROJECT_ID, DEMO_TABLES_KEY, DEMO_WORKSPACE_KEY } from './config';
+import { DEMO_MASTER_ID, DEMO_PROJECT_ID, DEMO_TABLES_KEY, DEMO_WORKSPACE_KEY } from './config';
 import { makeDemoSeed, makeDemoTables } from './seed';
 import { demoWorkspaceSlrTemplates } from './slr-template-library';
+import { applyShowcaseSeed, applyShowcaseTables } from './showcase';
 
 function ensureDemoTemplates(seed:any){
  seed.templates = demoWorkspaceSlrTemplates.map((template)=>({ ...template, issue:{...template.issue,systems:[...(template.issue.systems||[])],recommendations:{...(template.issue.recommendations||{})},checklistItems:{...(template.issue.checklistItems||{})},rfis:[],recommendBaseBids:[],checklistQuestions:[]} }));
  return seed;
 }
+function freshSeed(){return ensureDemoTemplates(applyShowcaseSeed(makeDemoSeed()));}
 
 export function readDemoWorkspace(): any {
- if (typeof window === 'undefined') return ensureDemoTemplates(makeDemoSeed());
+ if (typeof window === 'undefined') return freshSeed();
  const raw=localStorage.getItem(DEMO_WORKSPACE_KEY);
  if(raw){const parsed=ensureDemoTemplates(JSON.parse(raw));localStorage.setItem(DEMO_WORKSPACE_KEY,JSON.stringify(parsed));return parsed;}
- const seed=ensureDemoTemplates(makeDemoSeed());localStorage.setItem(DEMO_WORKSPACE_KEY,JSON.stringify(seed));return seed;
+ const seed=freshSeed();localStorage.setItem(DEMO_WORKSPACE_KEY,JSON.stringify(seed));return seed;
 }
 export function resetDemo() {
  localStorage.removeItem(DEMO_WORKSPACE_KEY);localStorage.removeItem(DEMO_TABLES_KEY);
@@ -20,16 +22,15 @@ export function resetDemo() {
  window.location.assign('/');
 }
 function readTables():Record<string,any[]> {
- const tables=JSON.parse(localStorage.getItem(DEMO_TABLES_KEY)||'null')||makeDemoTables();
- // Existing SLRs are sourced from the demo workspace. Preserve any additional
- // findings created by the Capture → Group → Resolve demonstration so they do
- // not disappear the next time the local query layer refreshes.
  const workspace=readDemoWorkspace();
- const workspaceFindings=(workspace.issuesByProject[DEMO_PROJECT_ID]||[]).map((s:any,i:number)=>({id:s.uid,master_project_id:'demo-master',display_number:s.id,scope_item:s.title,systems:s.systems,status:s.status,sequence_number:i+1}));
+ const stored=JSON.parse(localStorage.getItem(DEMO_TABLES_KEY)||'null');
+ const tables=stored||applyShowcaseTables(makeDemoTables(),workspace);
+ const workspaceFindings=(workspace.issuesByProject[DEMO_PROJECT_ID]||[]).map((s:any,i:number)=>({id:s.uid,master_project_id:DEMO_MASTER_ID,display_number:s.id,scope_item:s.title,systems:s.systems,status:s.status,scope_concern:s.concern,resolution:s.resolution,reference:s.reference,sequence_number:i+1}));
  const existingFindings=Array.isArray(tables.master_project_findings)?tables.master_project_findings:[];
  const workspaceIds=new Set(workspaceFindings.map((item:any)=>item.id));
  const createdInReview=existingFindings.filter((item:any)=>item?.id&&!workspaceIds.has(item.id));
  tables.master_project_findings=[...workspaceFindings,...createdInReview];
+ if(!stored)localStorage.setItem(DEMO_TABLES_KEY,JSON.stringify(tables));
  return tables;
 }
 class LocalQuery implements PromiseLike<any> {
