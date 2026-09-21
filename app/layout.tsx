@@ -3,6 +3,7 @@ import './commercial-facelift.css';
 import './destructive-action-contrast.css';
 import './workspace-density.css';
 import './slr-template-search.css';
+import './review-observation-enhancer.css';
 import './workstation-uniformity-v2.css';
 import './workstation-uniformity-v3.css';
 import './workstation-uniformity-v4.css';
@@ -17,6 +18,7 @@ import type { Metadata } from 'next';
 import WorkspaceSidebarLinks from './workspace-sidebar-links';
 import DismissibleUiBehavior from './dismissible-ui-behavior';
 import SlrTemplateSearchEnhancer from './slr-template-search-enhancer';
+import ReviewObservationEnhancer from './review-observation-enhancer';
 import WorkstationUniformityBehavior from './workstation-uniformity-behavior';
 import DemoDeliverablesSidebar from './demo-deliverables-sidebar';
 import SlrDeliverablesWorkflow from './slr-deliverables-workflow';
@@ -34,5 +36,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body><DismissibleUiBehavior />{!isEmployerDemo && <WorkspaceSidebarLinks />}<SlrTemplateSearchEnhancer /><WorkstationUniformityBehavior />{isEmployerDemo && <DemoDeliverablesSidebar />}<SlrDeliverablesWorkflow /><DeliverablesInlineController /><ReviewReleaseController />{children}</body></html>;
+  return <html lang="en"><body><DismissibleUiBehavior />{!isEmployerDemo && <WorkspaceSidebarLinks />}<SlrTemplateSearchEnhancer /><ReviewObservationEnhancer /><WorkstationUniformityBehavior />{isEmployerDemo && <DemoDeliverablesSidebar />}<SlrDeliverablesWorkflow /><DeliverablesInlineController /><ReviewReleaseController />{children}</body></html>;
 }
