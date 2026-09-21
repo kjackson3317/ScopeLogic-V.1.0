@@ -7,7 +7,7 @@ export async function proxy(request: NextRequest) {
   if (isEmployerDemo) {
     const path = request.nextUrl.pathname;
     if (path.startsWith('/api/') || path.startsWith('/auth/')) return NextResponse.json({ error: 'This presentation uses browser-local data only.' }, { status: 403 });
-    if (path === '/login' || path === '/pdf.worker.min.mjs' || path.startsWith('/_next/')) return NextResponse.next();
+    if (path === '/login' || path === '/demo/sidebar-smoke' || path === '/pdf.worker.min.mjs' || path.startsWith('/_next/')) return NextResponse.next();
 
     const guest = request.cookies.get('technology_workspace_guest')?.value === '1';
     if (!guest) {
