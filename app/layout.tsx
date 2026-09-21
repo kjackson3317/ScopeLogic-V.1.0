@@ -22,6 +22,7 @@ import WorkspaceSidebarLinksV2 from './workspace-sidebar-links-v2';
 import DismissibleUiBehavior from './dismissible-ui-behavior';
 import SlrTemplateSearchEnhancer from './slr-template-search-enhancer';
 import ReviewObservationEnhancer from './review-observation-enhancer';
+import ReviewNotesWorkspaceController from './review-notes-workspace-controller';
 import WorkstationUniformityBehavior from './workstation-uniformity-behavior';
 import DeliverablesNavigationEnhancer from './deliverables-navigation-enhancer';
 import SlrDeliverablesWorkflow from './slr-deliverables-workflow';
@@ -35,5 +36,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body><DismissibleUiBehavior /><WorkspaceSidebarLinksV2 /><SlrTemplateSearchEnhancer /><ReviewObservationEnhancer /><WorkstationUniformityBehavior /><DeliverablesNavigationEnhancer /><SlrDeliverablesWorkflow /><DeliverablesInlineControllerV2 /><ReviewReleaseControllerV2 />{children}</body></html>;
+  return <html lang="en"><body><DismissibleUiBehavior /><WorkspaceSidebarLinksV2 /><SlrTemplateSearchEnhancer /><ReviewObservationEnhancer /><ReviewNotesWorkspaceController /><WorkstationUniformityBehavior /><DeliverablesNavigationEnhancer /><SlrDeliverablesWorkflow /><DeliverablesInlineControllerV2 /><ReviewReleaseControllerV2 />{children}</body></html>;
 }
