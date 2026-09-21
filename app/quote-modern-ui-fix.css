@@ -2,7 +2,7 @@
    Keeps the compact card treatment while guaranteeing Cost / Markup / Price content stays inside the panel. */
 
 body .pricing-summary-layout{
-  grid-template-columns:minmax(420px,.95fr) minmax(0,1.55fr)!important;
+  grid-template-columns:minmax(430px,.98fr) minmax(0,1.52fr)!important;
 }
 body .pricing-notes-column,
 body .pricing-totals-column,
@@ -10,11 +10,11 @@ body .quote-summary-side-card{
   min-width:0!important;
 }
 body .quote-summary-side-card{
-  overflow:hidden!important;
+  overflow:visible!important;
 }
 body .summary-side-grid-head,
 body .summary-side-row{
-  grid-template-columns:minmax(118px,1.55fr) minmax(58px,.72fr) minmax(54px,.62fr) minmax(74px,.82fr)!important;
+  grid-template-columns:minmax(126px,1.45fr) minmax(64px,.68fr) minmax(58px,.60fr) minmax(86px,.82fr)!important;
   gap:6px!important;
 }
 body .summary-side-grid-head{
@@ -40,8 +40,6 @@ body .summary-adder-markup{
   min-width:0!important;
   max-width:100%!important;
   box-sizing:border-box!important;
-  overflow:hidden!important;
-  text-overflow:ellipsis!important;
   white-space:nowrap!important;
 }
 body .summary-side-row>b{
@@ -56,6 +54,6 @@ body .summary-side-row>b{
 @media (max-width:760px){
   body .pricing-notes-column{grid-template-columns:1fr!important;}
   body .summary-side-grid-head{display:none!important;}
-  body .summary-side-row{grid-template-columns:minmax(0,1fr) minmax(70px,.55fr)!important;}
+  body .summary-side-row{grid-template-columns:minmax(0,1fr) minmax(82px,.55fr)!important;}
   body .summary-side-row>b{grid-column:1/-1!important;}
 }
