@@ -22,7 +22,6 @@ import DismissibleUiBehavior from './dismissible-ui-behavior';
 import SlrTemplateSearchEnhancer from './slr-template-search-enhancer';
 import ReviewObservationEnhancer from './review-observation-enhancer';
 import WorkstationUniformityBehavior from './workstation-uniformity-behavior';
-import DemoDeliverablesSidebarV2 from './demo-deliverables-sidebar-v2';
 import SlrDeliverablesWorkflow from './slr-deliverables-workflow';
 import DeliverablesInlineControllerV2 from './deliverables-inline-controller-v2';
 import ReviewReleaseControllerV2 from './review-release-controller-v2';
@@ -35,5 +34,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body><DismissibleUiBehavior />{!isEmployerDemo && <WorkspaceSidebarLinksV2 />}<SlrTemplateSearchEnhancer /><ReviewObservationEnhancer /><WorkstationUniformityBehavior />{isEmployerDemo && <DemoDeliverablesSidebarV2 />}<SlrDeliverablesWorkflow /><DeliverablesInlineControllerV2 /><ReviewReleaseControllerV2 />{children}</body></html>;
+  return <html lang="en"><body><DismissibleUiBehavior />{!isEmployerDemo && <WorkspaceSidebarLinksV2 />}<SlrTemplateSearchEnhancer /><ReviewObservationEnhancer /><WorkstationUniformityBehavior /><SlrDeliverablesWorkflow /><DeliverablesInlineControllerV2 /><ReviewReleaseControllerV2 />{children}</body></html>;
 }
