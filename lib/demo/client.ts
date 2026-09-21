@@ -21,9 +21,15 @@ export function resetDemo() {
 }
 function readTables():Record<string,any[]> {
  const tables=JSON.parse(localStorage.getItem(DEMO_TABLES_KEY)||'null')||makeDemoTables();
- // SLRs remain owned by the existing workspace; the review screens reference them.
+ // Existing SLRs are sourced from the demo workspace. Preserve any additional
+ // findings created by the Capture → Group → Resolve demonstration so they do
+ // not disappear the next time the local query layer refreshes.
  const workspace=readDemoWorkspace();
- tables.master_project_findings=(workspace.issuesByProject[DEMO_PROJECT_ID]||[]).map((s:any,i:number)=>({id:s.uid,master_project_id:'demo-master',display_number:s.id,scope_item:s.title,systems:s.systems,status:s.status,sequence_number:i+1}));
+ const workspaceFindings=(workspace.issuesByProject[DEMO_PROJECT_ID]||[]).map((s:any,i:number)=>({id:s.uid,master_project_id:'demo-master',display_number:s.id,scope_item:s.title,systems:s.systems,status:s.status,sequence_number:i+1}));
+ const existingFindings=Array.isArray(tables.master_project_findings)?tables.master_project_findings:[];
+ const workspaceIds=new Set(workspaceFindings.map((item:any)=>item.id));
+ const createdInReview=existingFindings.filter((item:any)=>item?.id&&!workspaceIds.has(item.id));
+ tables.master_project_findings=[...workspaceFindings,...createdInReview];
  return tables;
 }
 class LocalQuery implements PromiseLike<any> {
