@@ -12,6 +12,8 @@ import './slr-green-banners.css';
 import './sidebar-folder-controls.css';
 import './slr-inline-editor.css';
 import './quote-modern-ui.css';
+import './quote-modern-ui-fix.css';
+import './review-release-controller.css';
 import type { Metadata } from 'next';
 import WorkspaceSidebarLinks from './workspace-sidebar-links';
 import DismissibleUiBehavior from './dismissible-ui-behavior';
@@ -21,6 +23,7 @@ import WorkstationUniformityBehavior from './workstation-uniformity-behavior';
 import DeliverablesNavigationEnhancer from './deliverables-navigation-enhancer';
 import SlrDeliverablesWorkflow from './slr-deliverables-workflow';
 import DeliverablesInlineController from './deliverables-inline-controller';
+import ReviewReleaseController from './review-release-controller';
 
 export const metadata: Metadata = {
   title: 'ScopeLogic v1.0',
@@ -32,5 +35,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body><DismissibleUiBehavior /><WorkspaceSidebarLinks /><SlrTemplateSearchEnhancer /><ReviewObservationEnhancer /><WorkstationUniformityBehavior /><DeliverablesNavigationEnhancer /><SlrDeliverablesWorkflow /><DeliverablesInlineController />{children}</body></html>;
+  return <html lang="en"><body><DismissibleUiBehavior /><WorkspaceSidebarLinks /><SlrTemplateSearchEnhancer /><ReviewObservationEnhancer /><WorkstationUniformityBehavior /><DeliverablesNavigationEnhancer /><SlrDeliverablesWorkflow /><DeliverablesInlineController /><ReviewReleaseController />{children}</body></html>;
 }
