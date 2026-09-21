@@ -15,27 +15,25 @@ import './slr-inline-editor.css';
 import './quote-modern-ui.css';
 import './quote-modern-ui-fix.css';
 import './review-release-controller.css';
+import './deliverables-preview-v2.css';
 import type { Metadata } from 'next';
-import WorkspaceSidebarLinks from './workspace-sidebar-links';
+import WorkspaceSidebarLinksV2 from './workspace-sidebar-links-v2';
 import DismissibleUiBehavior from './dismissible-ui-behavior';
 import SlrTemplateSearchEnhancer from './slr-template-search-enhancer';
 import ReviewObservationEnhancer from './review-observation-enhancer';
 import WorkstationUniformityBehavior from './workstation-uniformity-behavior';
-import DemoDeliverablesSidebar from './demo-deliverables-sidebar';
+import DemoDeliverablesSidebarV2 from './demo-deliverables-sidebar-v2';
 import SlrDeliverablesWorkflow from './slr-deliverables-workflow';
-import DeliverablesInlineController from './deliverables-inline-controller';
-import ReviewReleaseController from './review-release-controller';
+import DeliverablesInlineControllerV2 from './deliverables-inline-controller-v2';
+import ReviewReleaseControllerV2 from './review-release-controller-v2';
 import { isEmployerDemo } from '../lib/demo/config';
 
 export const metadata: Metadata = {
   title: 'ScopeLogic v1.0',
   description: 'Division 27/28 scope and procurement workspace',
-  icons: {
-    icon: '/brand/scopelogic-app-icon.png',
-    apple: '/brand/scopelogic-app-icon.png',
-  },
+  icons: { icon: '/brand/scopelogic-app-icon.png', apple: '/brand/scopelogic-app-icon.png' },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body><DismissibleUiBehavior />{!isEmployerDemo && <WorkspaceSidebarLinks />}<SlrTemplateSearchEnhancer /><ReviewObservationEnhancer /><WorkstationUniformityBehavior />{isEmployerDemo && <DemoDeliverablesSidebar />}<SlrDeliverablesWorkflow /><DeliverablesInlineController /><ReviewReleaseController />{children}</body></html>;
+  return <html lang="en"><body><DismissibleUiBehavior />{!isEmployerDemo && <WorkspaceSidebarLinksV2 />}<SlrTemplateSearchEnhancer /><ReviewObservationEnhancer /><WorkstationUniformityBehavior />{isEmployerDemo && <DemoDeliverablesSidebarV2 />}<SlrDeliverablesWorkflow /><DeliverablesInlineControllerV2 /><ReviewReleaseControllerV2 />{children}</body></html>;
 }
