@@ -15,7 +15,7 @@ module.exports = function(source) {
 
   replaceOnce(
     "import SlrChildEditor from './slr-child-editor';\n",
-    "import SlrChildEditor from './slr-child-editor';\nimport DemoProjectReviewPanel from './demo-project-review-panel';\nimport DemoDeliverablesHub from './demo-deliverables-hub';\n",
+    "import SlrChildEditor from './slr-child-editor';\nimport DemoProjectReviewPanel from './demo-project-review-panel';\nimport DemoDeliverablesHub from './demo-deliverables-hub';\nimport DemoDeliverablesNav from './demo-deliverables-nav';\n",
     'demo component imports',
   );
 
@@ -23,6 +23,12 @@ module.exports = function(source) {
     "const navDeliverables: [View, string][] = [\n  ['sow', 'Recommended SOW Matrix'],\n  ['clarifications', 'Clarification Log'],\n  ['rfi', 'Formal RFI'],\n  ['checklist', 'Contractor Response Checklist'],\n];",
     "const navDeliverables: [View, string][] = [\n  ['sow', 'Deliverables'],\n];",
     'deliverables navigation',
+  );
+
+  replaceOnce(
+    '<Nav label="DELIVERABLES" items={navDeliverables} view={view} setView={navigateTo} />',
+    '<DemoDeliverablesNav />',
+    'native demo deliverables sidebar',
   );
 
   source = source.replace(/\n\s*\{isEmployerDemo && <div className=\"nav-group\"><span>REVIEW WORKFLOW<\/span><a href=\"\/demo\/review\">Review Notes \/ Deliverables \/ Bid Alignment<\/a><button onClick=\{\(\) => confirmAction\('Reset Demo', 'Replace this browser’s demo edits with the fictional starting project\?', resetDemo, 'Reset Demo'\)\}>Reset Demo<\/button><\/div>\}/, '');
