@@ -1,29 +1,43 @@
 /* Quote Builder sizing correction for the modern summary cards.
-   Keeps the compact card treatment while guaranteeing Cost / Markup / Price content stays inside the panel. */
+   Gives the pricing/labor side priority while keeping left-side controls on usable single-line rows. */
 
 body .pricing-summary-layout{
-  grid-template-columns:minmax(420px,.95fr) minmax(0,1.55fr)!important;
+  grid-template-columns:minmax(286px,300px) minmax(0,1fr)!important;
+  gap:10px!important;
 }
 body .pricing-notes-column,
 body .pricing-totals-column,
 body .quote-summary-side-card{
   min-width:0!important;
 }
+body .pricing-notes-column{
+  padding-right:8px!important;
+}
 body .quote-summary-side-card{
   overflow:hidden!important;
 }
-body .summary-side-grid-head,
-body .summary-side-row{
-  grid-template-columns:minmax(118px,1.55fr) minmax(58px,.72fr) minmax(54px,.62fr) minmax(74px,.82fr)!important;
+body .travel-calculator label{
+  grid-template-columns:minmax(0,1fr) 72px!important;
   gap:6px!important;
 }
+body .travel-calculator label>span{
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+body .summary-side-grid-head,
+body .summary-side-row{
+  grid-template-columns:minmax(92px,1fr) 52px 44px 64px!important;
+  gap:4px!important;
+}
 body .summary-side-grid-head{
-  padding-left:8px!important;
-  padding-right:8px!important;
+  padding-left:6px!important;
+  padding-right:6px!important;
+  letter-spacing:.035em!important;
 }
 body .summary-side-row{
-  padding-left:7px!important;
-  padding-right:7px!important;
+  padding-left:6px!important;
+  padding-right:6px!important;
 }
 body .summary-side-row>*{
   min-width:0!important;
@@ -33,6 +47,8 @@ body .summary-side-row input{
   width:100%!important;
   min-width:0!important;
   max-width:none!important;
+  padding-left:4px!important;
+  padding-right:4px!important;
 }
 body .summary-side-row strong,
 body .summary-adder-markup{
@@ -40,22 +56,27 @@ body .summary-adder-markup{
   min-width:0!important;
   max-width:100%!important;
   box-sizing:border-box!important;
-  overflow:hidden!important;
-  text-overflow:ellipsis!important;
   white-space:nowrap!important;
+  padding-left:4px!important;
+  padding-right:4px!important;
 }
 body .summary-side-row>b{
-  overflow-wrap:anywhere!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
 }
 
-@media (max-width:1180px){
+@media (max-width:900px){
   body .pricing-summary-layout{grid-template-columns:1fr!important;}
-  body .pricing-notes-column{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+  body .pricing-notes-column{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    padding-right:0!important;
+  }
   body .pricing-notes-column>.internal-notes-bottom{grid-column:1/-1!important;}
 }
 @media (max-width:760px){
   body .pricing-notes-column{grid-template-columns:1fr!important;}
   body .summary-side-grid-head{display:none!important;}
-  body .summary-side-row{grid-template-columns:minmax(0,1fr) minmax(70px,.55fr)!important;}
-  body .summary-side-row>b{grid-column:1/-1!important;}
+  body .summary-side-row{grid-template-columns:minmax(0,1fr) minmax(78px,.55fr)!important;}
+  body .summary-side-row>b{grid-column:1/-1!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important;}
 }

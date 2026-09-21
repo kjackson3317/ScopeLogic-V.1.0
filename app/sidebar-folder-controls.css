@@ -1,4 +1,4 @@
-/* True sidebar folder/dropdown behavior. */
+/* True sidebar folder/dropdown behavior. WorkspaceSidebarLinks adds these classes. */
 body .sidebar .nav-group.sl-nav-folder > .sl-nav-folder-heading{
   position:relative!important;
   display:block!important;
@@ -19,4 +19,26 @@ body .sidebar .nav-group.sl-nav-folder > .sl-nav-folder-heading::after{
 body .sidebar .nav-group.sl-nav-folder.open > .sl-nav-folder-heading::after{content:'▾';}
 body .sidebar .nav-group.sl-nav-folder:not(.open) > :is(button,a){display:none!important;}
 body .sidebar .nav-group.sl-nav-folder.open > :is(button,a){display:block;}
-body .sidebar .nav-group.sl-nav-folder > :is(button,a){margin-top:1px!important;}
+body .sidebar .nav-group.sl-nav-folder > :is(button,a){
+  position:relative!important;
+  box-sizing:border-box!important;
+  height:auto!important;
+  min-height:25px!important;
+  margin-top:1px!important;
+  line-height:15px!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+body .sidebar .nav-group.sl-nav-folder > :is(button,a).active{
+  font-weight:700!important;
+}
+body .sidebar .project-switch{
+  height:auto!important;
+  min-height:0!important;
+  overflow:hidden!important;
+}
+body .sidebar .project-switch > :is(span,b,small){
+  position:static!important;
+  line-height:1.2!important;
+}
