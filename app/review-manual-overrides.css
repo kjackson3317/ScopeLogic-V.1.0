@@ -1,0 +1,16 @@
+/* Manual Review Notes workflow refinements. */
+.sl-review-manual-note{display:flex;align-items:flex-start;gap:8px;padding:7px 9px;border-bottom:1px solid #c8d2c1;background:#e6eddd;color:#34452c;font-size:9px;line-height:1.35}.sl-review-manual-note b{white-space:nowrap;color:#26351a}.sl-review-manual-note span{color:#53624b}.sl-review-resolve-choices{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+
+/* Make collapsed RFI / RBB / Contractor Checklist child rows easier to distinguish. */
+body .app-shell .slr-child-card.collapsed>.slr-child-card-head,
+body .workspace-shell .slr-child-card.collapsed>.slr-child-card-head{background:#667d42!important;border-color:#465d29!important;color:#fff!important}
+body .app-shell .slr-child-card.collapsed>.slr-child-card-head .slr-child-summary-button,
+body .workspace-shell .slr-child-card.collapsed>.slr-child-card-head .slr-child-summary-button,
+body .app-shell .slr-child-card.collapsed>.slr-child-card-head .slr-child-number,
+body .workspace-shell .slr-child-card.collapsed>.slr-child-card-head .slr-child-number,
+body .app-shell .slr-child-card.collapsed>.slr-child-card-head small,
+body .workspace-shell .slr-child-card.collapsed>.slr-child-card-head small{color:#fff!important}
+body .app-shell .slr-child-card.collapsed>.slr-child-card-head .slr-collapse-toggle,
+body .workspace-shell .slr-child-card.collapsed>.slr-child-card-head .slr-collapse-toggle{background:#f1f5ed!important;border-color:#d0dac4!important;color:#26351a!important}
+
+@media(max-width:980px){.sl-review-resolve-choices{grid-template-columns:1fr!important}.sl-review-manual-note{flex-direction:column;gap:2px}}
