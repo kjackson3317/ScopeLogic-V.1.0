@@ -389,13 +389,7 @@ export default function ReviewObservationsClient({
   };
 
   const saveCreatedSlr = async () => {
-    if (
-      !slrSourceNote ||
-      !master?.owner_id ||
-      !slrDraft.scope_item.trim()
-    ) {
-      return;
-    }
+    if (!slrSourceNote || !master?.owner_id || !slrDraft.scope_item.trim()) return;
 
     setBusy(true);
     setError('');
@@ -403,49 +397,132 @@ export default function ReviewObservationsClient({
     try {
       const nextSequence =
         findings.reduce((max, item) => {
-          const number =
-            Number(String(item.display_number || '').replace(/\D/g, '')) || 0;
+          const number = Number(String(item.display_number || '').replace(/\\D/g, '')) || 0;
           return Math.max(max, number);
         }, 0) + 1;
 
       const displayNumber = `SLR-${String(nextSequence).padStart(3, '0')}`;
       const recommended = slrDraft.recommended_bid_basis.trim();
+      const legacyUid = crypto.randomUUID();
 
-      const result = await supabase
-        .from('master_project_findings')
-        .insert({
-          owner_id: master.owner_id,
-          master_project_id: masterProjectId,
-          legacy_uid: crypto.randomUUID(),
-          sequence_number: nextSequence,
-          display_number: displayNumber,
-          systems: [slrDraft.system_name],
-          custom_system: '',
-          scope_item: slrDraft.scope_item.trim(),
-          status: 'Open',
-          scope_concern: slrDraft.scope_concern.trim(),
-          recommended_bid_basis: recommended,
-          recommended_bid_basis_by_system: recommended
-            ? { [slrDraft.system_name]: recommended }
-            : {},
-          rfi_question: slrDraft.rfi_question.trim(),
-          reason_basis: '',
-          reference: slrDraft.reference.trim(),
-          source_type: slrDraft.source_type,
-          include_sow: false,
-          include_clarification: slrDraft.include_clarification,
-          include_formal_rfi: slrDraft.include_formal_rfi,
-          checklist_scope_item: '',
-        })
-        .select('id,display_number')
-        .single();
+      /*
+       * slr_entries is the canonical SLR table used by the existing
+       * ScopeLogic Internal Matrix. Its database trigger synchronizes
+       * the record into master_project_findings.
+       *
+       * If this Master Project does not have a Client Engagement yet,
+       * preserve the Master-Project-first workflow by writing directly
+       * to master_project_findings until an engagement exists.
+       */
+      const engagementResult = await supabase
+        .from('projects')
+        .select('id')
+        .eq('master_project_id', masterProjectId)
+        .order('created_at', { ascending: true })
+        .limit(1);
 
-      if (result.error) throw new Error(result.error.message);
+      if (engagementResult.error) throw new Error(engagementResult.error.message);
+
+      const sourceProjectId = String(engagementResult.data?.[0]?.id || '');
+      let masterFindingId = '';
+
+      if (sourceProjectId) {
+        const entryResult = await supabase
+          .from('slr_entries')
+          .insert({
+            owner_id: master.owner_id,
+            project_id: sourceProjectId,
+            legacy_uid: legacyUid,
+            sequence_number: nextSequence,
+            display_number: displayNumber,
+            system_name: slrDraft.system_name,
+            custom_system: '',
+            systems: [slrDraft.system_name],
+            scope_item: slrDraft.scope_item.trim(),
+            status: 'Open',
+            scope_concern: slrDraft.scope_concern.trim(),
+            rfi_question: slrDraft.rfi_question.trim(),
+            recommended_bid_basis: recommended,
+            recommended_bid_basis_by_system: recommended
+              ? { [slrDraft.system_name]: recommended }
+              : {},
+            reason_basis: '',
+            reference: slrDraft.reference.trim(),
+            source_type: slrDraft.source_type,
+            rfi_number: '',
+            resolution: '',
+            snippet_number: '',
+            include_sow: false,
+            include_clarification: slrDraft.include_clarification,
+            include_formal_rfi: slrDraft.include_formal_rfi,
+            checklist_scope_item: '',
+            checklist_scope_items_by_system: {},
+            contractor_response: 'Included',
+            contractor_response_reason: '',
+            ai_assistance: {},
+          })
+          .select('id,display_number')
+          .single();
+
+        if (entryResult.error) throw new Error(entryResult.error.message);
+
+        /*
+         * sync_slr_to_master is an AFTER INSERT trigger, so re-read the
+         * SLR after insert to obtain the Master Finding ID created by it.
+         */
+        const syncResult = await supabase
+          .from('slr_entries')
+          .select('master_finding_id')
+          .eq('id', entryResult.data.id)
+          .single();
+
+        if (syncResult.error) throw new Error(syncResult.error.message);
+
+        masterFindingId = String(syncResult.data?.master_finding_id || '');
+
+        if (!masterFindingId) {
+          throw new Error(
+            'The SLR was saved, but its Master Project finding could not be resolved.'
+          );
+        }
+      } else {
+        const findingResult = await supabase
+          .from('master_project_findings')
+          .insert({
+            owner_id: master.owner_id,
+            master_project_id: masterProjectId,
+            legacy_uid: legacyUid,
+            sequence_number: nextSequence,
+            display_number: displayNumber,
+            systems: [slrDraft.system_name],
+            custom_system: '',
+            scope_item: slrDraft.scope_item.trim(),
+            status: 'Open',
+            scope_concern: slrDraft.scope_concern.trim(),
+            recommended_bid_basis: recommended,
+            recommended_bid_basis_by_system: recommended
+              ? { [slrDraft.system_name]: recommended }
+              : {},
+            rfi_question: slrDraft.rfi_question.trim(),
+            reason_basis: '',
+            reference: slrDraft.reference.trim(),
+            source_type: slrDraft.source_type,
+            include_sow: false,
+            include_clarification: slrDraft.include_clarification,
+            include_formal_rfi: slrDraft.include_formal_rfi,
+            checklist_scope_item: '',
+          })
+          .select('id')
+          .single();
+
+        if (findingResult.error) throw new Error(findingResult.error.message);
+        masterFindingId = String(findingResult.data.id);
+      }
 
       const linkResult = await supabase
         .from('master_project_review_notes')
         .update({
-          linked_master_finding_id: result.data.id,
+          linked_master_finding_id: masterFindingId,
           disposition: 'Linked to SLR',
           updated_at: new Date().toISOString(),
         })
@@ -455,16 +532,22 @@ export default function ReviewObservationsClient({
 
       setSlrSourceNote(null);
       await load();
+      setMessage(`${displayNumber} created and linked to the Review Note.`);
 
-      setMessage(
-        `${result.data.display_number || displayNumber} created and linked to the Review Note.`,
-      );
+      /*
+       * The legacy Internal Matrix maintains an in-memory workspace snapshot.
+       * Force that screen to reload from the canonical cloud SLR table so the
+       * newly created SLR is visible immediately.
+       */
+      if (typeof window !== 'undefined') {
+        if (window.opener && !window.opener.closed) {
+          window.opener.location.reload();
+        } else {
+          window.setTimeout(() => window.location.reload(), 350);
+        }
+      }
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : 'The SLR could not be created.',
-      );
+      setError(cause instanceof Error ? cause.message : 'The SLR could not be created.');
     } finally {
       setBusy(false);
     }
