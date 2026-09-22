@@ -1021,9 +1021,10 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
     if (!master) return message('Master Project Unavailable', 'The selected Master Project could not be found.');
     const available = master.engagements.filter((engagement) => projects.some((item) => item.id === engagement.legacyId));
     if (!available.length) {
-      message('Client Engagement Required', `${master.projectNumber} — ${master.name} does not have a Client Engagement yet. Add one in Master Project Management before opening the project workspace.`);
+      window.location.href = `/master-projects/${master.id}`;
       return;
     }
+
     const nextProjectId = available.some((engagement) => engagement.legacyId === projectId) ? projectId : available[0].legacyId;
     setProjectId(nextProjectId);
     setSelectedUid('');
