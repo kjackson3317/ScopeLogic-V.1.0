@@ -196,6 +196,16 @@ export default function ProjectWorkflowEnhancer() {
       });
     };
 
+    const dismissInterimSaveDialog = () => {
+      const dialogs = Array.from(document.querySelectorAll<HTMLElement>('.app-dialog'));
+      const saved = dialogs.find((dialog) => clean(dialog.querySelector<HTMLElement>('.dialog-title b')?.textContent).toLowerCase() === 'saved');
+      if (!saved) return false;
+      const button = Array.from(saved.querySelectorAll<HTMLButtonElement>('.dialog-actions button')).find((item) => /^(ok|close)$/i.test(clean(item.textContent)));
+      if (!button) return false;
+      button.click();
+      return true;
+    };
+
     let pendingSave = '';
     const clickCapture = (event: MouseEvent) => {
       const target = event.target instanceof Element ? event.target : null;
@@ -203,16 +213,27 @@ export default function ProjectWorkflowEnhancer() {
       if (save) {
         pendingSave = currentSlrId();
         if (pendingSave) {
+          document.body.dataset.slInterimSlrSave = 'true';
+          let dialogTries = 0;
+          const dismissDialog = () => {
+            dialogTries += 1;
+            if (dismissInterimSaveDialog() || dialogTries >= 12) return;
+            window.setTimeout(dismissDialog, 40);
+          };
+          window.setTimeout(dismissDialog, 20);
+
           let tries = 0;
           const reopen = () => {
             tries += 1;
             if (openSlr(pendingSave, false)) {
+              delete document.body.dataset.slInterimSlrSave;
               toast('SLR saved successfully.', 'success');
               pendingSave = '';
               return;
             }
             if (tries < 12) window.setTimeout(reopen, 90);
             else {
+              delete document.body.dataset.slInterimSlrSave;
               toast('SLR saved, but ScopeLogic could not keep the record open. Reopen it from the project SLR list.', 'error');
               pendingSave = '';
             }
@@ -250,6 +271,7 @@ export default function ProjectWorkflowEnhancer() {
     document.addEventListener('click', clickCapture, true);
 
     return () => {
+      delete document.body.dataset.slInterimSlrSave;
       observer.disconnect();
       window.removeEventListener('focus', focus);
       document.removeEventListener('click', clickCapture, true);
