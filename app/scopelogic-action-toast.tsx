@@ -40,6 +40,7 @@ export default function ScopeLogicActionToast() {
     const inspect = () => {
       document.querySelectorAll<HTMLElement>('.app-dialog:not([data-sl-toast-seen])').forEach((node) => {
         node.dataset.slToastSeen = 'true';
+        if (document.body.dataset.slInterimSlrSave === 'true') return;
         const actionButtons = node.querySelectorAll<HTMLButtonElement>('.dialog-actions button');
         if (actionButtons.length !== 1) return;
         const title = node.querySelector<HTMLElement>('.dialog-title b')?.textContent || '';
