@@ -13,6 +13,7 @@ import './workstation-uniformity-v5.css';
 import './slr-green-banners.css';
 import './sidebar-folder-controls.css';
 import './slr-inline-editor.css';
+import './slr-review-update.css';
 import './quote-modern-ui.css';
 import './quote-modern-ui-fix.css';
 import './review-release-controller.css';
@@ -26,6 +27,7 @@ import ReviewNotesWorkspaceController from './review-notes-workspace-controller'
 import WorkstationUniformityBehavior from './workstation-uniformity-behavior';
 import DeliverablesNavigationEnhancer from './deliverables-navigation-enhancer';
 import SlrDeliverablesWorkflow from './slr-deliverables-workflow';
+import SlrReviewUpdateBehavior from './slr-review-update-behavior';
 import DeliverablesInlineControllerV2 from './deliverables-inline-controller-v2';
 import ReviewReleaseControllerV2 from './review-release-controller-v2';
 
@@ -36,5 +38,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body><DismissibleUiBehavior /><WorkspaceSidebarLinksV2 /><SlrTemplateSearchEnhancer /><ReviewObservationEnhancer /><ReviewNotesWorkspaceController /><WorkstationUniformityBehavior /><DeliverablesNavigationEnhancer /><SlrDeliverablesWorkflow /><DeliverablesInlineControllerV2 /><ReviewReleaseControllerV2 />{children}</body></html>;
+  return <html lang="en"><body><DismissibleUiBehavior /><WorkspaceSidebarLinksV2 /><SlrTemplateSearchEnhancer /><ReviewObservationEnhancer /><ReviewNotesWorkspaceController /><WorkstationUniformityBehavior /><DeliverablesNavigationEnhancer /><SlrDeliverablesWorkflow /><SlrReviewUpdateBehavior /><DeliverablesInlineControllerV2 /><ReviewReleaseControllerV2 />{children}</body></html>;
 }
