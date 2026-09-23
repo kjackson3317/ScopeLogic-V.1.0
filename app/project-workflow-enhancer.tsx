@@ -95,11 +95,11 @@ export default function ProjectWorkflowEnhancer() {
       label.dataset.slFullProjectLabel = 'true';
     };
 
-    const openSlr = (number: string) => {
+    const openSlr = (number: string, notify = true) => {
       const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.issue-list > button'));
       const target = buttons.find((button) => clean(button.querySelector('b')?.textContent) === number);
       if (!target) {
-        toast(`${number} is not visible in the current Internal Matrix filters. Clear the filters and try again.`, 'error');
+        if (notify) toast(`${number} is not visible in the current Internal Matrix filters. Clear the filters and try again.`, 'error');
         return false;
       }
       target.click();
@@ -119,17 +119,31 @@ export default function ProjectWorkflowEnhancer() {
       const signature = findingsRef.current.map((item) => `${item.id}:${item.display_number}:${item.scope_item}:${item.status}`).join('|');
       if (browser.dataset.signature === signature) return;
       browser.dataset.signature = signature;
-      browser.innerHTML = '';
+      browser.replaceChildren();
+
       const summary = document.createElement('summary');
-      summary.innerHTML = `<span>Project SLRs</span><b>${findingsRef.current.length}</b><small>Expand / collapse</small>`;
+      const summaryLabel = document.createElement('span');
+      summaryLabel.textContent = 'Project SLRs';
+      const count = document.createElement('b');
+      count.textContent = String(findingsRef.current.length);
+      const hint = document.createElement('small');
+      hint.textContent = 'Expand / collapse';
+      summary.append(summaryLabel, count, hint);
       browser.appendChild(summary);
+
       const list = document.createElement('div');
       list.className = 'sl-project-slr-browser-list';
       findingsRef.current.forEach((finding) => {
         const button = document.createElement('button');
         button.type = 'button';
         button.dataset.slrNumber = finding.display_number;
-        button.innerHTML = `<b>${finding.display_number}</b><span>${finding.scope_item || 'Untitled SLR'}</span><small>${finding.status || 'Open'}</small>`;
+        const number = document.createElement('b');
+        number.textContent = finding.display_number;
+        const title = document.createElement('span');
+        title.textContent = finding.scope_item || 'Untitled SLR';
+        const status = document.createElement('small');
+        status.textContent = finding.status || 'Open';
+        button.append(number, title, status);
         button.addEventListener('click', () => {
           if (openSlr(finding.display_number)) browser!.open = false;
         });
@@ -192,7 +206,7 @@ export default function ProjectWorkflowEnhancer() {
           let tries = 0;
           const reopen = () => {
             tries += 1;
-            if (openSlr(pendingSave)) {
+            if (openSlr(pendingSave, false)) {
               toast('SLR saved successfully.', 'success');
               pendingSave = '';
               return;
