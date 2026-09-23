@@ -13,6 +13,7 @@ import './workstation-uniformity-v5.css';
 import './slr-green-banners.css';
 import './sidebar-folder-controls.css';
 import './slr-inline-editor.css';
+import './slr-review-update.css';
 import './scopelogic-action-toast.css';
 import './quote-modern-ui.css';
 import './quote-modern-ui-fix.css';
