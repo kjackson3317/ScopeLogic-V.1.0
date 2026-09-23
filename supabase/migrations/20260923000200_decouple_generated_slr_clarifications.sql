@@ -56,11 +56,11 @@ security definer
 set search_path = ''
 as $$
 begin
+  -- Any GC Clarification deleted from an SLR is an intentional exclusion for
+  -- that SLR. Persist the user's choice back to both canonical SLR stores so
+  -- a later save/synchronization cannot silently recreate it. The Review Note
+  -- itself is not touched.
   if old.deliverable_type = 'CL'
-     and (
-       old.source_child_uid = 'slr:clarification'
-       or old.source_origin = 'slr:clarification'
-     )
      and old.related_master_finding_id is not null
   then
     update public.slr_entries
@@ -90,10 +90,7 @@ after delete on public.master_project_deliverable_items
 for each row
 when (
   old.deliverable_type = 'CL'
-  and (
-    old.source_child_uid = 'slr:clarification'
-    or old.source_origin = 'slr:clarification'
-  )
+  and old.related_master_finding_id is not null
 )
 execute function private.suppress_deleted_slr_clarification();
 
@@ -111,7 +108,10 @@ begin
     delete from public.master_project_deliverable_items
     where related_master_finding_id = new.master_finding_id
       and deliverable_type = 'CL'
-      and source_origin = 'slr:clarification';
+      and (
+        source_child_uid = 'slr:clarification'
+        or source_origin = 'slr:clarification'
+      );
   end if;
   return new;
 end;
