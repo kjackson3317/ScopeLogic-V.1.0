@@ -38,9 +38,22 @@ export async function resolveSlrProjectContext(legacyProjectId: string): Promise
   return { projectId: clean(row.id), masterProjectId: clean(row.master_project_id), ownerId, actualUserId };
 }
 
+async function adoptDisplayDraftDeliverables(supabase: any, context: ProjectContext, issue: any) {
+  const legacyUid = clean(issue.uid);
+  const displayNumber = clean(issue.id);
+  if (!legacyUid || !displayNumber) return;
+  const result = await supabase
+    .from('slr_draft_deliverable_items')
+    .update({ slr_legacy_uid: legacyUid, updated_at: new Date().toISOString() })
+    .eq('project_id', context.projectId)
+    .eq('slr_legacy_uid', `display:${displayNumber}`);
+  if (result.error) throw new Error(`Save draft deliverables: ${result.error.message}`);
+}
+
 export async function saveSlrDraftCloud(issue: any, legacyProjectId: string) {
   const supabase = createClient() as any;
   const context = await resolveSlrProjectContext(legacyProjectId);
+  await adoptDisplayDraftDeliverables(supabase, context, issue);
   const saveToken = crypto.randomUUID();
   const now = new Date().toISOString();
   const payload = {
@@ -98,6 +111,7 @@ export async function submitSlrCloud(issue: any, legacyProjectId: string) {
   const context = await resolveSlrProjectContext(legacyProjectId);
   const legacyUid = clean(issue.uid);
   if (!legacyUid) throw new Error('This SLR does not have a stable record identity.');
+  await adoptDisplayDraftDeliverables(supabase, context, issue);
 
   const existing = await supabase.from('slr_entries').select('id,include_clarification').eq('project_id', context.projectId).eq('legacy_uid', legacyUid).maybeSingle();
   if (existing.error) throw new Error(existing.error.message || 'The existing SLR could not be checked before submit.');
