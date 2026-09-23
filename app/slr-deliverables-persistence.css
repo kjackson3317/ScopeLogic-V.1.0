@@ -1,0 +1,6 @@
+/* Scope-limited SLR GC Clarification / VE controls. */
+.sl-slr-collapsible-section{display:block}
+.sl-slr-subhead-button{display:flex!important;align-items:center;justify-content:space-between;width:100%;min-height:29px;border:0!important;border-radius:0!important;margin:0!important;text-align:left;cursor:pointer}
+.sl-slr-subhead-button span{font:inherit;font-weight:900;letter-spacing:.05em;color:inherit}
+.sl-slr-subhead-button small{font-size:8px;font-weight:700;letter-spacing:0;color:inherit;opacity:.92}
+.sl-slr-section-body{display:block}
