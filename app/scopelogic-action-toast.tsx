@@ -20,7 +20,7 @@ export default function ScopeLogicActionToast() {
 
   useEffect(() => {
     const push = (message: string, preferred?: ToastKind) => {
-      const clean = message.replace(/\s+/g, ' ').trim();
+      const clean = message.replace(/\s+/g, ' ').replace(/×\s*$/, '').trim();
       if (!clean) return;
       const now = Date.now();
       const last = recent.current.get(clean) || 0;
@@ -40,6 +40,8 @@ export default function ScopeLogicActionToast() {
     const inspect = () => {
       document.querySelectorAll<HTMLElement>('.app-dialog:not([data-sl-toast-seen])').forEach((node) => {
         node.dataset.slToastSeen = 'true';
+        const actionButtons = node.querySelectorAll<HTMLButtonElement>('.dialog-actions button');
+        if (actionButtons.length !== 1) return;
         const title = node.querySelector<HTMLElement>('.dialog-title b')?.textContent || '';
         const body = node.querySelector<HTMLElement>('p')?.textContent || '';
         push([title, body].filter(Boolean).join(': '));
