@@ -88,11 +88,14 @@ export default function ProjectWorkflowEnhancer() {
 
     const updateSidebar = () => {
       const master = masterRef.current;
-      const label = document.querySelector<HTMLElement>('.project-switch b');
+      const switchButton = document.querySelector<HTMLElement>('.project-switch');
+      const label = switchButton?.querySelector<HTMLElement>('b');
       if (!master || !label) return;
       const expected = `${master.project_number} · ${master.name}`;
       if (label.textContent !== expected) label.textContent = expected;
       label.dataset.slFullProjectLabel = 'true';
+      const helper = switchButton?.querySelector<HTMLElement>('small');
+      if (helper && helper.textContent !== 'Open Project Library') helper.textContent = 'Open Project Library';
     };
 
     const openSlr = (number: string, notify = true) => {
@@ -209,6 +212,21 @@ export default function ProjectWorkflowEnhancer() {
     let pendingSave = '';
     const clickCapture = (event: MouseEvent) => {
       const target = event.target instanceof Element ? event.target : null;
+
+      if (target?.closest('.project-switch')) {
+        event.preventDefault();
+        event.stopPropagation();
+        window.location.assign('/project-library');
+        return;
+      }
+      const sidebarButton = target?.closest<HTMLButtonElement>('aside.sidebar .nav-group > button');
+      if (sidebarButton && clean(sidebarButton.textContent) === 'Project Library') {
+        event.preventDefault();
+        event.stopPropagation();
+        window.location.assign('/project-library');
+        return;
+      }
+
       const save = target?.closest('.slr-section-save');
       if (save) {
         pendingSave = currentSlrId();
