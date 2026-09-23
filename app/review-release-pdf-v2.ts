@@ -11,6 +11,7 @@ import {
 export { reviewReleaseFileName };
 
 export type ReviewReleaseKind = 'master-register' | LegacyReviewReleaseKind;
+export type ReviewBrandProfile = 'scopelogic' | 'cefi' | 'neutral';
 export const REVIEW_RELEASE_OPTIONS: { kind: ReviewReleaseKind; label: string }[] = [
   { kind: 'master-register', label: 'Master Coordination Register' },
   ...LEGACY_OPTIONS,
@@ -32,6 +33,7 @@ type BuildInput = {
   notes?: string;
   mode: 'preview' | 'official';
   releaseNumber?: number;
+  brandProfile?: ReviewBrandProfile;
 };
 
 type RegisterRow = {
@@ -195,15 +197,112 @@ async function buildMasterRegisterPdf(data: ReviewReleaseData, mode: 'preview'|'
   return document.save();
 }
 
+function profileCompany(profile: ReviewBrandProfile) {
+  if (profile === 'cefi') return 'Cana Eagle Fire Incorporated (CEFI)';
+  if (profile === 'neutral') return 'Project Review';
+  return 'ScopeLogic LLC';
+}
+
+function deliverableLabel(kind: ReviewReleaseKind) {
+  return REVIEW_RELEASE_OPTIONS.find((item) => item.kind === kind)?.label || kind;
+}
+
+function systemsForSummary(data: ReviewReleaseData) {
+  return Array.from(new Set(data.findings.flatMap((finding) => finding.systems || []).map((system) => safe(system).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+}
+
+async function applySummaryAndBranding(bytes: Uint8Array, input: BuildInput) {
+  const document = await PDFDocument.load(bytes);
+  const pages = document.getPages();
+  if (!pages.length) return bytes;
+  const font = await document.embedFont(StandardFonts.Helvetica);
+  const bold = await document.embedFont(StandardFonts.HelveticaBold);
+  const profile: ReviewBrandProfile = input.brandProfile || 'scopelogic';
+  const company = profileCompany(profile);
+  const pageWidth = PAGE_SIZE[0], pageHeight = PAGE_SIZE[1], contentWidth = pageWidth - MARGIN * 2;
+  const dark = rgb(.13, .18, .08), green = rgb(.31, .40, .18), pale = rgb(.94, .97, .92), border = rgb(.70, .75, .67), muted = rgb(.38, .43, .36), black = rgb(.10,.12,.10), white=rgb(1,1,1);
+  const scopeBrand = profile === 'scopelogic' ? await loadBrand(document) : null;
+
+  const cover = pages[0];
+  cover.drawRectangle({ x: 0, y: 0, width: pageWidth, height: pageHeight, color: white });
+  cover.drawRectangle({ x: 0, y: pageHeight - 12, width: pageWidth, height: 12, color: dark });
+  if (scopeBrand) {
+    const mark = scopeBrand.mark.scaleToFit(58,58), word = scopeBrand.wordmark.scaleToFit(230,38);
+    cover.drawImage(scopeBrand.mark,{x:MARGIN,y:pageHeight-92,width:mark.width,height:mark.height});
+    cover.drawImage(scopeBrand.wordmark,{x:MARGIN+70,y:pageHeight-75,width:word.width,height:word.height});
+  } else {
+    cover.drawText(company.toUpperCase(),{x:MARGIN,y:pageHeight-66,size:16,font:bold,color:dark});
+    if(profile==='cefi') cover.drawText('DIVISION 27 / 28 PROJECT REVIEW',{x:MARGIN,y:pageHeight-84,size:7,font:bold,color:green});
+  }
+
+  cover.drawText('PROJECT REVIEW SUMMARY',{x:MARGIN,y:pageHeight-132,size:19,font:bold,color:black});
+  const releaseLabel=input.mode==='official'?`Official Release ${String(input.releaseNumber||0).padStart(3,'0')}`:'DRAFT / PDF PREVIEW - NOT FOR SUBMISSION';
+  cover.drawText(releaseLabel,{x:MARGIN,y:pageHeight-153,size:8,font:bold,color:input.mode==='official'?green:rgb(.60,.25,.10)});
+  cover.drawLine({start:{x:MARGIN,y:pageHeight-166},end:{x:pageWidth-MARGIN,y:pageHeight-166},thickness:1.2,color:dark});
+
+  const systems=systemsForSummary(input.data);
+  const rows:[string,string][]=[
+    ['Project / Job',`${safe(input.data.master.project_number)} - ${safe(input.data.master.name)}`],
+    ['Address / Location',safe(input.data.master.location)||'Not entered'],
+    ['Project Status',safe(input.data.master.status)||'Not entered'],
+    ['Revision / Version Date',`${safe(input.data.master.revision)||'Rev 0'} | ${safe(input.data.master.version_date)||'Not set'}`],
+    ['Systems Included',systems.length?systems.join(', '):'Not identified'],
+    ['Included Deliverables',input.kinds.map(deliverableLabel).join(', ')],
+  ];
+  let y=pageHeight-202;
+  rows.forEach(([label,value])=>{
+    cover.drawText(label.toUpperCase(),{x:MARGIN,y,size:6.3,font:bold,color:muted});
+    const lines=wrapText(value,contentWidth-185,font,9.5).slice(0,3);
+    lines.forEach((line,index)=>cover.drawText(line,{x:MARGIN+170,y:y+1-index*11,size:9.5,font,color:black}));
+    y-=Math.max(28,lines.length*11+8);
+  });
+
+  const noteText=safe(input.notes).trim();
+  if(noteText){
+    const noteY=Math.max(66,y-84);
+    cover.drawRectangle({x:MARGIN,y:noteY,width:contentWidth,height:72,color:pale,borderColor:border,borderWidth:.5});
+    cover.drawText('RELEASE / REVIEW NOTES',{x:MARGIN+8,y:noteY+55,size:6.3,font:bold,color:muted});
+    wrapText(noteText,contentWidth-16,font,8).slice(0,5).forEach((line,index)=>cover.drawText(line,{x:MARGIN+8,y:noteY+40-index*10,size:8,font,color:black}));
+  }
+
+  cover.drawLine({start:{x:MARGIN,y:22},end:{x:pageWidth-MARGIN,y:22},thickness:.35,color:border});
+  cover.drawText(`${company} | Confidential | ${safe(input.data.master.project_number)} | ${safe(input.data.master.name)}`,{x:MARGIN,y:10,size:5.7,font,color:muted});
+  cover.drawText('Page 1',{x:pageWidth-MARGIN-font.widthOfTextAtSize('Page 1',5.7),y:10,size:5.7,font,color:muted});
+
+  if(profile!=='scopelogic'){
+    pages.slice(1).forEach((page,index)=>{
+      page.drawRectangle({x:MARGIN-2,y:pageHeight-60,width:330,height:55,color:white});
+      page.drawText(company.toUpperCase(),{x:MARGIN,y:pageHeight-37,size:10,font:bold,color:dark});
+      if(profile==='cefi') page.drawText('DIVISION 27 / 28 PROJECT REVIEW',{x:MARGIN,y:pageHeight-50,size:5.7,font:bold,color:green});
+      page.drawRectangle({x:MARGIN-2,y:0,width:contentWidth+4,height:24,color:white});
+      page.drawLine({start:{x:MARGIN,y:22},end:{x:pageWidth-MARGIN,y:22},thickness:.35,color:border});
+      page.drawText(`${company} | Confidential | ${safe(input.data.master.project_number)} | ${safe(input.data.master.name)}`,{x:MARGIN,y:10,size:5.7,font,color:muted});
+      const label=`Page ${index+2}`;
+      page.drawText(label,{x:pageWidth-MARGIN-font.widthOfTextAtSize(label,5.7),y:10,size:5.7,font,color:muted});
+    });
+  }
+
+  return document.save();
+}
+
 export async function buildReviewReleasePdf(input: BuildInput) {
   if (!input.kinds.length) throw new Error('Select at least one client deliverable.');
   const includeRegister=input.kinds.includes('master-register');
   const legacyKinds=input.kinds.filter((kind): kind is LegacyReviewReleaseKind => kind!=='master-register');
-  if(includeRegister && !legacyKinds.length) return buildMasterRegisterPdf(input.data,input.mode,input.releaseNumber,true);
-  if(!includeRegister) return buildLegacyReviewReleasePdf({...input,kinds:legacyKinds,data:input.data});
+  const legacyInput={data:input.data,kinds:legacyKinds,notes:input.notes,mode:input.mode,releaseNumber:input.releaseNumber};
+  let raw:Uint8Array;
+
+  if(includeRegister && !legacyKinds.length){
+    raw=await buildMasterRegisterPdf(input.data,input.mode,input.releaseNumber,true);
+    return applySummaryAndBranding(raw,input);
+  }
+  if(!includeRegister){
+    raw=await buildLegacyReviewReleasePdf(legacyInput);
+    return applySummaryAndBranding(raw,input);
+  }
 
   const [legacyBytes,registerBytes]=await Promise.all([
-    buildLegacyReviewReleasePdf({...input,kinds:legacyKinds,data:input.data}),
+    buildLegacyReviewReleasePdf(legacyInput),
     buildMasterRegisterPdf(input.data,input.mode,input.releaseNumber,false),
   ]);
   const legacy=await PDFDocument.load(legacyBytes), register=await PDFDocument.load(registerBytes), output=await PDFDocument.create();
@@ -211,5 +310,6 @@ export async function buildReviewReleasePdf(input: BuildInput) {
   const registerPages=await output.copyPages(register,register.getPageIndices());
   if(legacyPages.length){output.addPage(legacyPages[0]);registerPages.forEach((page)=>output.addPage(page));legacyPages.slice(1).forEach((page)=>output.addPage(page));}
   else registerPages.forEach((page)=>output.addPage(page));
-  return output.save();
+  raw=await output.save();
+  return applySummaryAndBranding(raw,input);
 }
