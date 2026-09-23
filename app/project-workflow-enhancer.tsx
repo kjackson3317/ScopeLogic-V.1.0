@@ -10,6 +10,7 @@ type ReviewNote = { id: string; system_name: string; topic: string; source_type:
 const LOCAL_WORKSPACE_KEYS = ['scopelogic-r14-8', 'technology-precon-r14-8', 'technology-precon-r14-7', 'technology-precon-r14-6', 'technology-precon-r14-5', 'technology-precon-r14-4', 'technology-precon-r14-3', 'technology-precon-r14-2'];
 const clean = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim();
 const toast = (message: string, kind: 'success' | 'error' | 'info' = 'success') => window.dispatchEvent(new CustomEvent('scopelogic:toast', { detail: { message, kind } }));
+const checkpointKey = (projectId: string, slrId: string) => `scopelogic:slr-checkpoint:${projectId || 'current'}:${slrId}`;
 
 function confirmInApp(title: string, message: string, confirmLabel: string) {
   return new Promise<boolean>((resolve) => {
@@ -133,12 +134,10 @@ export default function ProjectWorkflowEnhancer() {
       const expected = `${master.project_number} · ${master.name}`;
       if (label.textContent !== expected) label.textContent = expected;
       label.dataset.slFullProjectLabel = 'true';
-      const helper = switchButton?.querySelector<HTMLElement>('small');
-      if (helper && helper.textContent !== 'Open Project Library') helper.textContent = 'Open Project Library';
     };
 
     const openSlr = (number: string, notify = true) => {
-      const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.issue-list > button'));
+      const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.submitted-slr-list > button'));
       const target = buttons.find((button) => clean(button.querySelector('b')?.textContent) === number);
       if (!target) {
         if (notify) toast(`${number} is not visible in the current Internal Matrix filters. Clear the filters and try again.`, 'error');
@@ -149,14 +148,18 @@ export default function ProjectWorkflowEnhancer() {
     };
 
     const updateSlrBrowser = () => {
-      const toolbar = document.querySelector<HTMLElement>('.matrix-toolbar');
-      if (!toolbar || !document.querySelector('.issue-list')) return;
+      const templateBar = document.querySelector<HTMLElement>('.template-bar.template-library');
+      const matrix = document.querySelector<HTMLElement>('.matrix-editor-full');
+      if (!templateBar || !matrix) {
+        document.querySelector('.sl-project-slr-browser')?.remove();
+        return;
+      }
       let browser = document.querySelector<HTMLDetailsElement>('.sl-project-slr-browser');
       if (!browser) {
         browser = document.createElement('details');
         browser.className = 'sl-project-slr-browser';
         browser.open = true;
-        toolbar.before(browser);
+        templateBar.before(browser);
       }
       const signature = findingsRef.current.map((item) => `${item.id}:${item.display_number}:${item.scope_item}:${item.status}`).join('|');
       if (browser.dataset.signature === signature) return;
@@ -178,7 +181,6 @@ export default function ProjectWorkflowEnhancer() {
       findingsRef.current.forEach((finding) => {
         const button = document.createElement('button');
         button.type = 'button';
-        button.dataset.slrNumber = finding.display_number;
         const number = document.createElement('b');
         number.textContent = finding.display_number;
         const title = document.createElement('span');
@@ -238,26 +240,9 @@ export default function ProjectWorkflowEnhancer() {
       });
     };
 
-    const dismissInterimSaveDialog = () => {
-      const dialogs = Array.from(document.querySelectorAll<HTMLElement>('.app-dialog'));
-      const saved = dialogs.find((dialog) => clean(dialog.querySelector<HTMLElement>('.dialog-title b')?.textContent).toLowerCase() === 'saved');
-      if (!saved) return false;
-      const button = Array.from(saved.querySelectorAll<HTMLButtonElement>('.dialog-actions button')).find((item) => /^(ok|close)$/i.test(clean(item.textContent)));
-      if (!button) return false;
-      button.click();
-      return true;
-    };
-
-    let pendingSave = '';
     const clickCapture = (event: MouseEvent) => {
       const target = event.target instanceof Element ? event.target : null;
 
-      if (target?.closest('.project-switch')) {
-        event.preventDefault();
-        event.stopPropagation();
-        window.location.assign('/project-library');
-        return;
-      }
       const sidebarButton = target?.closest<HTMLButtonElement>('aside.sidebar .nav-group > button');
       if (sidebarButton && clean(sidebarButton.textContent) === 'Project Library') {
         event.preventDefault();
@@ -266,36 +251,14 @@ export default function ProjectWorkflowEnhancer() {
         return;
       }
 
-      const save = target?.closest('.slr-section-save');
-      if (save) {
-        pendingSave = currentSlrId();
-        if (pendingSave) {
-          document.body.dataset.slInterimSlrSave = 'true';
-          let dialogTries = 0;
-          const dismissDialog = () => {
-            dialogTries += 1;
-            if (dismissInterimSaveDialog() || dialogTries >= 12) return;
-            window.setTimeout(dismissDialog, 40);
-          };
-          window.setTimeout(dismissDialog, 20);
-
-          let tries = 0;
-          const reopen = () => {
-            tries += 1;
-            if (openSlr(pendingSave, false)) {
-              delete document.body.dataset.slInterimSlrSave;
-              toast('SLR saved successfully.', 'success');
-              pendingSave = '';
-              return;
-            }
-            if (tries < 12) window.setTimeout(reopen, 90);
-            else {
-              delete document.body.dataset.slInterimSlrSave;
-              toast('SLR saved, but ScopeLogic could not keep the record open. Reopen it from the project SLR list.', 'error');
-              pendingSave = '';
-            }
-          };
-          window.setTimeout(reopen, 80);
+      const submitButton = target?.closest<HTMLButtonElement>('.matrix-editor-full .submit-bar .primary');
+      if (submitButton && clean(submitButton.textContent) === 'Submit Entry') {
+        const projectId = currentLegacyProjectId();
+        const slrId = currentSlrId();
+        if (slrId) {
+          window.setTimeout(() => {
+            if (currentSlrId() !== slrId) window.localStorage.removeItem(checkpointKey(projectId, slrId));
+          }, 150);
         }
       }
 
@@ -333,7 +296,6 @@ export default function ProjectWorkflowEnhancer() {
     document.addEventListener('click', clickCapture, true);
 
     return () => {
-      delete document.body.dataset.slInterimSlrSave;
       observer.disconnect();
       window.removeEventListener('focus', focus);
       document.removeEventListener('click', clickCapture, true);
