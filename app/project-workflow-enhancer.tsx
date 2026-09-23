@@ -11,6 +11,45 @@ const LOCAL_WORKSPACE_KEYS = ['scopelogic-r14-8', 'technology-precon-r14-8', 'te
 const clean = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim();
 const toast = (message: string, kind: 'success' | 'error' | 'info' = 'success') => window.dispatchEvent(new CustomEvent('scopelogic:toast', { detail: { message, kind } }));
 
+function confirmInApp(title: string, message: string, confirmLabel: string) {
+  return new Promise<boolean>((resolve) => {
+    const backdrop = document.createElement('div');
+    backdrop.style.cssText = 'position:fixed;inset:0;z-index:10080;display:grid;place-items:center;padding:20px;background:rgba(20,26,19,.55)';
+    const dialog = document.createElement('section');
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.style.cssText = 'width:min(500px,94vw);padding:20px;border:1px solid #aeb8a7;border-radius:10px;background:#fff;box-shadow:0 18px 50px rgba(0,0,0,.25);font-family:Arial,Helvetica,sans-serif;color:#202820';
+    const eyebrow = document.createElement('span');
+    eyebrow.textContent = 'CONFIRM ACTION';
+    eyebrow.style.cssText = 'display:block;font-size:10px;font-weight:900;letter-spacing:.09em;color:#7a342e';
+    const heading = document.createElement('h2');
+    heading.textContent = title;
+    heading.style.cssText = 'margin:5px 0 8px;font-size:19px';
+    const body = document.createElement('p');
+    body.textContent = message;
+    body.style.cssText = 'margin:0;color:#626a60;line-height:1.45;font-size:13px';
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:18px';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = 'Cancel';
+    cancel.style.cssText = 'padding:9px 13px;border:1px solid #c8cec3;border-radius:7px;background:#fff;font-weight:800;cursor:pointer';
+    const confirm = document.createElement('button');
+    confirm.type = 'button';
+    confirm.textContent = confirmLabel;
+    confirm.style.cssText = 'padding:9px 13px;border:1px solid #8b3029;border-radius:7px;background:#8b3029;color:#fff;font-weight:800;cursor:pointer';
+    const finish = (result: boolean) => { backdrop.remove(); resolve(result); };
+    cancel.addEventListener('click', () => finish(false));
+    confirm.addEventListener('click', () => finish(true));
+    backdrop.addEventListener('mousedown', (event) => { if (event.target === backdrop) finish(false); });
+    actions.append(cancel, confirm);
+    dialog.append(eyebrow, heading, body, actions);
+    backdrop.appendChild(dialog);
+    document.body.appendChild(backdrop);
+    cancel.focus();
+  });
+}
+
 function currentLegacyProjectId() {
   for (const key of LOCAL_WORKSPACE_KEYS) {
     const raw = window.localStorage.getItem(key);
@@ -265,9 +304,14 @@ export default function ProjectWorkflowEnhancer() {
         event.preventDefault();
         event.stopPropagation();
         const noteId = deleteButton.dataset.noteId || '';
-        if (!noteId || !window.confirm('Delete this Review Note? This does not delete a linked SLR.')) return;
+        if (!noteId) return;
         deleteButton.disabled = true;
-        void supabase.from('master_project_review_notes').delete().eq('id', noteId).then(async (result: any) => {
+        void confirmInApp('Delete Review Note?', 'This removes the Review Note only. A linked SLR will not be deleted.', 'Delete Review Note').then(async (confirmed) => {
+          if (!confirmed) {
+            deleteButton.disabled = false;
+            return;
+          }
+          const result = await supabase.from('master_project_review_notes').delete().eq('id', noteId);
           if (result.error) {
             deleteButton.disabled = false;
             toast(`Review note delete failed: ${result.error.message}`, 'error');
