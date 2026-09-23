@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   SLR_SYSTEM_ORDER,
   blankChecklistChild,
@@ -19,20 +19,74 @@ type Props = {
   onChange: (issue: EditableIssue) => void;
 };
 
+const LOCAL_WORKSPACE_KEYS = ['scopelogic-r14-8', 'technology-precon-r14-8', 'technology-precon-r14-7', 'technology-precon-r14-6', 'technology-precon-r14-5', 'technology-precon-r14-4', 'technology-precon-r14-3', 'technology-precon-r14-2'];
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
 const clean = (value: unknown) => String(value ?? '').trim();
 const firstUid = <T extends { uid: string }>(items: T[]) => new Set(items.slice(0, 1).map((item) => item.uid));
+const toast = (message: string, kind: 'success' | 'error' | 'info' = 'success') => window.dispatchEvent(new CustomEvent('scopelogic:toast', { detail: { message, kind } }));
+
+function currentProjectId() {
+  for (const key of LOCAL_WORKSPACE_KEYS) {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw);
+      const id = clean(parsed?.projectId);
+      if (id) return id;
+    } catch {}
+  }
+  return 'current';
+}
+
+function checkpointKey(projectId: string, slrId: string) {
+  return `scopelogic:slr-checkpoint:${projectId || 'current'}:${slrId}`;
+}
+
+function currentDisplayedSlrId() {
+  const labels = Array.from(document.querySelectorAll<HTMLLabelElement>('.matrix-editor-full label.field'));
+  const target = labels.find((label) => label.querySelector('span')?.textContent?.trim() === 'SLR ID');
+  return target?.querySelector<HTMLInputElement>('input')?.value?.trim() || '';
+}
 
 export default function SlrChildEditor({ issue, onChange }: Props) {
   const [openRfis, setOpenRfis] = useState<Set<string>>(() => firstUid(issue.rfis));
   const [openRbbs, setOpenRbbs] = useState<Set<string>>(() => firstUid(issue.recommendBaseBids));
   const [openChecklist, setOpenChecklist] = useState<Set<string>>(() => firstUid(issue.checklistQuestions));
+  const restoredCheckpointRef = useRef('');
 
   useEffect(() => {
     setOpenRfis(firstUid(issue.rfis));
     setOpenRbbs(firstUid(issue.recommendBaseBids));
     setOpenChecklist(firstUid(issue.checklistQuestions));
   }, [issue.uid]);
+
+  useEffect(() => {
+    const key = checkpointKey(currentProjectId(), issue.id);
+    if (restoredCheckpointRef.current === key) return;
+    restoredCheckpointRef.current = key;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return;
+    try {
+      const saved = JSON.parse(raw) as { issue?: EditableIssue };
+      if (saved.issue?.id === issue.id) onChange(saved.issue);
+    } catch {
+      window.localStorage.removeItem(key);
+    }
+  }, [issue.id, onChange]);
+
+  useEffect(() => {
+    const handleSubmit = (event: MouseEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const button = target?.closest<HTMLButtonElement>('.matrix-editor-full .submit-bar .primary');
+      if (!button || clean(button.textContent) !== 'Submit Entry') return;
+      const key = checkpointKey(currentProjectId(), issue.id);
+      window.setTimeout(() => {
+        if (currentDisplayedSlrId() !== issue.id) window.localStorage.removeItem(key);
+      }, 100);
+    };
+    document.addEventListener('click', handleSubmit, true);
+    return () => document.removeEventListener('click', handleSubmit, true);
+  }, [issue.id]);
 
   const commit = (change: (next: EditableIssue) => void) => {
     const next = clone(issue);
@@ -48,7 +102,13 @@ export default function SlrChildEditor({ issue, onChange }: Props) {
   });
 
   const saveSlr = () => {
-    document.querySelector<HTMLButtonElement>('.matrix-editor-full .submit-bar .primary')?.click();
+    try {
+      const key = checkpointKey(currentProjectId(), issue.id);
+      window.localStorage.setItem(key, JSON.stringify({ savedAt: new Date().toISOString(), issue: clone(issue) }));
+      toast('SLR saved successfully.', 'success');
+    } catch (cause) {
+      toast(`SLR save failed: ${cause instanceof Error ? cause.message : 'The browser checkpoint could not be written.'}`, 'error');
+    }
   };
 
   const rfiSystems = Array.from(new Set([...(issue.systems || []), ...SLR_SYSTEM_ORDER]));
@@ -80,7 +140,7 @@ export default function SlrChildEditor({ issue, onChange }: Props) {
         <div className="slr-section-actions">
           <button className="secondary" type="button" onClick={() => setOpenRfis(new Set(issue.rfis.map((item) => item.uid)))} disabled={!issue.rfis.length}>Expand All</button>
           <button className="secondary" type="button" onClick={() => setOpenRfis(new Set())} disabled={!issue.rfis.length}>Collapse All</button>
-          <button className="primary slr-section-save" type="button" onClick={saveSlr} title="Uses the same save action as Submit Entry">Save SLR</button>
+          <button className="primary slr-section-save" type="button" onClick={saveSlr} title="Save current SLR work without submitting the entry">Save SLR</button>
           <button className="secondary" type="button" onClick={addRfi}>+ Add RFI</button>
         </div>
       </div>
@@ -126,7 +186,7 @@ export default function SlrChildEditor({ issue, onChange }: Props) {
         <div className="slr-section-actions">
           <button className="secondary" type="button" onClick={() => setOpenRbbs(new Set(issue.recommendBaseBids.map((item) => item.uid)))} disabled={!issue.recommendBaseBids.length}>Expand All</button>
           <button className="secondary" type="button" onClick={() => setOpenRbbs(new Set())} disabled={!issue.recommendBaseBids.length}>Collapse All</button>
-          <button className="primary slr-section-save" type="button" onClick={saveSlr} title="Uses the same save action as Submit Entry">Save SLR</button>
+          <button className="primary slr-section-save" type="button" onClick={saveSlr} title="Save current SLR work without submitting the entry">Save SLR</button>
           <button className="secondary" type="button" onClick={addRbb}>+ Add Recommend Base Bid</button>
         </div>
       </div>
@@ -200,7 +260,7 @@ export default function SlrChildEditor({ issue, onChange }: Props) {
         <div className="slr-section-actions">
           <button className="secondary" type="button" onClick={() => setOpenChecklist(new Set(issue.checklistQuestions.map((item) => item.uid)))} disabled={!issue.checklistQuestions.length}>Expand All</button>
           <button className="secondary" type="button" onClick={() => setOpenChecklist(new Set())} disabled={!issue.checklistQuestions.length}>Collapse All</button>
-          <button className="primary slr-section-save" type="button" onClick={saveSlr} title="Uses the same save action as Submit Entry">Save SLR</button>
+          <button className="primary slr-section-save" type="button" onClick={saveSlr} title="Save current SLR work without submitting the entry">Save SLR</button>
           <button className="secondary" type="button" onClick={addChecklist}>+ Add Checklist Question</button>
         </div>
       </div>
