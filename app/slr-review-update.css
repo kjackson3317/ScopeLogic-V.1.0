@@ -1,6 +1,6 @@
-/* Targeted SLR / Review Note fixes for the 2026-09-23 update. */
+/* Narrow, explicitly requested SLR / Review Note controls only. */
 
-/* Current Master Project must always show the complete project identity. */
+/* Current Master Project must show the complete project number and name. */
 body .app-shell .project-switch b[data-sl-full-project-label='true']{
   white-space:normal!important;
   overflow:visible!important;
@@ -9,34 +9,34 @@ body .app-shell .project-switch b[data-sl-full-project-label='true']{
   word-break:break-word!important;
 }
 
-/* Project-scoped SLR browser shown at the top of the Internal Matrix. */
-.sl-project-slr-browser{margin:0 0 8px;border:1px solid #87996c;border-radius:7px;background:#fff;overflow:hidden}.sl-project-slr-browser>summary{list-style:none;display:grid;grid-template-columns:1fr auto auto;gap:9px;align-items:center;padding:8px 10px;background:#e6eddd;color:#26351a;cursor:pointer}.sl-project-slr-browser>summary::-webkit-details-marker{display:none}.sl-project-slr-browser>summary span{font-size:10px;font-weight:900;letter-spacing:.05em;text-transform:uppercase}.sl-project-slr-browser>summary b{font-size:10px;background:#667d42;color:#fff;border-radius:999px;padding:2px 7px}.sl-project-slr-browser>summary small{font-size:8px;color:#5b6851}.sl-project-slr-browser-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:5px;padding:7px;background:#f7f9f4}.sl-project-slr-browser-list button{display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:center;min-width:0;border:1px solid #b8c5a6;border-radius:5px;background:#fff;padding:6px 7px;text-align:left;cursor:pointer}.sl-project-slr-browser-list button:hover{background:#f1f5ed;border-color:#87996c}.sl-project-slr-browser-list button b{font-size:9px;color:#465d29}.sl-project-slr-browser-list button span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;color:#26351a}.sl-project-slr-browser-list button small{font-size:8px;color:#6b7562}
+/* Project-scoped SLR browser shown above the existing Internal Matrix controls. */
+.sl-project-slr-browser{margin:0 0 8px;border:1px solid #87996c;border-radius:7px;background:#fff;overflow:hidden}
+.sl-project-slr-browser>summary{list-style:none;display:grid;grid-template-columns:1fr auto auto;gap:9px;align-items:center;padding:8px 10px;background:#e6eddd;color:#26351a;cursor:pointer}
+.sl-project-slr-browser>summary::-webkit-details-marker{display:none}
+.sl-project-slr-browser>summary span{font-size:10px;font-weight:900;letter-spacing:.05em;text-transform:uppercase}
+.sl-project-slr-browser>summary b{font-size:10px;background:#667d42;color:#fff;border-radius:999px;padding:2px 7px}
+.sl-project-slr-browser>summary small{font-size:8px;color:#5b6851}
+.sl-project-slr-browser-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:5px;padding:7px;background:#f7f9f4}
+.sl-project-slr-browser-list button{display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:center;min-width:0;border:1px solid #b8c5a6;border-radius:5px;background:#fff;padding:6px 7px;text-align:left;cursor:pointer}
+.sl-project-slr-browser-list button:hover{background:#f1f5ed;border-color:#87996c}
+.sl-project-slr-browser-list button b{font-size:9px;color:#465d29}
+.sl-project-slr-browser-list button span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;color:#26351a}
+.sl-project-slr-browser-list button small{font-size:8px;color:#6b7562}
 
-/* Review Note delete is intentionally added beside Edit / Create SLR. */
-.sl-review-note-actions .sl-review-note-delete{color:#8a3028!important;border-color:#d4aaa4!important}.sl-review-note-actions .sl-review-note-delete:hover{background:#fff0ed!important}
+/* Review Note delete sits beside the existing Edit / Create SLR actions. */
+.sl-review-note-actions .sl-review-note-delete{color:#8a3028!important;border-color:#d4aaa4!important}
+.sl-review-note-actions .sl-review-note-delete:hover{background:#fff0ed!important}
 
-/* GC Clarifications and VE Opportunities remain at the bottom of the SLR and
-   each section header acts as an independent collapse control. */
+/* GC Clarifications and VE Opportunities use their existing SLR styling;
+   only the requested collapse controls are aligned in each section header. */
 body .app-shell .matrix-editor-full .sl-slr-subhead{
   display:flex!important;
   align-items:center!important;
   justify-content:space-between!important;
   gap:8px!important;
-  cursor:pointer!important;
-  user-select:none!important;
 }
-body .app-shell .matrix-editor-full .sl-slr-subhead::after{
-  content:'Collapse';
-  font-size:8px;
-  font-weight:800;
-  letter-spacing:.03em;
-  color:#fff;
-  opacity:.9;
-}
-body .app-shell .matrix-editor-full .sl-slr-subhead[aria-expanded='false']::after{
-  content:'Expand';
-}
-body .app-shell .matrix-editor-full .sl-slr-subhead:focus-visible{
-  outline:2px solid #26351a;
-  outline-offset:-2px;
+body .app-shell .matrix-editor-full .sl-slr-subhead>button{
+  min-height:24px!important;
+  padding:3px 8px!important;
+  font-size:9px!important;
 }
