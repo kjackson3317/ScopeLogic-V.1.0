@@ -1,0 +1,1 @@
+ScopeLogic 2026-09-23 scoped update documentation is contained in the adjacent UPDATE-* files.
