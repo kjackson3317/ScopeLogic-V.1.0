@@ -18,7 +18,6 @@ type MasterProject = {
 
 type Engagement = { id: string; master_project_id: string | null };
 type Notice = { kind: 'success' | 'error'; message: string } | null;
-
 type Props = { actualUserId: string; role: string; userName: string };
 
 const jobNumberSort = (a: MasterProject, b: MasterProject) =>
@@ -38,6 +37,8 @@ export default function ProjectLibraryClient({ role, userName }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState<Notice>(null);
+  const [deleteTarget, setDeleteTarget] = useState<MasterProject | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -73,24 +74,40 @@ export default function ProjectLibraryClient({ role, userName }: Props) {
   const engagementCount = (masterId: string) => engagements.filter((engagement) => engagement.master_project_id === masterId).length;
   const activeCount = masters.filter((master) => !master.is_archived && !['Complete'].includes(master.status)).length;
 
-  const deleteProject = async (master: MasterProject) => {
+  const requestDeleteProject = (master: MasterProject) => {
     const linked = engagementCount(master.id);
     if (linked) {
       setNotice({ kind: 'error', message: `${master.project_number} cannot be deleted because it has ${linked} Client Engagement${linked === 1 ? '' : 's'}. Archive it or remove/reassign those engagements first.` });
       return;
     }
-    if (!window.confirm(`Permanently delete ${master.project_number} - ${master.name}? This cannot be undone.`)) return;
+    setDeleteTarget(master);
+  };
+
+  const confirmDeleteProject = async () => {
+    const master = deleteTarget;
+    if (!master || deleting) return;
+    setDeleting(true);
     const result = await supabase.from('master_projects').delete().eq('id', master.id);
+    setDeleting(false);
     if (result.error) {
       setNotice({ kind: 'error', message: `Project delete failed: ${result.error.message}` });
       return;
     }
+    setDeleteTarget(null);
     setNotice({ kind: 'success', message: `${master.project_number} deleted successfully.` });
     await load();
   };
 
   return <main className="library-page">
     {notice ? <div className={`library-toast ${notice.kind}`} role="status">{notice.message}</div> : null}
+    {deleteTarget ? <div className="library-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !deleting) setDeleteTarget(null); }}>
+      <section className="library-confirm" role="dialog" aria-modal="true" aria-label="Confirm project deletion">
+        <span>DELETE PROJECT</span>
+        <h2>{deleteTarget.project_number} - {deleteTarget.name}</h2>
+        <p>Permanently delete this project? This cannot be undone.</p>
+        <div><button type="button" disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</button><button type="button" className="danger" disabled={deleting} onClick={() => void confirmDeleteProject()}>{deleting ? 'Deleting…' : 'Delete Project'}</button></div>
+      </section>
+    </div> : null}
     <header className="library-header">
       <div>
         <div className="eyebrow">ScopeLogic RC5.7</div>
@@ -133,7 +150,7 @@ export default function ProjectLibraryClient({ role, userName }: Props) {
           <span>{engagementCount(master.id)}</span>
           <span><i>{master.status}</i></span>
           <span>{master.revision}</span>
-          <span className="row-actions"><a className="open" href={`/master-projects/${master.id}`}>Open</a><button type="button" onClick={() => void deleteProject(master)}>Delete</button></span>
+          <span className="row-actions"><a className="open" href={`/master-projects/${master.id}`}>Open</a><button type="button" onClick={() => requestDeleteProject(master)}>Delete</button></span>
         </div>)}
       </div> : <div className="empty"><b>No matching {showArchived ? 'archived' : 'existing'} projects.</b><p>{isAdmin ? 'Create or assign a Master Project to populate the library.' : 'Ask your ScopeLogic administrator to assign you to a Master Project.'}</p></div>}
     </section>
@@ -141,7 +158,7 @@ export default function ProjectLibraryClient({ role, userName }: Props) {
     <footer>Signed in as {userName}</footer>
 
     <style jsx>{`
-      .library-page{min-height:100vh;background:#f5f6f2;color:#202420;font-family:Arial,Helvetica,sans-serif;padding:28px}.library-toast{position:fixed;right:24px;top:24px;z-index:2000;max-width:460px;padding:12px 15px;border-radius:9px;box-shadow:0 12px 32px rgba(0,0,0,.16);font-size:13px;font-weight:800}.library-toast.success{background:#edf6e8;border:1px solid #9ab18b;color:#294322}.library-toast.error{background:#fff0ed;border:1px solid #d7a49c;color:#7b2922}.library-header{max-width:1500px;margin:0 auto 18px;display:flex;justify-content:space-between;align-items:flex-end;gap:22px}.library-header h1{font-size:34px;margin:4px 0}.library-header p{margin:0;color:#687067}.eyebrow{font-size:12px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#59612b}.header-actions{display:flex;gap:9px;flex-wrap:wrap}.button{padding:11px 15px;border-radius:8px;background:#59612b;color:#fff;text-decoration:none;font-size:13px;font-weight:800}.button.secondary{background:#fff;color:#292d29;border:1px solid #d8ddd3}.metrics{max-width:1500px;margin:0 auto 14px;background:#fff;border:1px solid #d9ddd3;border-radius:12px;display:grid;grid-template-columns:repeat(4,1fr);overflow:hidden}.metrics div{padding:17px;border-right:1px solid #e1e4dc}.metrics div:last-child{border-right:0}.metrics b,.metrics span{display:block}.metrics b{font-size:24px}.metrics span{font-size:11px;text-transform:uppercase;color:#687067;margin-top:4px;font-weight:700}.library-panel{max-width:1500px;margin:0 auto;background:#fff;border:1px solid #d9ddd3;border-radius:12px;overflow:hidden}.toolbar{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;padding:15px 17px;border-bottom:1px solid #e4e7df}.toolbar-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.tabs{display:flex;gap:5px}.tabs button,.view-all{border:1px solid #d8ddd3;background:#fff;border-radius:7px;padding:8px 12px;font-weight:800;cursor:pointer}.tabs button.active{background:#59612b;color:#fff;border-color:#59612b}.view-all{color:#59612b}.toolbar label{width:min(540px,60vw);font-size:11px;font-weight:800;text-transform:uppercase;color:#687067}.toolbar label span{display:block;margin-bottom:5px}.toolbar input{box-sizing:border-box;width:100%;padding:9px 10px;border:1px solid #ccd1c7;border-radius:7px}.recent-note{padding:8px 17px;border-bottom:1px solid #e4e7df;background:#f8faf5;color:#697064;font-size:11px}.project-table{overflow:auto}.project-row{display:grid;grid-template-columns:2fr 1.1fr 1.6fr .7fr .8fr .65fr .75fr;gap:10px;align-items:center;padding:12px 16px;border-bottom:1px solid #e7e9e3;color:inherit;min-width:1080px}.project-row:not(.head):hover{background:#f3f4ef}.project-row.head{font-size:10px;text-transform:uppercase;font-weight:800;color:#687067;background:#fafbf8}.project-row span{font-size:13px}.project-row span:first-child b,.project-row span:first-child strong,.project-row span:first-child small{display:block}.project-row span:first-child b{color:#59612b;font-size:12px;margin-bottom:3px}.project-row span:first-child strong{font-size:14px}.project-row span:first-child small{color:#777f76;margin-top:4px}.project-row i{font-style:normal;padding:5px 8px;background:#eef0e7;color:#59612b;border-radius:999px;font-size:11px;font-weight:800}.row-actions{display:flex;gap:7px;align-items:center}.row-actions a,.row-actions button{border:1px solid #ccd1c7;border-radius:6px;background:#fff;padding:6px 8px;font-size:11px;font-weight:900;text-decoration:none;cursor:pointer}.row-actions .open{color:#59612b}.row-actions button{color:#8a3028}.empty{padding:40px;text-align:center;color:#687067}.empty b{color:#2d322d}.error-box{max-width:1500px;margin:0 auto 14px;background:#fff1ef;border:1px solid #ddb9b4;border-radius:9px;padding:12px 14px;color:#742d27;display:flex;gap:10px;align-items:center}.error-box span{flex:1}.error-box button{border:0;border-radius:6px;padding:7px 10px;cursor:pointer}footer{max-width:1500px;margin:14px auto 0;color:#7b817a;font-size:11px}@media(max-width:850px){.library-page{padding:14px}.library-header{display:block}.header-actions{margin-top:12px}.metrics{grid-template-columns:1fr 1fr}.toolbar{align-items:stretch;flex-direction:column}.toolbar label{width:100%}}
+      .library-page{min-height:100vh;background:#f5f6f2;color:#202420;font-family:Arial,Helvetica,sans-serif;padding:28px}.library-toast{position:fixed;right:24px;top:24px;z-index:2000;max-width:460px;padding:12px 15px;border-radius:9px;box-shadow:0 12px 32px rgba(0,0,0,.16);font-size:13px;font-weight:800}.library-toast.success{background:#edf6e8;border:1px solid #9ab18b;color:#294322}.library-toast.error{background:#fff0ed;border:1px solid #d7a49c;color:#7b2922}.library-confirm-backdrop{position:fixed;inset:0;z-index:2400;display:grid;place-items:center;padding:20px;background:rgba(20,26,19,.55)}.library-confirm{width:min(500px,94vw);padding:20px;border:1px solid #aeb8a7;border-radius:10px;background:#fff;box-shadow:0 18px 50px rgba(0,0,0,.25)}.library-confirm>span{font-size:10px;font-weight:900;letter-spacing:.09em;color:#7a342e}.library-confirm h2{margin:5px 0 8px;font-size:19px}.library-confirm p{margin:0;color:#626a60;line-height:1.45}.library-confirm>div{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.library-confirm button{padding:9px 13px;border:1px solid #c8cec3;border-radius:7px;background:#fff;font-weight:800;cursor:pointer}.library-confirm button.danger{background:#8b3029;border-color:#8b3029;color:#fff}.library-confirm button:disabled{opacity:.6;cursor:default}.library-header{max-width:1500px;margin:0 auto 18px;display:flex;justify-content:space-between;align-items:flex-end;gap:22px}.library-header h1{font-size:34px;margin:4px 0}.library-header p{margin:0;color:#687067}.eyebrow{font-size:12px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#59612b}.header-actions{display:flex;gap:9px;flex-wrap:wrap}.button{padding:11px 15px;border-radius:8px;background:#59612b;color:#fff;text-decoration:none;font-size:13px;font-weight:800}.button.secondary{background:#fff;color:#292d29;border:1px solid #d8ddd3}.metrics{max-width:1500px;margin:0 auto 14px;background:#fff;border:1px solid #d9ddd3;border-radius:12px;display:grid;grid-template-columns:repeat(4,1fr);overflow:hidden}.metrics div{padding:17px;border-right:1px solid #e1e4dc}.metrics div:last-child{border-right:0}.metrics b,.metrics span{display:block}.metrics b{font-size:24px}.metrics span{font-size:11px;text-transform:uppercase;color:#687067;margin-top:4px;font-weight:700}.library-panel{max-width:1500px;margin:0 auto;background:#fff;border:1px solid #d9ddd3;border-radius:12px;overflow:hidden}.toolbar{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;padding:15px 17px;border-bottom:1px solid #e4e7df}.toolbar-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.tabs{display:flex;gap:5px}.tabs button,.view-all{border:1px solid #d8ddd3;background:#fff;border-radius:7px;padding:8px 12px;font-weight:800;cursor:pointer}.tabs button.active{background:#59612b;color:#fff;border-color:#59612b}.view-all{color:#59612b}.toolbar label{width:min(540px,60vw);font-size:11px;font-weight:800;text-transform:uppercase;color:#687067}.toolbar label span{display:block;margin-bottom:5px}.toolbar input{box-sizing:border-box;width:100%;padding:9px 10px;border:1px solid #ccd1c7;border-radius:7px}.recent-note{padding:8px 17px;border-bottom:1px solid #e4e7df;background:#f8faf5;color:#697064;font-size:11px}.project-table{overflow:auto}.project-row{display:grid;grid-template-columns:2fr 1.1fr 1.6fr .7fr .8fr .65fr .75fr;gap:10px;align-items:center;padding:12px 16px;border-bottom:1px solid #e7e9e3;color:inherit;min-width:1080px}.project-row:not(.head):hover{background:#f3f4ef}.project-row.head{font-size:10px;text-transform:uppercase;font-weight:800;color:#687067;background:#fafbf8}.project-row span{font-size:13px}.project-row span:first-child b,.project-row span:first-child strong,.project-row span:first-child small{display:block}.project-row span:first-child b{color:#59612b;font-size:12px;margin-bottom:3px}.project-row span:first-child strong{font-size:14px}.project-row span:first-child small{color:#777f76;margin-top:4px}.project-row i{font-style:normal;padding:5px 8px;background:#eef0e7;color:#59612b;border-radius:999px;font-size:11px;font-weight:800}.row-actions{display:flex;gap:7px;align-items:center}.row-actions a,.row-actions button{border:1px solid #ccd1c7;border-radius:6px;background:#fff;padding:6px 8px;font-size:11px;font-weight:900;text-decoration:none;cursor:pointer}.row-actions .open{color:#59612b}.row-actions button{color:#8a3028}.empty{padding:40px;text-align:center;color:#687067}.empty b{color:#2d322d}.error-box{max-width:1500px;margin:0 auto 14px;background:#fff1ef;border:1px solid #ddb9b4;border-radius:9px;padding:12px 14px;color:#742d27;display:flex;gap:10px;align-items:center}.error-box span{flex:1}.error-box button{border:0;border-radius:6px;padding:7px 10px;cursor:pointer}footer{max-width:1500px;margin:14px auto 0;color:#7b817a;font-size:11px}@media(max-width:850px){.library-page{padding:14px}.library-header{display:block}.header-actions{margin-top:12px}.metrics{grid-template-columns:1fr 1fr}.toolbar{align-items:stretch;flex-direction:column}.toolbar label{width:100%}}
     `}</style>
   </main>;
 }
