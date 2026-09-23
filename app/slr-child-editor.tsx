@@ -11,6 +11,7 @@ import {
   type SlrChildFields,
   type SlrIssueLike,
 } from './slr-model';
+import { deleteSlrDraftCloud, loadSlrDraftCloud, saveSlrDraftCloud, submitSlrCloud } from '../lib/slr-draft-cloud';
 
 type EditableIssue = SlrIssueLike & SlrChildFields;
 
@@ -20,6 +21,7 @@ type Props = {
 };
 
 const LOCAL_WORKSPACE_KEYS = ['scopelogic-r14-8', 'technology-precon-r14-8', 'technology-precon-r14-7', 'technology-precon-r14-6', 'technology-precon-r14-5', 'technology-precon-r14-4', 'technology-precon-r14-3', 'technology-precon-r14-2'];
+const PENDING_DRAFT_KEY = 'scopelogic:open-cloud-slr-draft';
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
 const clean = (value: unknown) => String(value ?? '').trim();
 const firstUid = <T extends { uid: string }>(items: T[]) => new Set(items.slice(0, 1).map((item) => item.uid));
@@ -38,21 +40,24 @@ function currentProjectId() {
   return 'current';
 }
 
-function checkpointKey(projectId: string, slrId: string) {
-  return `scopelogic:slr-checkpoint:${projectId || 'current'}:${slrId}`;
+function checkpointKey(projectId: string, slrUid: string) {
+  return `scopelogic:slr-checkpoint:${projectId || 'current'}:${slrUid}`;
 }
 
-function currentDisplayedSlrId() {
-  const labels = Array.from(document.querySelectorAll<HTMLLabelElement>('.matrix-editor-full label.field'));
-  const target = labels.find((label) => label.querySelector('span')?.textContent?.trim() === 'SLR ID');
-  return target?.querySelector<HTMLInputElement>('input')?.value?.trim() || '';
+function localFallback(issue: EditableIssue) {
+  const key = checkpointKey(currentProjectId(), issue.uid);
+  window.localStorage.setItem(key, JSON.stringify({ savedAt: new Date().toISOString(), issue: clone(issue) }));
+  return key;
 }
 
 export default function SlrChildEditor({ issue, onChange }: Props) {
   const [openRfis, setOpenRfis] = useState<Set<string>>(() => firstUid(issue.rfis));
   const [openRbbs, setOpenRbbs] = useState<Set<string>>(() => firstUid(issue.recommendBaseBids));
   const [openChecklist, setOpenChecklist] = useState<Set<string>>(() => firstUid(issue.checklistQuestions));
+  const [saving, setSaving] = useState(false);
   const restoredCheckpointRef = useRef('');
+  const submitBypassRef = useRef(false);
+  const submitInFlightRef = useRef(false);
 
   useEffect(() => {
     setOpenRfis(firstUid(issue.rfis));
@@ -61,32 +66,82 @@ export default function SlrChildEditor({ issue, onChange }: Props) {
   }, [issue.uid]);
 
   useEffect(() => {
-    const key = checkpointKey(currentProjectId(), issue.id);
-    if (restoredCheckpointRef.current === key) return;
-    restoredCheckpointRef.current = key;
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return;
-    try {
-      const saved = JSON.parse(raw) as { issue?: EditableIssue };
-      if (saved.issue?.id === issue.id) onChange(saved.issue);
-    } catch {
-      window.localStorage.removeItem(key);
-    }
-  }, [issue.id, onChange]);
+    let cancelled = false;
+    const projectId = currentProjectId();
+    const pendingUid = clean(window.localStorage.getItem(PENDING_DRAFT_KEY));
+    const targetUid = pendingUid || issue.uid;
+    const restoreKey = `${projectId}:${targetUid}`;
+    if (!targetUid || restoredCheckpointRef.current === restoreKey) return;
+    restoredCheckpointRef.current = restoreKey;
+
+    void loadSlrDraftCloud(targetUid, projectId).then((saved) => {
+      if (cancelled) return;
+      if (saved?.issue?.uid === targetUid) {
+        onChange(saved.issue as EditableIssue);
+        if (pendingUid) window.localStorage.removeItem(PENDING_DRAFT_KEY);
+        return;
+      }
+      const raw = window.localStorage.getItem(checkpointKey(projectId, targetUid));
+      if (!raw) return;
+      try {
+        const fallback = JSON.parse(raw) as { issue?: EditableIssue };
+        if (fallback.issue?.uid === targetUid) onChange(fallback.issue);
+      } catch {
+        window.localStorage.removeItem(checkpointKey(projectId, targetUid));
+      }
+    }).catch(() => {
+      if (cancelled) return;
+      const raw = window.localStorage.getItem(checkpointKey(projectId, targetUid));
+      if (!raw) return;
+      try {
+        const fallback = JSON.parse(raw) as { issue?: EditableIssue };
+        if (fallback.issue?.uid === targetUid) onChange(fallback.issue);
+      } catch {}
+    });
+    return () => { cancelled = true; };
+  }, [issue.uid]);
 
   useEffect(() => {
     const handleSubmit = (event: MouseEvent) => {
       const target = event.target instanceof Element ? event.target : null;
       const button = target?.closest<HTMLButtonElement>('.matrix-editor-full .submit-bar .primary');
       if (!button || clean(button.textContent) !== 'Submit Entry') return;
-      const key = checkpointKey(currentProjectId(), issue.id);
-      window.setTimeout(() => {
-        if (currentDisplayedSlrId() !== issue.id) window.localStorage.removeItem(key);
-      }, 100);
+      if (submitBypassRef.current) {
+        submitBypassRef.current = false;
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      if (submitInFlightRef.current) return;
+      submitInFlightRef.current = true;
+      button.disabled = true;
+      const projectId = currentProjectId();
+      let fallbackKey = '';
+      try { fallbackKey = localFallback(issue); } catch {}
+
+      void submitSlrCloud(issue, projectId).then(async (result) => {
+        const canonicalNumber = clean(result.row?.display_number) || issue.id;
+        if (canonicalNumber !== issue.id) onChange({ ...clone(issue), id: canonicalNumber });
+        await deleteSlrDraftCloud(issue.uid, projectId).catch(() => undefined);
+        if (fallbackKey) window.localStorage.removeItem(fallbackKey);
+        window.dispatchEvent(new CustomEvent('scopelogic:slr-changed', { detail: { slrId: canonicalNumber, uid: issue.uid, action: 'submit' } }));
+        toast(`${canonicalNumber} submitted successfully.`, 'success');
+        window.setTimeout(() => {
+          submitBypassRef.current = true;
+          submitInFlightRef.current = false;
+          button.disabled = false;
+          button.click();
+        }, canonicalNumber !== issue.id ? 80 : 20);
+      }).catch((cause) => {
+        submitInFlightRef.current = false;
+        button.disabled = false;
+        toast(`Submit Entry failed: ${cause instanceof Error ? cause.message : 'The SLR was not verified in cloud storage.'} The form was not cleared.`, 'error');
+      });
     };
     document.addEventListener('click', handleSubmit, true);
     return () => document.removeEventListener('click', handleSubmit, true);
-  }, [issue.id]);
+  }, [issue, onChange]);
 
   const commit = (change: (next: EditableIssue) => void) => {
     const next = clone(issue);
@@ -101,13 +156,20 @@ export default function SlrChildEditor({ issue, onChange }: Props) {
     return next;
   });
 
-  const saveSlr = () => {
+  const saveSlr = async () => {
+    if (saving) return;
+    setSaving(true);
+    let fallbackWritten = false;
     try {
-      const key = checkpointKey(currentProjectId(), issue.id);
-      window.localStorage.setItem(key, JSON.stringify({ savedAt: new Date().toISOString(), issue: clone(issue) }));
+      localFallback(issue);
+      fallbackWritten = true;
+      await saveSlrDraftCloud(issue, currentProjectId());
       toast('SLR saved successfully.', 'success');
+      window.dispatchEvent(new CustomEvent('scopelogic:slr-draft-saved', { detail: { slrId: issue.id, uid: issue.uid } }));
     } catch (cause) {
-      toast(`SLR save failed: ${cause instanceof Error ? cause.message : 'The browser checkpoint could not be written.'}`, 'error');
+      toast(`SLR save failed: ${cause instanceof Error ? cause.message : 'The cloud draft could not be verified.'}${fallbackWritten ? ' A browser recovery copy was retained.' : ''}`, 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -134,13 +196,13 @@ export default function SlrChildEditor({ issue, onChange }: Props) {
   };
 
   return <div className="slr-child-editor">
-    <section className="recommendation-sections">
+    <section className="recommendation-sections slr-numbered-section slr-rfi-section">
       <div className="recommendation-heading">
         <div><b>Formal RFI Questions</b><span>One scope concern may produce one or more related RFIs. Keep related questions together when that is clearer.</span></div>
         <div className="slr-section-actions">
           <button className="secondary" type="button" onClick={() => setOpenRfis(new Set(issue.rfis.map((item) => item.uid)))} disabled={!issue.rfis.length}>Expand All</button>
           <button className="secondary" type="button" onClick={() => setOpenRfis(new Set())} disabled={!issue.rfis.length}>Collapse All</button>
-          <button className="primary slr-section-save" type="button" onClick={saveSlr} title="Save current SLR work without submitting the entry">Save SLR</button>
+          <button className="primary slr-section-save" type="button" disabled={saving} onClick={() => void saveSlr()} title="Save current SLR work to verified cloud draft storage without submitting the entry">{saving ? 'Saving…' : 'Save SLR'}</button>
           <button className="secondary" type="button" onClick={addRfi}>+ Add RFI</button>
         </div>
       </div>
@@ -180,13 +242,13 @@ export default function SlrChildEditor({ issue, onChange }: Props) {
       })}
     </section>
 
-    <section className="recommendation-sections">
+    <section className="recommendation-sections slr-numbered-section slr-rbb-section">
       <div className="recommendation-heading">
         <div><b>Recommend Base Bid</b><span>System selection belongs to each RBB. Every selected system gets its own recommendation section and automatic identifier.</span></div>
         <div className="slr-section-actions">
           <button className="secondary" type="button" onClick={() => setOpenRbbs(new Set(issue.recommendBaseBids.map((item) => item.uid)))} disabled={!issue.recommendBaseBids.length}>Expand All</button>
           <button className="secondary" type="button" onClick={() => setOpenRbbs(new Set())} disabled={!issue.recommendBaseBids.length}>Collapse All</button>
-          <button className="primary slr-section-save" type="button" onClick={saveSlr} title="Save current SLR work without submitting the entry">Save SLR</button>
+          <button className="primary slr-section-save" type="button" disabled={saving} onClick={() => void saveSlr()} title="Save current SLR work to verified cloud draft storage without submitting the entry">{saving ? 'Saving…' : 'Save SLR'}</button>
           <button className="secondary" type="button" onClick={addRbb}>+ Add Recommend Base Bid</button>
         </div>
       </div>
@@ -254,13 +316,13 @@ export default function SlrChildEditor({ issue, onChange }: Props) {
       })}
     </section>
 
-    <section className="recommendation-sections checklist-scope-sections">
+    <section className="recommendation-sections checklist-scope-sections slr-numbered-section slr-checklist-section">
       <div className="recommendation-heading">
         <div><b>Contractor Checklist Questions</b><span>Checklist questions stay internal to the checklist workflow and do not appear in the Clarification Log.</span></div>
         <div className="slr-section-actions">
           <button className="secondary" type="button" onClick={() => setOpenChecklist(new Set(issue.checklistQuestions.map((item) => item.uid)))} disabled={!issue.checklistQuestions.length}>Expand All</button>
           <button className="secondary" type="button" onClick={() => setOpenChecklist(new Set())} disabled={!issue.checklistQuestions.length}>Collapse All</button>
-          <button className="primary slr-section-save" type="button" onClick={saveSlr} title="Save current SLR work without submitting the entry">Save SLR</button>
+          <button className="primary slr-section-save" type="button" disabled={saving} onClick={() => void saveSlr()} title="Save current SLR work to verified cloud draft storage without submitting the entry">{saving ? 'Saving…' : 'Save SLR'}</button>
           <button className="secondary" type="button" onClick={addChecklist}>+ Add Checklist Question</button>
         </div>
       </div>
