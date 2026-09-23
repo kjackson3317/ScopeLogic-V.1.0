@@ -15,6 +15,7 @@ import './sidebar-folder-controls.css';
 import './slr-inline-editor.css';
 import './slr-review-update.css';
 import './scopelogic-action-toast.css';
+import './slr-deliverables-persistence.css';
 import './quote-modern-ui.css';
 import './quote-modern-ui-fix.css';
 import './review-release-controller.css';
