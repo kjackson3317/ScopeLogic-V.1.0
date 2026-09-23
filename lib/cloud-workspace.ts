@@ -7,6 +7,57 @@ import type { WorkspaceSnapshot } from './cloud-workspace-legacy';
 const slrUid = (projectId: string, issue: { uid?: string }, index: number) => issue.uid || `${projectId}-slr-${index + 1}`;
 const slrSystem = (issue: { systems?: string[]; system?: string }) => issue.systems?.[0] || issue.system || 'Structured Cabling';
 
+type ClarificationSuppression = { masterId: string; slrId: string };
+const clarificationSuppressions = new Map<string, ClarificationSuppression>();
+const clarificationSuppressionKey = (masterId: string, slrId: string) => `${masterId}::${slrId}`;
+
+export function suppressClarificationForMasterSlr(masterId: string, slrId: string) {
+  if (!masterId || !slrId) return;
+  clarificationSuppressions.set(clarificationSuppressionKey(masterId, slrId), { masterId, slrId });
+}
+
+export function clearClarificationSuppressionForMasterSlr(masterId: string, slrId: string) {
+  if (!masterId || !slrId) return;
+  clarificationSuppressions.delete(clarificationSuppressionKey(masterId, slrId));
+}
+
+async function applyClarificationSuppressions(snapshot: WorkspaceSnapshot): Promise<WorkspaceSnapshot> {
+  if (!clarificationSuppressions.size) return snapshot;
+
+  const supabase = createClient();
+  const masterIds = Array.from(new Set([...clarificationSuppressions.values()].map((item) => item.masterId)));
+  const projectResult = await supabase.from('projects').select('legacy_id,master_project_id').in('master_project_id', masterIds);
+  if (projectResult.error) throw new Error(`Preserve deleted GC Clarification: ${projectResult.error.message}`);
+
+  const masterByLegacyProject = new Map<string, string>();
+  for (const row of projectResult.data || []) {
+    if (row.legacy_id && row.master_project_id) masterByLegacyProject.set(String(row.legacy_id), String(row.master_project_id));
+  }
+
+  let changed = false;
+  const issuesByProject = { ...(snapshot.issuesByProject || {}) };
+
+  for (const [projectId, issues] of Object.entries(snapshot.issuesByProject || {})) {
+    const masterId = masterByLegacyProject.get(projectId);
+    if (!masterId) continue;
+    const suppressedSlrIds = new Set(
+      [...clarificationSuppressions.values()]
+        .filter((item) => item.masterId === masterId)
+        .map((item) => item.slrId),
+    );
+    if (!suppressedSlrIds.size) continue;
+
+    const nextIssues = issues.map((issue) => {
+      if (!suppressedSlrIds.has(issue.id) || !issue.clarification) return issue;
+      changed = true;
+      return { ...issue, clarification: false };
+    });
+    issuesByProject[projectId] = nextIssues;
+  }
+
+  return changed ? { ...snapshot, issuesByProject } : snapshot;
+}
+
 function slrRemovalsByProject(previous: WorkspaceSnapshot, snapshot: WorkspaceSnapshot) {
   const currentProjectIds = new Set((snapshot.projects || []).map((project) => project.id));
   const removed = new Map<string, string[]>();
@@ -126,11 +177,12 @@ async function reconcileSlrIdentityDrift(previous: WorkspaceSnapshot, snapshot: 
 }
 
 async function saveWithSlrProtection(snapshot: WorkspaceSnapshot): Promise<void> {
+  const protectedSnapshot = await applyClarificationSuppressions(snapshot);
   const current = await legacy.loadWorkspaceFromCloud();
   const previous = current.snapshot;
 
   if (previous) {
-    const removedByProject = slrRemovalsByProject(previous, snapshot);
+    const removedByProject = slrRemovalsByProject(previous, protectedSnapshot);
 
     // Intentional cleanup inside one project is valid, including copied projects
     // where users commonly remove several inherited SLRs at once. The old guard
@@ -145,10 +197,10 @@ async function saveWithSlrProtection(snapshot: WorkspaceSnapshot): Promise<void>
       throw new Error(`Cloud save blocked because this browser copy would remove ${removedCount} SLRs across ${removedByProject.size} projects at once. Reload ScopeLogic to use the current cloud workspace before saving.`);
     }
 
-    await reconcileSlrIdentityDrift(previous, snapshot);
+    await reconcileSlrIdentityDrift(previous, protectedSnapshot);
   }
 
-  await legacy.saveWorkspaceToCloud(snapshot);
+  await legacy.saveWorkspaceToCloud(protectedSnapshot);
 
   // Confirm the normalized SLR rows that the next refresh will read back. A
   // browser can report a successful request while a stale tab or a partial
@@ -156,8 +208,8 @@ async function saveWithSlrProtection(snapshot: WorkspaceSnapshot): Promise<void>
   // now so the UI keeps the browser copy available for recovery.
   const confirmed = await legacy.loadWorkspaceFromCloud();
   if (!confirmed.snapshot) throw new Error('Cloud save completed but the workspace could not be reloaded for verification.');
-  for (const project of snapshot.projects || []) {
-    const expected = new Set((snapshot.issuesByProject?.[project.id] || []).map((issue, index) => slrUid(project.id, issue, index)));
+  for (const project of protectedSnapshot.projects || []) {
+    const expected = new Set((protectedSnapshot.issuesByProject?.[project.id] || []).map((issue, index) => slrUid(project.id, issue, index)));
     const actual = new Set((confirmed.snapshot.issuesByProject?.[project.id] || []).map((issue, index) => slrUid(project.id, issue, index)));
     if (expected.size !== actual.size || [...expected].some((uid) => !actual.has(uid))) {
       throw new Error(`Cloud save verification failed for project ${project.name || project.id}. The saved SLR list did not match the changes on this screen; no refresh should be trusted until the cloud workspace is reloaded.`);

@@ -92,6 +92,7 @@ type BuildInput = {
   notes?: string;
   mode: 'preview' | 'official';
   releaseNumber?: number;
+  brandProfile?: 'scopelogic' | 'cefi' | 'neutral';
 };
 
 type TableDefinition = {
@@ -192,13 +193,13 @@ async function loadBrand(document: PDFDocument): Promise<{ mark: PDFImage; wordm
   return { mark, wordmark };
 }
 
-function buildTables(data: ReviewReleaseData, kinds: ReviewReleaseKind[]): TableDefinition[] {
+function buildTables(data: ReviewReleaseData, kinds: ReviewReleaseKind[], brandProfile: 'scopelogic' | 'cefi' | 'neutral' = 'scopelogic'): TableDefinition[] {
   const actions = data.actions.filter((item) => item.client_facing !== false);
   const tables: TableDefinition[] = [];
 
   if (kinds.includes('matrix')) {
     tables.push({
-      title: 'ScopeLogic Matrix',
+      title: brandProfile === 'scopelogic' ? 'ScopeLogic Matrix' : 'Scope Matrix / RBB',
       headers: ['RBB', 'System', 'Scope Item', 'Recommended Base Bid', 'References', 'Status'],
       ratios: [.075, .13, .17, .34, .19, .095],
       rows: actions.filter((item) => item.deliverable_type === 'RBB').sort((a, b) => a.sequence_number - b.sequence_number).map((item) => [
@@ -331,7 +332,6 @@ export async function buildReviewReleasePdf(input: BuildInput) {
     return page;
   };
 
-  // Cover
   const cover = document.addPage(PAGE_SIZE);
   pageNumber += 1;
   const fullMark = brand.mark.scaleToFit(75, 75);
@@ -370,7 +370,7 @@ export async function buildReviewReleasePdf(input: BuildInput) {
   }
   drawFooter(cover, pageNumber);
 
-  const tables = buildTables(input.data, input.kinds);
+  const tables = buildTables(input.data, input.kinds, input.brandProfile || 'scopelogic');
   for (const table of tables) {
     let page = addPage(table.title, `${input.data.master.project_number} | ${input.data.master.revision || 'Rev 0'} | ${input.data.master.version_date || 'Not set'}`);
     const widths = exactWidths(table.ratios, contentWidth);
