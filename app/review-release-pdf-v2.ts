@@ -289,7 +289,7 @@ export async function buildReviewReleasePdf(input: BuildInput) {
   if (!input.kinds.length) throw new Error('Select at least one client deliverable.');
   const includeRegister=input.kinds.includes('master-register');
   const legacyKinds=input.kinds.filter((kind): kind is LegacyReviewReleaseKind => kind!=='master-register');
-  const legacyInput={data:input.data,kinds:legacyKinds,notes:input.notes,mode:input.mode,releaseNumber:input.releaseNumber};
+  const legacyInput={data:input.data,kinds:legacyKinds,notes:input.notes,mode:input.mode,releaseNumber:input.releaseNumber,brandProfile:input.brandProfile};
   let raw:Uint8Array;
 
   if(includeRegister && !legacyKinds.length){
