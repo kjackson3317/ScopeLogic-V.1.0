@@ -156,16 +156,42 @@ export default function SlrDeliverablesEditorV2(){
   },[supabase]);
 
   useEffect(()=>{
-    let queued=false;
-    const refresh=()=>{if(queued)return;queued=true;window.requestAnimationFrame(()=>{queued=false;const nextHost=makeHost();setHost(nextHost);const id=currentSlrId();setSlrId((current)=>{if(id&&id!==current){setClOpen(true);setVeOpen(true);setNewDraft(null);void load(id);}return id||'';});});};
+    let frame:number|null=null;
+    const timers=new Set<number>();
+    const refresh=()=>{
+      if(frame!==null)return;
+      frame=window.requestAnimationFrame(()=>{
+        frame=null;
+        setHost(makeHost());
+        setSlrId(currentSlrId());
+      });
+    };
     refresh();const observer=new MutationObserver(refresh);observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['value','class']});
-    const changed=()=>window.setTimeout(()=>void load(currentSlrId()),120);
+    const changed=()=>{
+      const timer=window.setTimeout(()=>{
+        timers.delete(timer);
+        void load(currentSlrId());
+      },120);
+      timers.add(timer);
+    };
     window.addEventListener('scopelogic:slr-changed',changed);
     window.addEventListener('scopelogic:slr-draft-saved',changed);
-    return()=>{observer.disconnect();window.removeEventListener('scopelogic:slr-changed',changed);window.removeEventListener('scopelogic:slr-draft-saved',changed);};
+    return()=>{
+      observer.disconnect();
+      if(frame!==null)window.cancelAnimationFrame(frame);
+      timers.forEach((timer)=>window.clearTimeout(timer));
+      window.removeEventListener('scopelogic:slr-changed',changed);
+      window.removeEventListener('scopelogic:slr-draft-saved',changed);
+    };
   },[load]);
 
-  useEffect(()=>{if(slrId)void load(slrId);},[slrId,load]);
+  useEffect(()=>{
+    if(!slrId)return;
+    setClOpen(true);
+    setVeOpen(true);
+    setNewDraft(null);
+    void load(slrId);
+  },[slrId,load]);
 
   const saveNew=async()=>{
     if(!newDraft||!projectId||!slrId||!newDraft.title.trim()||!newDraft.content.trim())return;

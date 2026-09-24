@@ -6,13 +6,13 @@ const clean=(value:unknown)=>String(value??'').trim();
 
 export default function SlrApprovedLayoutBehavior(){
   useEffect(()=>{
-    let queued=false;
+    let frame:number|null=null;
     const apply=()=>{
       const matrix=document.querySelector<HTMLElement>('.matrix-editor-full');
       const bar=matrix?.querySelector<HTMLElement>('.submit-bar');
       if(!matrix||!bar)return;
 
-      bar.classList.add('sl-approved-action-bar');
+      if(!bar.classList.contains('sl-approved-action-bar'))bar.classList.add('sl-approved-action-bar');
 
       let save=bar.querySelector<HTMLButtonElement>('.sl-approved-save');
       if(!save){
@@ -33,16 +33,15 @@ export default function SlrApprovedLayoutBehavior(){
 
       if(template){
         if(clean(template.textContent)!=='SLR as Template')template.textContent='SLR as Template';
-        template.classList.add('sl-approved-template');
+        if(!template.classList.contains('sl-approved-template'))template.classList.add('sl-approved-template');
       }
-      if(submit)submit.classList.add('sl-approved-submit');
+      if(submit&&!submit.classList.contains('sl-approved-submit'))submit.classList.add('sl-approved-submit');
     };
 
     const schedule=()=>{
-      if(queued)return;
-      queued=true;
-      window.requestAnimationFrame(()=>{
-        queued=false;
+      if(frame!==null)return;
+      frame=window.requestAnimationFrame(()=>{
+        frame=null;
         apply();
       });
     };
@@ -50,7 +49,10 @@ export default function SlrApprovedLayoutBehavior(){
     schedule();
     const observer=new MutationObserver(schedule);
     observer.observe(document.body,{childList:true,subtree:true});
-    return()=>observer.disconnect();
+    return()=>{
+      observer.disconnect();
+      if(frame!==null)window.cancelAnimationFrame(frame);
+    };
   },[]);
   return null;
 }

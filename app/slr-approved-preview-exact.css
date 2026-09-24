@@ -214,7 +214,7 @@ body .workspace-shell .matrix-editor-full .slr-rfi-section .recommendation-headi
 body .app-shell .matrix-editor-full .slr-rbb-section .recommendation-heading > div:first-child > b::before,
 body .workspace-shell .matrix-editor-full .slr-rbb-section .recommendation-heading > div:first-child > b::before { content:'5. '!important; }
 body .app-shell .matrix-editor-full .slr-checklist-section .recommendation-heading > div:first-child > b::before,
-body .workspace-shell .matrix-editor-full .slr-checklist-section .recommendation-heading > div:first-child > b::before { content:''!important; }
+body .workspace-shell .matrix-editor-full .slr-checklist-section .recommendation-heading > div:first-child > b::before { content:'8. '!important; }
 body .app-shell .matrix-editor-full .slr-section-save,
 body .workspace-shell .matrix-editor-full .slr-section-save { display:none!important; }
 
