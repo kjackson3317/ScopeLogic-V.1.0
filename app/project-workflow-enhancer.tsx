@@ -80,6 +80,11 @@ export default function ProjectWorkflowEnhancer() {
   const submittedSignatureRef = useRef('');
 
   useEffect(() => {
+    // Remove legacy Project SLR browser injected by older builds / Fast Refresh.
+    document
+      .querySelectorAll('.sl-project-slr-browser')
+      .forEach((element) => element.remove());
+
     const resolveMaster = async (force = false) => {
       if (loadingRef.current) return masterRef.current;
       const now = Date.now();
@@ -163,78 +168,6 @@ export default function ProjectWorkflowEnhancer() {
       return true;
     };
 
-    const updateSlrBrowser = () => {
-      const templateBar = document.querySelector<HTMLElement>('.template-bar.template-library');
-      const matrix = document.querySelector<HTMLElement>('.matrix-editor-full');
-      if (!templateBar || !matrix) {
-        document.querySelector('.sl-project-slr-browser')?.remove();
-        return;
-      }
-      let browser = document.querySelector<HTMLDetailsElement>('.sl-project-slr-browser');
-      if (!browser) {
-        browser = document.createElement('details');
-        browser.className = 'sl-project-slr-browser';
-        browser.open = true;
-        templateBar.before(browser);
-      }
-      const findingNumbers = new Set(findingsRef.current.map((item) => item.display_number));
-      const unsubmittedDrafts = draftsRef.current.filter((draft) => !findingNumbers.has(draft.display_number));
-      const draftByNumber = new Map(draftsRef.current.map((draft) => [draft.display_number, draft]));
-      const signature = [
-        ...findingsRef.current.map((item) => `F:${item.id}:${item.display_number}:${item.scope_item}:${item.status}:${draftByNumber.has(item.display_number) ? 'draft' : ''}`),
-        ...unsubmittedDrafts.map((item) => `D:${item.id}:${item.display_number}:${item.legacy_uid}:${item.saved_at}:${clean(item.draft_data?.issue?.title)}`),
-      ].join('|');
-      if (browser.dataset.signature === signature) return;
-      browser.dataset.signature = signature;
-      browser.replaceChildren();
-
-      const summary = document.createElement('summary');
-      const summaryLabel = document.createElement('span');
-      summaryLabel.textContent = 'Project SLRs';
-      const count = document.createElement('b');
-      count.textContent = String(findingsRef.current.length + unsubmittedDrafts.length);
-      const hint = document.createElement('small');
-      hint.textContent = 'Expand / collapse';
-      summary.append(summaryLabel, count, hint);
-      browser.appendChild(summary);
-
-      const list = document.createElement('div');
-      list.className = 'sl-project-slr-browser-list';
-      findingsRef.current.forEach((finding) => {
-        const savedDraft = draftByNumber.get(finding.display_number);
-        const button = document.createElement('button');
-        button.type = 'button';
-        const number = document.createElement('b');
-        number.textContent = finding.display_number;
-        const title = document.createElement('span');
-        title.textContent = finding.scope_item || 'Untitled SLR';
-        const status = document.createElement('small');
-        status.textContent = savedDraft ? 'Saved Draft' : (finding.status || 'Open');
-        button.append(number, title, status);
-        button.addEventListener('click', () => {
-          if (openSlr(finding.display_number)) browser!.open = false;
-        });
-        list.appendChild(button);
-      });
-      unsubmittedDrafts.forEach((draft) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.dataset.cloudDraft = draft.legacy_uid;
-        const number = document.createElement('b');
-        number.textContent = draft.display_number || clean(draft.draft_data?.issue?.id) || 'Draft';
-        const title = document.createElement('span');
-        title.textContent = clean(draft.draft_data?.issue?.title) || 'Saved unsubmitted SLR';
-        const status = document.createElement('small');
-        status.textContent = 'Saved Draft';
-        button.append(number, title, status);
-        button.addEventListener('click', () => {
-          if (openCloudDraft(draft)) browser!.open = false;
-        });
-        list.appendChild(button);
-      });
-      browser.appendChild(list);
-    };
-
     const articleSignature = (article: HTMLElement) => {
       const systemGroup = article.closest<HTMLElement>('.sl-review-system-group');
       const topicGroup = article.closest<HTMLElement>('.sl-review-topic-group');
@@ -265,7 +198,6 @@ export default function ProjectWorkflowEnhancer() {
     const apply = async (force = false) => {
       await resolveMaster(force);
       updateSidebar();
-      updateSlrBrowser();
       installReviewNoteDeletes();
     };
 
@@ -285,14 +217,6 @@ export default function ProjectWorkflowEnhancer() {
 
     const clickCapture = (event: MouseEvent) => {
       const target = event.target instanceof Element ? event.target : null;
-      const sidebarButton = target?.closest<HTMLButtonElement>('aside.sidebar .nav-group > button');
-      if (sidebarButton && clean(sidebarButton.textContent) === 'Project Library') {
-        event.preventDefault();
-        event.stopPropagation();
-        window.location.assign('/project-library');
-        return;
-      }
-
       const deleteButton = target?.closest<HTMLButtonElement>('.sl-review-note-delete');
       if (deleteButton) {
         event.preventDefault();

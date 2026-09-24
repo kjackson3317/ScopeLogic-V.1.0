@@ -1021,8 +1021,10 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
     if (!master) return message('Master Project Unavailable', 'The selected Master Project could not be found.');
     const available = master.engagements.filter((engagement) => projects.some((item) => item.id === engagement.legacyId));
     if (!available.length) {
-      window.location.href = `/master-projects/${master.id}`;
-      return;
+      return message(
+        'Client Engagement Required',
+        'This Master Project does not have an available client engagement in the current ScopeLogic workspace.'
+      );
     }
 
     const nextProjectId = available.some((engagement) => engagement.legacyId === projectId) ? projectId : available[0].legacyId;
@@ -1417,7 +1419,7 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
       <aside id="scopelogic-sidebar" ref={sidebarRef} className={`sidebar ${mobileNav ? 'show' : ''}`} aria-label="ScopeLogic navigation" aria-modal={mobileNav ? 'true' : undefined} role={mobileNav ? 'dialog' : undefined}>
         <div className="sidebar-mobile-head"><span>Navigation</span><button className="sidebar-close" onClick={closeMobileNav} aria-label="Close navigation menu">Close ×</button></div>
     <div className="brand"><div className="brand-mark"><img src="/brand/scopelogic-logo-mark.png" alt="ScopeLogic" /></div><div><div className="brand-name-box"><img className="brand-wordmark" src="/brand/scopelogic-wordmark.png" alt="ScopeLogic" /></div><span>v1.0 RC5.6.0</span></div></div>
-        <button className="project-switch" onClick={openMasterProjectManager}><span>Current master project</span><b>{currentMaster?.name || project.name}</b><small>Manage master projects</small></button>
+        <div className="project-switch" aria-label="Current project"><span>Current project</span><b>{currentMaster?.name || project.name}</b><small>Active workspace</small></div>
         <Nav label="PROJECT" items={[["projects", "Project Library"], ["calendar", "Calendar"], ["setup", "Project Setup"], ["dashboard", "Dashboard"], ["documents", "Project Documents"], ["notes", "Internal Notes"], ["internal", "ScopeLogic Internal Matrix"]]} view={view} setView={navigateTo} />
         <Nav label="DELIVERABLES" items={navDeliverables} view={view} setView={navigateTo} />
         <Nav label="ESTIMATING" items={[["quotes", "Quote Builder"], ["quote-templates", "Quote Templates"], ["drawing-takeoff", "Drawing Take Off"], ["takeoff", "Take Off Rules"], ["scope-work", "Scope of Work"], ["parts", "Parts Database"], ["labor", "Labor & Pricing"]]} view={view} setView={navigateTo} />
@@ -1442,7 +1444,7 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
           {view === 'dashboard' && <Dashboard project={project} issues={issues} docs={docs} customers={customers} go={setView} generateAll={() => setReleaseSelection({ kinds: [...ALL_RELEASE_KINDS], notes: '' })} />}
           {view === 'documents' && <Documents projectId={projectId} docs={docs} setDocs={setDocs} openPreview={setPreview} confirmAction={confirmAction} requestInput={requestInput} message={message} cloudEnabled={dataMode === 'cloud'} />}
           {view === 'notes' && <InternalNotes value={internalNotes} save={(value) => { setNotesByProject((current) => ({ ...current, [projectId]: value })); message('Saved', 'Internal notes were saved.'); }} />}
-          {view === 'internal' && <InternalMatrix issues={filtered} allCount={issues.length} draft={draft} selectedUid={selectedUid} edit={editIssue} setDraft={setDraft} submit={submit} remove={deleteEntry} newDraft={newDraft} saveTemplate={saveTemplate} templates={templates} deleteTemplate={requestDeleteTemplate} search={search} setSearch={setSearch} systems={systems} systemFilter={systemFilter} setSystemFilter={setSystemFilter} statusFilter={statusFilter} setStatusFilter={setStatusFilter} tab={tab} setTab={setTab} confirmAction={confirmAction} />}
+          {view === 'internal' && <InternalMatrix projectId={projectId} masterProjectId={currentMaster?.id || ''} issues={filtered} allCount={issues.length} draft={draft} selectedUid={selectedUid} edit={editIssue} setDraft={setDraft} submit={submit} remove={deleteEntry} newDraft={newDraft} saveTemplate={saveTemplate} templates={templates} deleteTemplate={requestDeleteTemplate} search={search} setSearch={setSearch} systems={systems} systemFilter={systemFilter} setSystemFilter={setSystemFilter} statusFilter={statusFilter} setStatusFilter={setStatusFilter} tab={tab} setTab={setTab} confirmAction={confirmAction} />}
           {view === 'sow' && <Deliverable title="Recommended SOW Matrix" eyebrow="Primary Flagship Deliverable" description="Each SLR appears once. All affected systems and their separate Recommend Base Bid sections remain inside the same matrix row." rows={sowDeliverableRows(issues)} columns={['SLR', 'Systems', 'Scope Item', 'Scope Concern', 'Recommend Base Bid', 'Source Reference']} update={() => updatePdf('sow', 'Recommended SOW Matrix')} url={pdfUrls.sow} onDownload={() => recordDownload('Recommended_SOW_Matrix.pdf', 'Recommended SOW Matrix')} preview={(url) => setPreview({ title: 'Recommended SOW Matrix', url, mode: 'pdf' })} />}
           {view === 'clarifications' && <Deliverable title="Clarification Log" eyebrow="GC Working Document" description="Each SLR remains one record while all selected systems and system-specific recommendations are shown together." rows={clarificationDeliverableRows(issues)} columns={['SLR / Associated Records', 'Systems', 'Scope Item', 'Scope Concern', 'Recommend Base Bid', 'Resolution', 'Status', 'Source Reference']} update={() => updatePdf('clarifications', 'Clarification Log')} url={pdfUrls.clarifications} onDownload={() => recordDownload('Clarification_Log.pdf', 'Clarification Log')} preview={(url) => setPreview({ title: 'Clarification Log', url, mode: 'pdf' })} />}
           {view === 'rfi' && <Deliverable title="Formal RFI" eyebrow="A/E Deliverable" description="Customer-facing RFI output includes the RFI number, title/subject, systems, question, and document references; internal relationship and response metadata remain excluded." rows={rfiDeliverableRows(issues)} columns={['RFI No.', 'Title / Subject', 'Systems', 'Question', 'Document References']} update={() => updatePdf('rfi', 'Formal RFI')} url={pdfUrls.rfi} onDownload={() => recordDownload('Formal_RFI.pdf', 'Formal RFI')} preview={(url) => setPreview({ title: 'Formal RFI', url, mode: 'pdf' })} />}
@@ -1509,7 +1511,12 @@ function InternalMatrix(props: any) {
       <button className="template-delete-button" disabled={!chosenTemplate} onClick={() => chosenTemplate && props.deleteTemplate(chosenTemplate)}>Delete Template</button>
     </div>
 
-    <section className="issue-editor matrix-editor-full">
+    <section
+      className="issue-editor matrix-editor-full"
+      data-project-id={props.projectId || ''}
+      data-master-project-id={props.masterProjectId || ''}
+      data-slr-id={draft?.id || ''}
+    >
       {!draft ? <div className="empty-state large"><b>Select a submitted SLR below or create a new issue.</b><p>Only submitted entries feed deliverables and PDFs.</p></div> : <>
         <div className="draft-banner"><b>{props.selectedUid ? 'Editing submitted entry' : 'Unsubmitted draft'}</b><span>{draft.id} remains provisional until Submit Entry is selected.</span></div>
         <div className="issue-title"><div><span>{draft.id}</span><input placeholder="Scope Item / Short Description" value={draft.title} onChange={(event) => patch('title', event.target.value)} /></div><select value={draft.status} onChange={(event) => patch('status', event.target.value)}>{ISSUE_STATUS_OPTIONS.map((status) => <option key={status}>{status}</option>)}</select></div>

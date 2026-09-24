@@ -12,18 +12,20 @@ type Action = { id:string; related_master_finding_id:string|null; deliverable_ty
 type DraftAction = { id:string; project_id:string; slr_legacy_uid:string; draft_uid:string; deliverable_type:Type; system_name:string; title:string; content:string; impact_considerations:string; reference:string; status:string; response:string; response_source:string; sort_order:number };
 type FormDraft = { type:Type; system_name:string; title:string; content:string; impact_considerations:string; reference:string; status:string; response:string; response_source:string };
 
-const LOCAL_WORKSPACE_KEYS = ['scopelogic-r14-8','technology-precon-r14-8','technology-precon-r14-7','technology-precon-r14-6','technology-precon-r14-5','technology-precon-r14-4','technology-precon-r14-3','technology-precon-r14-2'];
 const clean=(value:unknown)=>String(value??'').trim();
 
-function activeLegacyProjectId(){
-  for(const key of LOCAL_WORKSPACE_KEYS){
-    const raw=window.localStorage.getItem(key); if(!raw)continue;
-    try{const value=clean(JSON.parse(raw)?.projectId); if(value)return value;}catch{}
-  }
-  return '';
+function currentEditorContext(){
+  const matrix=document.querySelector<HTMLElement>('.matrix-editor-full');
+  return {
+    legacyProjectId: clean(matrix?.dataset.projectId),
+    masterProjectId: clean(matrix?.dataset.masterProjectId),
+    slrId: clean(matrix?.dataset.slrId),
+  };
 }
 
 function currentSlrId(){
+  const explicit=currentEditorContext().slrId;
+  if(explicit)return explicit;
   const labels=Array.from(document.querySelectorAll<HTMLLabelElement>('.matrix-editor-full label.field'));
   const target=labels.find((label)=>clean(label.querySelector('span')?.textContent)==='SLR ID');
   return clean(target?.querySelector<HTMLInputElement>('input')?.value);
@@ -106,11 +108,53 @@ function ActionRow({item,masterId,slrId,onChanged,onMessage}:{item:Action;master
   useEffect(()=>setDraft({...item}),[item]);
   const save=async()=>{
     setSaving(true);
-    const payload={system_name:draft.system_name,title:draft.title.trim(),content:draft.content.trim(),impact_considerations:draft.impact_considerations.trim(),reference:draft.reference.trim(),status:draft.status,response:draft.response.trim(),response_source:draft.response_source.trim(),updated_at:new Date().toISOString()};
-    const result=await supabase.from('master_project_deliverable_items').update(payload).eq('id',item.id).select('id').maybeSingle();
+    const payload={
+      system_name:draft.system_name,
+      title:draft.title.trim(),
+      content:draft.content.trim(),
+      impact_considerations:draft.impact_considerations.trim(),
+      reference:draft.reference.trim(),
+      status:draft.status,
+      response:draft.response.trim(),
+      response_source:draft.response_source.trim(),
+      updated_at:new Date().toISOString(),
+      ...(item.deliverable_type==='CL'
+        ? {source_child_uid:'',source_origin:'slr:manual'}
+        : {}),
+    };
+    const result=await supabase
+      .from('master_project_deliverable_items')
+      .update(payload)
+      .eq('id',item.id)
+      .eq('master_project_id',masterId)
+      .select('id,master_project_id,related_master_finding_id,system_name,title,content,impact_considerations,reference,status,response,response_source,source_child_uid,source_origin')
+      .maybeSingle();
     setSaving(false);
-    if(result.error||!result.data?.id){onMessage(`${item.display_number} save failed: ${result.error?.message||'Cloud verification failed.'}`);return;}
-    onMessage(`${item.display_number} saved successfully.`);onChanged();
+    if(result.error||!result.data?.id){
+      onMessage(`${item.display_number} save failed: ${result.error?.message||'Cloud verification failed.'}`);
+      return;
+    }
+    const saved=result.data;
+    const matches=
+      clean(saved.system_name)===clean(payload.system_name) &&
+      clean(saved.title)===clean(payload.title) &&
+      clean(saved.content)===clean(payload.content) &&
+      clean(saved.impact_considerations)===clean(payload.impact_considerations) &&
+      clean(saved.reference)===clean(payload.reference) &&
+      clean(saved.status)===clean(payload.status) &&
+      clean(saved.response)===clean(payload.response) &&
+      clean(saved.response_source)===clean(payload.response_source) &&
+      clean(saved.related_master_finding_id)===clean(item.related_master_finding_id);
+    if(!matches){
+      onMessage(`${item.display_number} save failed cloud verification. Your screen values were not confirmed.`);
+      return;
+    }
+    if(item.deliverable_type==='CL' && (clean(saved.source_child_uid)!=='' || clean(saved.source_origin)!=='slr:manual')){
+      onMessage(`${item.display_number} save failed persistence verification.`);
+      return;
+    }
+    onMessage(`${item.display_number} saved and verified in the cloud.`);
+    onChanged();
   };
   const remove=async()=>{
     if(!confirmDelete){setConfirmDelete(true);return;}
@@ -139,8 +183,12 @@ export default function SlrDeliverablesEditorV2(){
   const load=useCallback(async(nextSlr?:string)=>{
     const target=nextSlr||currentSlrId(); if(!target)return;
     try{
-      const legacy=activeLegacyProjectId();
-      const context=await resolveSlrProjectContext(legacy);
+      const editorContext=currentEditorContext();
+      if(!editorContext.legacyProjectId)throw new Error('The active project is not available in the SLR workspace.');
+      const context=await resolveSlrProjectContext(editorContext.legacyProjectId);
+      if(editorContext.masterProjectId && context.masterProjectId!==editorContext.masterProjectId){
+        throw new Error('Project context changed while loading GC/VE. Reopen the SLR and try again.');
+      }
       setProjectId(context.projectId);setMasterId(context.masterProjectId);
       const findingResult=await supabase.from('master_project_findings').select('id,display_number,scope_item,systems,status').eq('master_project_id',context.masterProjectId).eq('display_number',target).maybeSingle();
       if(findingResult.error)throw new Error(findingResult.error.message);
@@ -193,9 +241,223 @@ export default function SlrDeliverablesEditorV2(){
   };
 
   if(!host||!slrId)return null;
-  const clItems=finding?actions.filter((item)=>item.deliverable_type==='CL'):draftActions.filter((item)=>item.deliverable_type==='CL');
-  const veItems=finding?actions.filter((item)=>item.deliverable_type==='VE'):draftActions.filter((item)=>item.deliverable_type==='VE');
+
+  const clItems=finding
+    ? actions.filter((item)=>item.deliverable_type==='CL')
+    : draftActions.filter((item)=>item.deliverable_type==='CL');
+
+  const veItems=finding
+    ? actions.filter((item)=>item.deliverable_type==='VE')
+    : draftActions.filter((item)=>item.deliverable_type==='VE');
+
   const changed=()=>void load(slrId);
-  const section=(type:Type,items:(Action|DraftAction)[],open:boolean,setOpen:(value:boolean)=>void)=><section className={`sl-approved-deliverable-section ${type==='CL'?'clarification':'ve'}`}><div className="sl-approved-deliverable-header"><div><b>{type==='CL'?'7. GC Clarifications':'8. VE Opportunities'}</b><span>{finding?'Linked to this submitted SLR':'Saved with this SLR draft and promoted automatically on Submit Entry'}</span></div><div><button type="button" className="primary" onClick={()=>setNewDraft(defaultForm(type))}>+ Add {type==='CL'?'GC Clarification':'VE Opportunity'}</button><button type="button" className="secondary" onClick={()=>setOpen(!open)} aria-expanded={open}>{open?'Collapse':'Expand'}</button></div></div>{open&&<div className="sl-approved-deliverable-body">{items.length?items.map((item)=>finding?<ActionRow key={item.id} item={item as Action} masterId={masterId} slrId={slrId} onChanged={changed} onMessage={setMessage}/>:<DraftRow key={item.id} item={item as DraftAction} onChanged={changed} onMessage={setMessage}/>):<div className="sl-preview-state">No {type==='CL'?'GC Clarifications':'VE Opportunities'} added yet.</div>}</div>}</section>;
-  return createPortal(<div className="sl-slr-deliverables-v2">{message&&<div className="sl-slr-message">{message}</div>}{newDraft&&<article className="sl-slr-deliverable-card new"><div className="sl-slr-deliverable-card-head"><div><b>NEW {newDraft.type}</b><span>{newDraft.type==='CL'?'GC Clarification':'VE Opportunity'}</span></div><button type="button" className="secondary" onClick={()=>setNewDraft(null)}>Cancel</button></div><div className="sl-slr-deliverable-grid"><label><span>System</span><input value={newDraft.system_name} onChange={(e)=>setNewDraft({...newDraft,system_name:e.target.value})}/></label><label><span>Title / Subject</span><input value={newDraft.title} onChange={(e)=>setNewDraft({...newDraft,title:e.target.value})}/></label><label className="wide"><span>{newDraft.type==='VE'?'VE Opportunity':'GC Clarification'}</span><textarea rows={3} value={newDraft.content} onChange={(e)=>setNewDraft({...newDraft,content:e.target.value})}/></label>{newDraft.type==='VE'?<label className="wide"><span>Potential Impact / Considerations</span><textarea rows={2} value={newDraft.impact_considerations} onChange={(e)=>setNewDraft({...newDraft,impact_considerations:e.target.value})}/></label>:<label className="wide"><span>Response / Resolution</span><textarea rows={2} value={newDraft.response} onChange={(e)=>setNewDraft({...newDraft,response:e.target.value})}/></label>}<label className="wide"><span>Document Reference</span><input value={newDraft.reference} onChange={(e)=>setNewDraft({...newDraft,reference:e.target.value})}/></label></div><div className="sl-slr-deliverable-actions"><button type="button" className="primary" disabled={!newDraft.title.trim()||!newDraft.content.trim()} onClick={()=>void saveNew()}>Save to SLR</button></div></article>}{section('CL',clItems,clOpen,setClOpen)}{section('VE',veItems,veOpen,setVeOpen)}</div>,host);
+
+  const renderNewForm=(type:Type)=>{
+    if(!newDraft || newDraft.type!==type) return null;
+
+    const isVe=type==='VE';
+
+    return (
+      <article className="sl-slr-deliverable-card new">
+        <div className="sl-slr-deliverable-card-head">
+          <div>
+            <b>NEW {type}</b>
+            <span>{isVe?'VE Opportunity':'GC Clarification'}</span>
+          </div>
+
+          <button
+            type="button"
+            className="secondary"
+            onClick={()=>setNewDraft(null)}
+          >
+            Cancel
+          </button>
+        </div>
+
+        <div className="sl-slr-deliverable-grid">
+          <label>
+            <span>System</span>
+            <input
+              value={newDraft.system_name}
+              onChange={(e)=>setNewDraft({
+                ...newDraft,
+                system_name:e.target.value
+              })}
+            />
+          </label>
+
+          <label>
+            <span>Title / Subject</span>
+            <input
+              value={newDraft.title}
+              onChange={(e)=>setNewDraft({
+                ...newDraft,
+                title:e.target.value
+              })}
+            />
+          </label>
+
+          <label className="wide">
+            <span>{isVe?'VE Opportunity':'GC Clarification'}</span>
+            <textarea
+              rows={3}
+              value={newDraft.content}
+              onChange={(e)=>setNewDraft({
+                ...newDraft,
+                content:e.target.value
+              })}
+            />
+          </label>
+
+          {isVe ? (
+            <label className="wide">
+              <span>Potential Impact / Considerations</span>
+              <textarea
+                rows={2}
+                value={newDraft.impact_considerations}
+                onChange={(e)=>setNewDraft({
+                  ...newDraft,
+                  impact_considerations:e.target.value
+                })}
+              />
+            </label>
+          ) : (
+            <label className="wide">
+              <span>Response / Resolution</span>
+              <textarea
+                rows={2}
+                value={newDraft.response}
+                onChange={(e)=>setNewDraft({
+                  ...newDraft,
+                  response:e.target.value
+                })}
+              />
+            </label>
+          )}
+
+          <label className="wide">
+            <span>Document Reference</span>
+            <input
+              value={newDraft.reference}
+              onChange={(e)=>setNewDraft({
+                ...newDraft,
+                reference:e.target.value
+              })}
+            />
+          </label>
+        </div>
+
+        <div className="sl-slr-deliverable-actions">
+          <button
+            type="button"
+            className="primary"
+            disabled={
+              !newDraft.title.trim() ||
+              !newDraft.content.trim()
+            }
+            onClick={()=>void saveNew()}
+          >
+            Save to SLR
+          </button>
+        </div>
+      </article>
+    );
+  };
+
+  const section=(
+    type:Type,
+    items:(Action|DraftAction)[],
+    open:boolean,
+    setOpen:(value:boolean)=>void,
+  )=>{
+    const isCl=type==='CL';
+
+    return (
+      <section
+        className={`sl-approved-deliverable-section ${
+          isCl ? 'clarification' : 've'
+        }`}
+      >
+        <div className="sl-approved-deliverable-header">
+          <div>
+            <b>{isCl?'7. GC Clarifications':'8. VE Opportunities'}</b>
+            <span>
+              {finding
+                ? 'Linked to this submitted SLR'
+                : 'Saved with this SLR draft and promoted automatically on Submit Entry'}
+            </span>
+          </div>
+
+          <div>
+            <button
+              type="button"
+              className="primary"
+              onClick={()=>{
+                setOpen(true);
+                setNewDraft(defaultForm(type));
+              }}
+            >
+              + Add {isCl?'GC Clarification':'VE Opportunity'}
+            </button>
+
+            <button
+              type="button"
+              className="secondary"
+              onClick={()=>setOpen(!open)}
+              aria-expanded={open}
+            >
+              {open?'Collapse':'Expand'}
+            </button>
+          </div>
+        </div>
+
+        {open && (
+          <div className="sl-approved-deliverable-body">
+            {items.length ? (
+              items.map((item)=>
+                finding ? (
+                  <ActionRow
+                    key={item.id}
+                    item={item as Action}
+                    masterId={masterId}
+                    slrId={slrId}
+                    onChanged={changed}
+                    onMessage={setMessage}
+                  />
+                ) : (
+                  <DraftRow
+                    key={item.id}
+                    item={item as DraftAction}
+                    onChanged={changed}
+                    onMessage={setMessage}
+                  />
+                )
+              )
+            ) : (
+              <div className="sl-preview-state">
+                No {isCl?'GC Clarifications':'VE Opportunities'} added yet.
+              </div>
+            )}
+
+            {/* New item belongs inside its own section, after existing rows. */}
+            {renderNewForm(type)}
+          </div>
+        )}
+      </section>
+    );
+  };
+
+  return createPortal(
+    <div className="sl-slr-deliverables-v2">
+      {message && (
+        <div className="sl-slr-message">
+          {message}
+        </div>
+      )}
+
+      {section('CL',clItems,clOpen,setClOpen)}
+      {section('VE',veItems,veOpen,setVeOpen)}
+    </div>,
+    host,
+  );
 }
