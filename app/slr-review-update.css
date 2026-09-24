@@ -26,17 +26,3 @@ body .app-shell .project-switch b[data-sl-full-project-label='true']{
 /* Review Note delete sits beside the existing Edit / Create SLR actions. */
 .sl-review-note-actions .sl-review-note-delete{color:#8a3028!important;border-color:#d4aaa4!important}
 .sl-review-note-actions .sl-review-note-delete:hover{background:#fff0ed!important}
-
-/* GC Clarifications and VE Opportunities use their existing SLR styling;
-   only the requested collapse controls are aligned in each section header. */
-body .app-shell .matrix-editor-full .sl-slr-subhead{
-  display:flex!important;
-  align-items:center!important;
-  justify-content:space-between!important;
-  gap:8px!important;
-}
-body .app-shell .matrix-editor-full .sl-slr-subhead>button{
-  min-height:24px!important;
-  padding:3px 8px!important;
-  font-size:9px!important;
-}

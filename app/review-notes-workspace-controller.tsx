@@ -776,7 +776,7 @@ function StructuredReviewNotes({ masterId }: { masterId: string }) {
               </label>
 
               <label className="wide">
-                <span>Scope Item</span>
+                <span>Topic / Scope Item</span>
                 <input value={slrDraft.scope_item} onChange={(event) => setSlrDraft({ ...slrDraft, scope_item: event.target.value })}/>
               </label>
 

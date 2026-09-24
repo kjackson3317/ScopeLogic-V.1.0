@@ -10,9 +10,7 @@ import './workstation-uniformity-v2.css';
 import './workstation-uniformity-v3.css';
 import './workstation-uniformity-v4.css';
 import './workstation-uniformity-v5.css';
-import './slr-green-banners.css';
 import './sidebar-folder-controls.css';
-import './slr-inline-editor.css';
 import './slr-review-update.css';
 import './scopelogic-action-toast.css';
 import './quote-modern-ui.css';
@@ -28,9 +26,8 @@ import ReviewObservationEnhancer from './review-observation-enhancer';
 import ReviewNotesWorkspaceController from './review-notes-workspace-controller';
 import WorkstationUniformityBehavior from './workstation-uniformity-behavior';
 import DeliverablesNavigationEnhancer from './deliverables-navigation-enhancer';
-import SlrDeliverablesWorkflow from './slr-deliverables-workflow';
+import DeliverablesReadOnlyGuard from './deliverables-readonly-guard';
 import SlrDeliverablesEditorV2 from './slr-deliverables-editor-v2';
-import SlrApprovedLayoutBehavior from './slr-approved-layout-behavior';
 import ProjectWorkflowEnhancer from './project-workflow-enhancer';
 import ScopeLogicActionToast from './scopelogic-action-toast';
 import DeliverablesInlineControllerV2 from './deliverables-inline-controller-v2';
@@ -43,5 +40,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body><DismissibleUiBehavior /><WorkspaceSidebarLinksV2 /><SlrTemplateSearchEnhancer /><ReviewObservationEnhancer /><ReviewNotesWorkspaceController /><WorkstationUniformityBehavior /><DeliverablesNavigationEnhancer /><SlrDeliverablesWorkflow /><SlrDeliverablesEditorV2 /><SlrApprovedLayoutBehavior /><ProjectWorkflowEnhancer /><ScopeLogicActionToast /><DeliverablesInlineControllerV2 /><ReviewReleaseControllerV2 />{children}</body></html>;
+  return <html lang="en"><body><DismissibleUiBehavior /><WorkspaceSidebarLinksV2 /><SlrTemplateSearchEnhancer /><ReviewObservationEnhancer /><ReviewNotesWorkspaceController /><WorkstationUniformityBehavior /><DeliverablesNavigationEnhancer /><DeliverablesReadOnlyGuard /><SlrDeliverablesEditorV2 /><ProjectWorkflowEnhancer /><ScopeLogicActionToast /><DeliverablesInlineControllerV2 /><ReviewReleaseControllerV2 />{children}</body></html>;
 }

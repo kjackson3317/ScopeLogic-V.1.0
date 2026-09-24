@@ -41,11 +41,31 @@ function currentSystem(){
 }
 
 function makeHost(){
-  const bar=document.querySelector<HTMLElement>('.matrix-editor-full .submit-bar');
-  if(!bar?.parentElement)return null;
-  let host=document.querySelector<HTMLElement>('.matrix-editor-full .sl-slr-deliverables-v2-host');
-  if(!host){host=document.createElement('div');host.className='sl-slr-deliverables-v2-host';bar.before(host);}
-  else if(host.nextElementSibling!==bar)bar.before(host);
+  const matrix=document.querySelector<HTMLElement>('.matrix-editor-full');
+  if(!matrix)return null;
+
+  const details=matrix.querySelector<HTMLElement>('.detail-tabs');
+  const bar=matrix.querySelector<HTMLElement>('.submit-bar');
+
+  if(!details&&!bar)return null;
+
+  let host=matrix.querySelector<HTMLElement>('.sl-slr-deliverables-v2-host');
+
+  if(!host){
+    host=document.createElement('div');
+    host.className='sl-slr-deliverables-v2-host';
+  }
+
+  /*
+   * Canonical SLR order:
+   * child sections -> GC -> VE -> Details/Deliverables/History -> action bar
+   */
+  if(details?.parentElement){
+    if(host.nextElementSibling!==details) details.before(host);
+  }else if(bar?.parentElement){
+    if(host.nextElementSibling!==bar) bar.before(host);
+  }
+
   return host;
 }
 

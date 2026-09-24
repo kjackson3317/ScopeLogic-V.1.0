@@ -1521,7 +1521,7 @@ function InternalMatrix(props: any) {
 
         </div>
 
-        <div className="matrix-reference-grid"><label className="field"><span>SLR ID</span><input value={draft.id} disabled /></label><MultiSelectField label="Source Type(s)" values={sourceTypeValues(draft.sourceType)} options={SOURCE_TYPE_OPTIONS} emptyLabel="Select one or more source types" onChange={(values)=>patch('sourceType',sourceTypeText(values))} /><Field label="Source Reference" value={draft.reference} onChange={(value) => patch('reference', value)} /><label className="field"><span>Markup Reference</span><input value={draft.id} disabled /></label></div><p className="help-text reference-help">Select every applicable source type when an issue appears in more than one place, such as both Drawing and Specification. Choose Not Mentioned in Contract Documents when the issue is absent from the contract documents. Use Source Reference for citations such as A601 / Note 4 and Division 28 13 00. The SLR ID remains the permanent cross-reference.</p>
+        <section className="slr-source-section"><div className="slr-source-section-header">3. Source Information</div><div className="slr-source-fields"><label className="field"><span>SLR ID</span><input value={draft.id} disabled /></label><MultiSelectField label="Source Type(s)" values={sourceTypeValues(draft.sourceType)} options={SOURCE_TYPE_OPTIONS} emptyLabel="Select one or more source types" onChange={(values)=>patch('sourceType',sourceTypeText(values))} /><Field label="Source Reference" value={draft.reference} onChange={(value) => patch('reference', value)} /><label className="field"><span>Markup Reference</span><input value={draft.id} disabled /></label></div></section><p className="help-text reference-help">Select every applicable source type when an issue appears in more than one place, such as both Drawing and Specification. Choose Not Mentioned in Contract Documents when the issue is absent from the contract documents. Use Source Reference for citations such as A601 / Note 4 and Division 28 13 00. The SLR ID remains the permanent cross-reference.</p>
 
         <SlrChildEditor issue={draft} onChange={(next) => props.setDraft(next as Issue)} />
 
@@ -1529,7 +1529,22 @@ function InternalMatrix(props: any) {
         {props.tab === 'details' && <div className="tab-panel"><AutoGrowTextArea label="RFI Response / Official Answer" value={draft.resolution} onChange={(value) => patch('resolution', value)} /></div>}
         {props.tab === 'deliverables' && <div className="tab-panel checklist"><Check label="Recommended SOW Matrix" value={draft.sow} change={(value) => patch('sow', value)} /><Check label="Clarification Log" value={draft.clarification} change={(value) => patch('clarification', value)} /><Check label="Formal RFI" value={draft.formalRfi} change={(value) => patch('formalRfi', value)} /><div className="deliverable-rule-note"><b>Contractor Response Checklist</b><span>Controlled by the system-specific Contractor Checklist Scope Item fields above.</span></div></div>}
         {props.tab === 'history' && <div className="tab-panel timeline"><p><b>Draft workflow</b><span>Only Submit Entry publishes changes to the deliverables.</span></p></div>}
-        <div className="submit-bar"><button className="secondary" onClick={props.saveTemplate}>Save This SLR as Template</button><button className="primary" onClick={props.submit}>Submit Entry</button></div>
+        <div className="submit-bar sl-approved-action-bar">
+          <button
+            type="button"
+            className="secondary sl-approved-save"
+            onClick={() => {
+              const source = document.querySelector<HTMLButtonElement>(
+                '.matrix-editor-full .slr-child-editor .slr-section-save'
+              );
+              if (source && !source.disabled) source.click();
+            }}
+          >
+            Save SLR
+          </button>
+          <button type="button" className="secondary sl-approved-template" onClick={props.saveTemplate}>SLR as Template</button>
+          <button type="button" className="primary sl-approved-submit" onClick={props.submit}>Submit Entry</button>
+        </div>
       </>}
     </section>
 
