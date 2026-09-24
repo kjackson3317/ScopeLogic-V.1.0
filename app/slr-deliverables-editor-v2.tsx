@@ -36,16 +36,32 @@ function currentField(labelText:string){
 }
 
 function currentSystem(){
-  const checked=document.querySelector<HTMLInputElement>('.matrix-editor-full .system-selector-grid input[type="checkbox"]:checked');
+  const checked=document.querySelector<HTMLInputElement>('.matrix-editor-full .system-chip-grid input[type="checkbox"]:checked');
   return clean(checked?.closest('label')?.textContent)||'Other';
 }
 
 function makeHost(){
-  const bar=document.querySelector<HTMLElement>('.matrix-editor-full .submit-bar');
-  if(!bar?.parentElement)return null;
-  let host=document.querySelector<HTMLElement>('.matrix-editor-full .sl-slr-deliverables-v2-host');
-  if(!host){host=document.createElement('div');host.className='sl-slr-deliverables-v2-host';bar.before(host);}
-  else if(host.nextElementSibling!==bar)bar.before(host);
+  const matrix=document.querySelector<HTMLElement>('.matrix-editor-full');
+  if(!matrix)return null;
+
+  const checklist=matrix.querySelector<HTMLElement>('.slr-checklist-section');
+  const bar=matrix.querySelector<HTMLElement>('.submit-bar');
+
+  if(!checklist&&!bar)return null;
+
+  let host=matrix.querySelector<HTMLElement>('.sl-slr-deliverables-v2-host');
+
+  if(!host){
+    host=document.createElement('div');
+    host.className='sl-slr-deliverables-v2-host';
+  }
+
+  if(checklist?.parentElement){
+    if(host.nextElementSibling!==checklist) checklist.before(host);
+  }else if(bar?.parentElement){
+    if(host.nextElementSibling!==bar) bar.before(host);
+  }
+
   return host;
 }
 
@@ -176,6 +192,6 @@ export default function SlrDeliverablesEditorV2(){
   const clItems=finding?actions.filter((item)=>item.deliverable_type==='CL'):draftActions.filter((item)=>item.deliverable_type==='CL');
   const veItems=finding?actions.filter((item)=>item.deliverable_type==='VE'):draftActions.filter((item)=>item.deliverable_type==='VE');
   const changed=()=>void load(slrId);
-  const section=(type:Type,items:(Action|DraftAction)[],open:boolean,setOpen:(value:boolean)=>void)=><section className={`sl-approved-deliverable-section ${type==='CL'?'clarification':'ve'}`}><div className="sl-approved-deliverable-header"><div><b>{type==='CL'?'7. GC Clarifications':'8. VE Opportunities'}</b><span>{finding?'Linked to this submitted SLR':'Saved with this SLR draft and promoted automatically on Submit Entry'}</span></div><div><button type="button" className="primary" onClick={()=>setNewDraft(defaultForm(type))}>+ Add {type==='CL'?'GC Clarification':'VE Opportunity'}</button><button type="button" className="secondary" onClick={()=>setOpen(!open)} aria-expanded={open}>{open?'Collapse':'Expand'}</button></div></div>{open&&<div className="sl-approved-deliverable-body">{items.length?items.map((item)=>finding?<ActionRow key={item.id} item={item as Action} masterId={masterId} slrId={slrId} onChanged={changed} onMessage={setMessage}/>:<DraftRow key={item.id} item={item as DraftAction} onChanged={changed} onMessage={setMessage}/>):<div className="sl-preview-state">No {type==='CL'?'GC Clarifications':'VE Opportunities'} added yet.</div>}</div>}</section>;
+  const section=(type:Type,items:(Action|DraftAction)[],open:boolean,setOpen:(value:boolean)=>void)=><section className={`sl-approved-deliverable-section ${type==='CL'?'clarification':'ve'}`}><div className="sl-approved-deliverable-header"><div><b>{type==='CL'?'6. GC Clarifications':'7. VE Opportunities'}</b><span>{finding?'Linked to this submitted SLR':'Saved with this SLR draft and promoted automatically on Submit Entry'}</span></div><div><button type="button" className="primary" onClick={()=>setNewDraft(defaultForm(type))}>+ Add {type==='CL'?'GC Clarification':'VE Opportunity'}</button><button type="button" className="secondary" onClick={()=>setOpen(!open)} aria-expanded={open}>{open?'⌃':'⌄'}</button></div></div>{open&&<div className="sl-approved-deliverable-body">{items.length?items.map((item)=>finding?<ActionRow key={item.id} item={item as Action} masterId={masterId} slrId={slrId} onChanged={changed} onMessage={setMessage}/>:<DraftRow key={item.id} item={item as DraftAction} onChanged={changed} onMessage={setMessage}/>):<div className="sl-preview-state">No {type==='CL'?'GC Clarifications':'VE Opportunities'} added yet.</div>}</div>}</section>;
   return createPortal(<div className="sl-slr-deliverables-v2">{message&&<div className="sl-slr-message">{message}</div>}{newDraft&&<article className="sl-slr-deliverable-card new"><div className="sl-slr-deliverable-card-head"><div><b>NEW {newDraft.type}</b><span>{newDraft.type==='CL'?'GC Clarification':'VE Opportunity'}</span></div><button type="button" className="secondary" onClick={()=>setNewDraft(null)}>Cancel</button></div><div className="sl-slr-deliverable-grid"><label><span>System</span><input value={newDraft.system_name} onChange={(e)=>setNewDraft({...newDraft,system_name:e.target.value})}/></label><label><span>Title / Subject</span><input value={newDraft.title} onChange={(e)=>setNewDraft({...newDraft,title:e.target.value})}/></label><label className="wide"><span>{newDraft.type==='VE'?'VE Opportunity':'GC Clarification'}</span><textarea rows={3} value={newDraft.content} onChange={(e)=>setNewDraft({...newDraft,content:e.target.value})}/></label>{newDraft.type==='VE'?<label className="wide"><span>Potential Impact / Considerations</span><textarea rows={2} value={newDraft.impact_considerations} onChange={(e)=>setNewDraft({...newDraft,impact_considerations:e.target.value})}/></label>:<label className="wide"><span>Response / Resolution</span><textarea rows={2} value={newDraft.response} onChange={(e)=>setNewDraft({...newDraft,response:e.target.value})}/></label>}<label className="wide"><span>Document Reference</span><input value={newDraft.reference} onChange={(e)=>setNewDraft({...newDraft,reference:e.target.value})}/></label></div><div className="sl-slr-deliverable-actions"><button type="button" className="primary" disabled={!newDraft.title.trim()||!newDraft.content.trim()} onClick={()=>void saveNew()}>Save to SLR</button></div></article>}{section('CL',clItems,clOpen,setClOpen)}{section('VE',veItems,veOpen,setVeOpen)}</div>,host);
 }

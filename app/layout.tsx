@@ -23,15 +23,10 @@ import './slr-approved-layout.css';
 import type { Metadata } from 'next';
 import WorkspaceSidebarLinksV2 from './workspace-sidebar-links-v2';
 import DismissibleUiBehavior from './dismissible-ui-behavior';
-import SlrTemplateSearchEnhancer from './slr-template-search-enhancer';
 import ReviewObservationEnhancer from './review-observation-enhancer';
 import ReviewNotesWorkspaceController from './review-notes-workspace-controller';
 import WorkstationUniformityBehavior from './workstation-uniformity-behavior';
 import DeliverablesNavigationEnhancer from './deliverables-navigation-enhancer';
-import SlrDeliverablesWorkflow from './slr-deliverables-workflow';
-import SlrDeliverablesEditorV2 from './slr-deliverables-editor-v2';
-import SlrApprovedLayoutBehavior from './slr-approved-layout-behavior';
-import ProjectWorkflowEnhancer from './project-workflow-enhancer';
 import ScopeLogicActionToast from './scopelogic-action-toast';
 import DeliverablesInlineControllerV2 from './deliverables-inline-controller-v2';
 import ReviewReleaseControllerV2 from './review-release-controller-v2';
@@ -43,5 +38,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body><DismissibleUiBehavior /><WorkspaceSidebarLinksV2 /><SlrTemplateSearchEnhancer /><ReviewObservationEnhancer /><ReviewNotesWorkspaceController /><WorkstationUniformityBehavior /><DeliverablesNavigationEnhancer /><SlrDeliverablesWorkflow /><SlrDeliverablesEditorV2 /><SlrApprovedLayoutBehavior /><ProjectWorkflowEnhancer /><ScopeLogicActionToast /><DeliverablesInlineControllerV2 /><ReviewReleaseControllerV2 />{children}</body></html>;
+  return <html lang="en"><body><DismissibleUiBehavior /><WorkspaceSidebarLinksV2 /><ReviewObservationEnhancer /><ReviewNotesWorkspaceController /><WorkstationUniformityBehavior /><DeliverablesNavigationEnhancer /><ScopeLogicActionToast /><DeliverablesInlineControllerV2 /><ReviewReleaseControllerV2 />{children}</body></html>;
 }

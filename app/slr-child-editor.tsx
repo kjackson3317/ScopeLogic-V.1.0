@@ -198,7 +198,7 @@ export default function SlrChildEditor({ issue, onChange }: Props) {
   return <div className="slr-child-editor">
     <section className="recommendation-sections slr-numbered-section slr-rfi-section">
       <div className="recommendation-heading">
-        <div><b>Formal RFI Questions</b><span>One scope concern may produce one or more related RFIs. Keep related questions together when that is clearer.</span></div>
+        <div><b>RFI / Question</b><span>One scope concern may produce one or more related RFIs. Keep related questions together when that is clearer.</span></div>
         <div className="slr-section-actions">
           <button className="secondary" type="button" onClick={() => setOpenRfis(new Set(issue.rfis.map((item) => item.uid)))} disabled={!issue.rfis.length}>Expand All</button>
           <button className="secondary" type="button" onClick={() => setOpenRfis(new Set())} disabled={!issue.rfis.length}>Collapse All</button>
@@ -244,7 +244,7 @@ export default function SlrChildEditor({ issue, onChange }: Props) {
 
     <section className="recommendation-sections slr-numbered-section slr-rbb-section">
       <div className="recommendation-heading">
-        <div><b>Recommend Base Bid</b><span>System selection belongs to each RBB. Every selected system gets its own recommendation section and automatic identifier.</span></div>
+        <div><b>Recommended Bid Basis (RBB)</b><span>System selection belongs to each RBB. Every selected system gets its own recommendation section and automatic identifier.</span></div>
         <div className="slr-section-actions">
           <button className="secondary" type="button" onClick={() => setOpenRbbs(new Set(issue.recommendBaseBids.map((item) => item.uid)))} disabled={!issue.recommendBaseBids.length}>Expand All</button>
           <button className="secondary" type="button" onClick={() => setOpenRbbs(new Set())} disabled={!issue.recommendBaseBids.length}>Collapse All</button>
