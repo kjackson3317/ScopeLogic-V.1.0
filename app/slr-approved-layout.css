@@ -19,11 +19,11 @@ body .matrix-editor-full .draft-banner{margin:0 0 8px!important;border:1px solid
 body .matrix-editor-full .issue-title{
   position:relative!important;
   margin:0!important;
-  padding:43px 10px 10px!important;
+  padding:47px 12px 14px!important;
   border:1px solid #8b9b80!important;
   border-bottom:0!important;
   border-radius:6px 6px 0 0!important;
-  background:#f9fbf8!important;
+  background:#eef3ea!important;
   box-sizing:border-box!important;
 }
 body .matrix-editor-full .issue-title::before{
@@ -38,8 +38,8 @@ body .matrix-editor-full .system-selector-block{
   border:1px solid #8b9b80!important;
   border-top:1px solid #c3ccbd!important;
   border-radius:0 0 6px 6px!important;
-  background:#f9fbf8!important;
-  padding:9px 10px 10px!important;
+  background:#eef3ea!important;
+  padding:11px 12px 13px!important;
 }
 
 /* 2. Concern / Observation */
@@ -179,7 +179,7 @@ body .matrix-editor-full .recommendation-sections{
   margin:0!important;
   border:1px solid #8b9b80!important;
   border-radius:6px!important;
-  background:#f9fbf8!important;
+  background:#eef3ea!important;
   overflow:hidden!important;
 }
 body .matrix-editor-full .recommendation-heading{
@@ -195,17 +195,17 @@ body .matrix-editor-full .recommendation-heading>div:first-child>b{color:#fff!im
 body .matrix-editor-full .recommendation-heading>div:first-child>span{color:#dce8d8!important;font-size:9px!important;}
 body .matrix-editor-full .slr-rfi-section .recommendation-heading>div:first-child>b::before{content:'4. ';}
 body .matrix-editor-full .slr-rbb-section .recommendation-heading>div:first-child>b::before{content:'5. ';}
-body .matrix-editor-full .slr-checklist-section .recommendation-heading>div:first-child>b::before{content:'8. ';}
+body .matrix-editor-full .slr-checklist-section .recommendation-heading>div:first-child>b::before{content:'6. ';}
 body .matrix-editor-full .recommendation-sections>.empty-panel,
 body .matrix-editor-full .recommendation-sections>.slr-child-card{margin:8px!important;}
 body .matrix-editor-full .slr-section-save{display:none!important;}
-body .matrix-editor-full .slr-child-card{border:1px solid #bcc7b5!important;border-radius:5px!important;background:#fff!important;}
+body .matrix-editor-full .slr-child-card{border:1px solid #bcc7b5!important;border-radius:5px!important;background:#f4f7f1!important;}
 body .matrix-editor-full .slr-child-card-head{background:#edf2e9!important;border-bottom:1px solid #c7d0c2!important;padding:6px 8px!important;}
 body .matrix-editor-full .slr-child-card-body{padding:8px!important;}
 
 /* Keep Details / Deliverables / History compact and visually subordinate to the numbered SLR sections. */
 body .matrix-editor-full .detail-tabs{margin:9px 0 0!important;border:1px solid #aebaa4!important;border-bottom:0!important;border-radius:6px 6px 0 0!important;background:#e7ece3!important;padding:4px 5px 0!important;}
-body .matrix-editor-full .tab-panel{margin:0 0 9px!important;border:1px solid #aebaa4!important;border-radius:0 0 6px 6px!important;background:#f9fbf8!important;padding:9px!important;}
+body .matrix-editor-full .tab-panel{margin:0 0 9px!important;border:1px solid #aebaa4!important;border-radius:0 0 6px 6px!important;background:#eef3ea!important;padding:9px!important;}
 
 /* Canonical SLR-owned GC/VE editor. */
 body .matrix-editor-full .sl-slr-deliverables-v2-host{
@@ -223,7 +223,7 @@ body .matrix-editor-full .sl-approved-deliverable-header>div:last-child{display:
 body .matrix-editor-full .sl-approved-deliverable-header button{min-height:27px;padding:4px 9px!important;font-size:9px!important;}
 body .matrix-editor-full .sl-approved-deliverable-body{padding:7px;display:grid;gap:7px;}
 body .matrix-editor-full .sl-slr-message{margin:0;padding:7px 9px;border:1px solid #9eae91;border-radius:5px;background:#eef4e9;color:#31432c;font-size:10px;font-weight:700;}
-body .matrix-editor-full .sl-slr-deliverable-card{margin:0;border:1px solid #bcc8cf;border-radius:5px;background:#fff;overflow:hidden;}
+body .matrix-editor-full .sl-slr-deliverable-card{margin:0;border:1px solid #bcc8cf;border-radius:5px;background:#f1f6f8;overflow:hidden;}
 body .matrix-editor-full .sl-slr-deliverable-card-head{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:6px 8px;background:#edf2f4;border-bottom:1px solid #ccd5da;}
 body .matrix-editor-full .sl-slr-deliverable-card-head>div{display:grid;gap:1px;}
 body .matrix-editor-full .sl-slr-deliverable-card-head b{font-size:10px;color:#27475a;}
@@ -266,6 +266,9 @@ body .matrix-editor-full .submit-bar .sl-approved-submit{background:#365f20!impo
 
 /* Reduce excess vertical whitespace without changing field sizes or data flow. */
 body .matrix-editor-full .field{margin:0!important;}
+body .matrix-editor-full :is(input,textarea,select,.multiselect-trigger){
+  background:#fff!important;
+}
 body .matrix-editor-full textarea{min-height:0;}
 body .matrix-editor-full .help-text{font-size:9px!important;line-height:1.35!important;}
 
