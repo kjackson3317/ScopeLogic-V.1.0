@@ -6,11 +6,12 @@ out/
 .vercel/
 *.tsbuildinfo
 
-# Local secrets
+# Local environment configuration
 .env
 .env.local
 .env.development.local
 .env.test.local
+.env.production
 .env.production.local
 
 # Operating-system and editor files
