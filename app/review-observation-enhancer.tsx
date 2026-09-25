@@ -23,15 +23,6 @@ function groupState(notes:Note[]):Group['state']{
  return 'Unresolved';
 }
 
-function currentLegacyProjectId(){
- for(const key of LOCAL_WORKSPACE_KEYS){
-  const raw=window.localStorage.getItem(key);
-  if(!raw)continue;
-  try{const parsed=JSON.parse(raw);const id=text(parsed?.projectId);if(id)return id;}catch{}
- }
- return '';
-}
-
 function CaptureGroupResolve({masterId}:{masterId:string}){
  const supabase=useMemo(()=>createClient() as any,[]);
  const [tab,setTab]=useState<ReviewTab>('capture');
@@ -133,65 +124,14 @@ function CaptureGroupResolve({masterId}:{masterId:string}){
  </section>;
 }
 
-function restoreLiveWorkspace(){
- document.querySelectorAll<HTMLElement>('[data-sl-review-hidden="true"]').forEach((element)=>{
-  element.style.display=element.dataset.slReviewPreviousDisplay||'';
-  delete element.dataset.slReviewHidden;
-  delete element.dataset.slReviewPreviousDisplay;
- });
- document.querySelector<HTMLElement>('[data-live-review-host]')?.remove();
- document.body.classList.remove('sl-review-live-open');
-}
-
 export default function ReviewObservationEnhancer(){
- const supabase=useMemo(()=>createClient() as any,[]);
  const [routeMount,setRouteMount]=useState<HTMLElement|null>(null);
  const [routeMasterId,setRouteMasterId]=useState('');
- const [liveMount,setLiveMount]=useState<HTMLElement|null>(null);
- const [liveOpen,setLiveOpen]=useState(false);
- const [liveMasterId,setLiveMasterId]=useState('');
- const [liveProjectName,setLiveProjectName]=useState('');
- const [liveError,setLiveError]=useState('');
- const [liveLoading,setLiveLoading]=useState(false);
-
- const resolveCurrentMaster=useCallback(async()=>{
-  setLiveLoading(true);setLiveError('');setLiveMasterId('');
-  try{
-   let masterId='';
-   const legacyId=currentLegacyProjectId();
-   if(legacyId){
-    const byLegacy=await supabase.from('projects').select('master_project_id').eq('legacy_id',legacyId).maybeSingle();
-    if(byLegacy.error)throw new Error(byLegacy.error.message);
-    masterId=text(byLegacy.data?.master_project_id);
-    if(!masterId&&/^[0-9a-f-]{36}$/i.test(legacyId)){
-     const byId=await supabase.from('projects').select('master_project_id').eq('id',legacyId).maybeSingle();
-     if(byId.error)throw new Error(byId.error.message);
-     masterId=text(byId.data?.master_project_id);
-    }
-   }
-   if(!masterId){
-    const visibleName=text(document.querySelector<HTMLElement>('.project-switch b')?.textContent);
-    if(visibleName){
-     const byName=await supabase.from('master_projects').select('id,name').eq('name',visibleName).limit(2);
-     if(byName.error)throw new Error(byName.error.message);
-     if((byName.data||[]).length===1)masterId=text(byName.data[0].id);
-    }
-   }
-   if(!masterId)throw new Error('The current Master Project could not be resolved. Open the project from Project Library and try Review Notes again.');
-   const master=await supabase.from('master_projects').select('id,name').eq('id',masterId).maybeSingle();
-   if(master.error)throw new Error(master.error.message);
-   setLiveMasterId(masterId);
-   setLiveProjectName(text(master.data?.name)||'Current Master Project');
-  }catch(cause){setLiveError(cause instanceof Error?cause.message:'The current Master Project could not be resolved.');}
-  finally{setLiveLoading(false);}
- },[supabase]);
-
- const openLiveReview=useCallback(()=>{setLiveOpen(true);void resolveCurrentMaster();},[resolveCurrentMaster]);
 
  useEffect(()=>{
   let queued=false;
   const installRoute=()=>{
-   const match=window.location.pathname.match(/^\/master-projects\/([^/]+)\/deliverables\/?$/);
+   const match=window.location.pathname.match(/^\\/master-projects\\/([^/]+)\\/deliverables\\/?$/);
    if(!match){setRouteMount(null);setRouteMasterId('');return false;}
    setRouteMasterId(match[1]);
    const title=Array.from(document.querySelectorAll('h2')).find(node=>node.textContent?.trim()==='Review Notes');
@@ -208,60 +148,5 @@ export default function ReviewObservationEnhancer(){
   refresh();const observer=new MutationObserver(refresh);observer.observe(document.body,{childList:true,subtree:true});return()=>observer.disconnect();
  },[]);
 
- useEffect(()=>{
-  let queued=false;
-  const installNav=()=>{
-   const path=window.location.pathname.replace(/\/$/,'')||'/';
-   if(path!=='/'&&path!=='/workspace')return false;
-   const sidebar=document.querySelector<HTMLElement>('aside.sidebar');if(!sidebar)return false;
-   const projectGroup=Array.from(sidebar.querySelectorAll<HTMLElement>('.nav-group')).find(group=>{
-    const heading=group.querySelector<HTMLElement>(':scope > .nav-label, :scope > .sl-nav-folder-heading, :scope > span');
-    return heading?.textContent?.trim().toUpperCase()==='PROJECT';
-   });
-   if(!projectGroup)return false;
-   let button=projectGroup.querySelector<HTMLButtonElement>('#scopelogic-review-notes-live-nav');
-   if(!button){
-    button=document.createElement('button');button.type='button';button.id='scopelogic-review-notes-live-nav';button.textContent='Review Notes';
-    button.addEventListener('click',(event)=>{event.preventDefault();event.stopPropagation();openLiveReview();});
-    const internalNotes=Array.from(projectGroup.querySelectorAll<HTMLButtonElement>(':scope > button')).find(item=>item.textContent?.trim()==='Internal Notes');
-    if(internalNotes)projectGroup.insertBefore(button,internalNotes);else projectGroup.appendChild(button);
-   }
-   button.classList.toggle('active',liveOpen);
-   return true;
-  };
-  const refresh=()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;installNav();});};
-  refresh();const observer=new MutationObserver(refresh);observer.observe(document.body,{childList:true,subtree:true});return()=>observer.disconnect();
- },[liveOpen,openLiveReview]);
-
- useEffect(()=>{
-  if(!liveOpen){restoreLiveWorkspace();setLiveMount(null);return;}
-  let queued=false;
-  const installHost=()=>{
-   const page=document.querySelector<HTMLElement>('.main .page');if(!page)return false;
-   let host=page.querySelector<HTMLElement>(':scope > [data-live-review-host]');
-   if(!host){host=document.createElement('div');host.dataset.liveReviewHost='true';host.className='sl-review-live-page';page.appendChild(host);}
-   Array.from(page.children).forEach(child=>{
-    if(child===host||!(child instanceof HTMLElement)||child.dataset.slReviewHidden==='true')return;
-    child.dataset.slReviewHidden='true';child.dataset.slReviewPreviousDisplay=child.style.display||'';child.style.display='none';
-   });
-   document.body.classList.add('sl-review-live-open');setLiveMount(host);return true;
-  };
-  const refresh=()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;installHost();});};
-  refresh();const observer=new MutationObserver(refresh);const page=document.querySelector('.main .page');if(page)observer.observe(page,{childList:true});
-  return()=>{observer.disconnect();restoreLiveWorkspace();};
- },[liveOpen]);
-
- useEffect(()=>{
-  if(!liveOpen)return;
-  const leave=(event:MouseEvent)=>{
-   const target=event.target as HTMLElement|null;if(!target)return;
-   const nav=target.closest('aside.sidebar button, aside.sidebar a');if(!nav||nav.id==='scopelogic-review-notes-live-nav')return;
-   setLiveOpen(false);
-  };
-  document.addEventListener('click',leave,true);return()=>document.removeEventListener('click',leave,true);
- },[liveOpen]);
-
- const routePortal=routeMount&&routeMasterId?createPortal(<CaptureGroupResolve masterId={routeMasterId}/>,routeMount):null;
- const livePortal=liveMount&&liveOpen?createPortal(<div className="sl-review-live-content"><div className="sl-review-live-head"><div><span>PROJECT REVIEW</span><h1>Review Notes</h1><p>Capture raw evidence once, group it automatically by System + Topic, and use those evidence groups while you create or update SLRs.</p>{liveProjectName?<small>{liveProjectName}</small>:null}</div><button type="button" onClick={()=>void resolveCurrentMaster()}>Refresh Project</button></div>{liveLoading?<div className="sl-review-live-status">Loading structured Review Notes…</div>:liveError?<div className="sl-review-workflow-error"><span>{liveError}</span><button type="button" onClick={()=>void resolveCurrentMaster()}>Retry</button></div>:liveMasterId?<CaptureGroupResolve masterId={liveMasterId}/>:<div className="sl-review-live-status">Select a Master Project to begin.</div>}</div>,liveMount):null;
- return <>{routePortal}{livePortal}</>;
+ return routeMount&&routeMasterId?createPortal(<CaptureGroupResolve masterId={routeMasterId}/>,routeMount):null;
 }
