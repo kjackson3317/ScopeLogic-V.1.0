@@ -3,7 +3,7 @@
 import { useCallback,useEffect,useMemo,useState } from 'react';
 import { createClient } from '../lib/supabase/client';
 import { getNextOfficialReleaseNumber,saveOfficialRelease } from '../lib/cloud-workspace';
-import { REVIEW_RELEASE_OPTIONS,buildReviewReleasePdf,reviewReleaseFileName,type ReviewBrandProfile,type ReviewReleaseData,type ReviewReleaseKind } from './review-release-pdf';
+import { REVIEW_RELEASE_OPTIONS,buildReviewReleasePdf,reviewReleaseFileName,type ReviewBrandProfile,type ReviewReleaseData,type ReviewReleaseKind } from './review-release-pdf-v2';
 
 type Engagement={legacyId:string;label:string};type DialogIntent='preview'|'official';type Loaded={masterId:string;data:ReviewReleaseData;engagements:Engagement[]};
 const LOCAL_WORKSPACE_KEYS=['scopelogic-r14-8','scopelogic-r14-7','scopelogic-r14-6','scopelogic-r14-5','scopelogic-r14-4','scopelogic-r14-3','scopelogic-r14-2','technology-preconstruction-workspace'];
@@ -13,7 +13,7 @@ async function resolveMasterId(supabase:any){const pathId=window.location.pathna
 function pdfBlob(bytes:Uint8Array){const copy=Uint8Array.from(bytes);return new Blob([copy.buffer],{type:'application/pdf'});}
 function downloadBlob(blob:Blob,fileName:string){const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=fileName;document.body.appendChild(anchor);anchor.click();anchor.remove();window.setTimeout(()=>URL.revokeObjectURL(url),3000);}
 
-export default function ReviewReleaseController(){
+export default function ReviewReleaseControllerV2(){
  const supabase=useMemo(()=>createClient() as any,[]);const [open,setOpen]=useState(false);const [intent,setIntent]=useState<DialogIntent>('preview');const [selected,setSelected]=useState<ReviewReleaseKind[]>(ALL_KINDS);const [notes,setNotes]=useState('');const [brandProfile,setBrandProfile]=useState<ReviewBrandProfile>('scopelogic');const [loaded,setLoaded]=useState<Loaded|null>(null);const [selectedEngagement,setSelectedEngagement]=useState('');const [loading,setLoading]=useState(false);const [working,setWorking]=useState(false);const [error,setError]=useState('');const [message,setMessage]=useState('');
  const load=useCallback(async()=>{setLoading(true);setError('');setMessage('');try{const masterId=await resolveMasterId(supabase);if(!masterId)throw new Error('No active Master Project could be resolved. Open a Master Project or one of its client engagements and try again.');const [master,findings,actions,checklist,bids,projects]=await Promise.all([
   supabase.from('master_projects').select('id,project_number,name,location,status,revision,version_date').eq('id',masterId).maybeSingle(),
