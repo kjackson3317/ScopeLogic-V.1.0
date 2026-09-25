@@ -118,7 +118,7 @@ function App() {
       canvas.height = Math.ceil(viewport.height);
       canvas.style.width = `${base.width * scale}px`;
       canvas.style.height = `${base.height * scale}px`;
-      await page.render({ canvasContext: context, viewport }).promise;
+      await page.render({ canvas, canvasContext: context, viewport }).promise;
     }).catch((error) => setMessage(error instanceof Error ? error.message : 'PDF page could not be rendered.')).finally(() => { if (!cancelled) setRendering(false); });
     return () => { cancelled = true; };
   }, [pdf, pageNum, scale]);
