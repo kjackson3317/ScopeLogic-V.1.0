@@ -1,0 +1,49 @@
+name: Takeoff Desktop CI
+
+on:
+  push:
+    branches:
+      - feature/takeoff-v1-count-sync-main-20260925
+    paths:
+      - 'apps/takeoff-desktop/**'
+      - '.github/workflows/takeoff-desktop-ci.yml'
+  pull_request:
+    paths:
+      - 'apps/takeoff-desktop/**'
+      - 'lib/takeoff-exchange.ts'
+
+jobs:
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/takeoff-desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/takeoff-desktop/package-lock.json
+      - name: Install dependencies
+        run: npm install
+      - name: TypeScript and Vite build
+        run: npm run build
+
+  windows-tauri-build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: apps/takeoff-desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: npm install
+      - name: Build frontend
+        run: npm run build
+      - name: Compile Windows desktop application
+        run: npm run tauri build -- --no-bundle
