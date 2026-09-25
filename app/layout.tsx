@@ -15,7 +15,6 @@ import type { Metadata, Viewport } from 'next';
 import WorkspaceSidebarLinksV2 from './workspace-sidebar-links-v2';
 import DismissibleUiBehavior from './dismissible-ui-behavior';
 import SlrTemplateSearchEnhancer from './slr-template-search-enhancer';
-import ReviewObservationEnhancer from './review-observation-enhancer';
 import ReviewNotesWorkspaceController from './review-notes-workspace-controller';
 import WorkstationUniformityBehavior from './workstation-uniformity-behavior';
 import DeliverablesNavigationEnhancer from './deliverables-navigation-enhancer';
@@ -39,5 +38,5 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body><DismissibleUiBehavior /><WorkspaceSidebarLinksV2 /><SlrTemplateSearchEnhancer /><ReviewObservationEnhancer /><ReviewNotesWorkspaceController /><WorkstationUniformityBehavior /><DeliverablesNavigationEnhancer /><DeliverablesReadOnlyGuard /><SlrDeliverablesEditorV2 /><ProjectWorkflowEnhancer /><ScopeLogicActionToast /><DeliverablesInlineControllerV2 /><ReviewReleaseControllerV2 />{children}</body></html>;
+  return <html lang="en"><body><DismissibleUiBehavior /><WorkspaceSidebarLinksV2 /><SlrTemplateSearchEnhancer /><ReviewNotesWorkspaceController /><WorkstationUniformityBehavior /><DeliverablesNavigationEnhancer /><DeliverablesReadOnlyGuard /><SlrDeliverablesEditorV2 /><ProjectWorkflowEnhancer /><ScopeLogicActionToast /><DeliverablesInlineControllerV2 /><ReviewReleaseControllerV2 />{children}</body></html>;
 }
