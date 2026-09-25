@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { connection } from 'next/server';
 import { createClient, isSupabaseConfigured } from '../../../lib/supabase/server';
-import MasterWorkspaceClientV3 from './master-workspace-client-v3';
+import MasterWorkspaceClient from './master-workspace-client';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -28,7 +28,7 @@ export default async function MasterWorkspacePage({ params }: { params: Promise<
     >
       Review Deliverables
     </a>
-    <MasterWorkspaceClientV3
+    <MasterWorkspaceClient
       masterProjectId={resolved.id}
       actualUserId={user.id}
       workspaceOwnerId={String(profile?.workspace_owner_id || user.id)}

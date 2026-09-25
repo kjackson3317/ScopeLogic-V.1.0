@@ -956,8 +956,27 @@ export async function renameProjectFile(storagePath: string, newFileName: string
 }
 
 export async function getNextOfficialReleaseNumber(projectLegacyId: string): Promise<number> {
-  const releases = await listOfficialReleases(projectLegacyId);
-  return releases.reduce((highest, release) => Math.max(highest, release.releaseNumber), 0) + 1;
+  const supabase = createClient();
+  const user = await currentUser(supabase);
+  const projectResult = requireResult(
+    await supabase.from('projects').select('id').eq('owner_id', user.id).eq('legacy_id', projectLegacyId).single(),
+    'Find project release sequence',
+  );
+  if (!projectResult.data?.id) return 1;
+
+  const releaseResult = requireResult(
+    await supabase
+      .from('release_packages')
+      .select('release_number')
+      .eq('owner_id', user.id)
+      .eq('project_id', projectResult.data.id)
+      .eq('document_key', 'project-package')
+      .order('release_number', { ascending: false })
+      .limit(1),
+    'Read project release sequence',
+  );
+
+  return Number(releaseResult.data?.[0]?.release_number || 0) + 1;
 }
 
 export async function listOfficialReleases(projectLegacyId: string): Promise<OfficialRelease[]> {

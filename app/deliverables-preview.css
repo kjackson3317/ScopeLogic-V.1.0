@@ -1,4 +1,4 @@
-/* Deliverables preview v2: supports both production app-shell and employer-demo workspace-shell. */
+/* Deliverables preview: supports both production app-shell and employer-demo workspace-shell. */
 body.sl-deliverable-preview-open .workspace-shell .main>*:not(.topbar):not(.sl-inline-deliverables-host):not(.sl-inline-deliverables-host-v2){display:none!important;}
 body.sl-deliverable-preview-open .app-shell .main>*:not(.topbar):not(.sl-inline-deliverables-host):not(.sl-inline-deliverables-host-v2){display:none!important;}
 body .workspace-shell .sl-inline-deliverables-host-v2,

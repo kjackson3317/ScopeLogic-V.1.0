@@ -1,0 +1,325 @@
+/* ScopeLogic workstation uniformity v2 — final global visual layer. */
+:root{
+  --sl-green:#4b6623;
+  --sl-green-dark:#3d5320;
+  --sl-green-line:#667d42;
+  --sl-green-line-soft:#a4b68c;
+  --sl-green-pale:#e5eddc;
+  --sl-green-pale-2:#f1f5ed;
+  --sl-workspace-bg:#e9eee5;
+  --sl-row-hover:#f1f6ec;
+  --sl-selected:#dfe9d4;
+  --sl-selected-line:#3d5320;
+  --sl-line-soft:#a4b68c;
+  --sl-line:#667d42;
+  --sl-line-strong:#3d5320;
+  --sl-panel-head:#e5eddc;
+  --sl-panel-subhead:#f1f5ed;
+  --sl-input-height:27px;
+  --sl-input-radius:3px;
+  --sl-panel-radius:3px;
+}
+
+/* Global density and form standard — applies to every normal workspace screen. */
+body{font-size:11px!important;background:var(--sl-workspace-bg);}
+body :is(input:not([type=checkbox]):not([type=radio]),select,button){min-height:27px!important;font-size:11px!important;border-radius:3px!important;}
+body :is(input:not([type=checkbox]):not([type=radio]),select,textarea){border:1px solid var(--sl-green-line)!important;background:#fff!important;color:#20262e!important;box-shadow:none!important;}
+body :is(input:not([type=checkbox]):not([type=radio]),select){height:27px!important;padding:3px 6px!important;}
+body textarea{min-height:48px!important;padding:5px 7px!important;line-height:1.28!important;resize:vertical;}
+body :is(label,.control-label){font-size:10px!important;}
+body :is(.content,.main-content,.page-content,.workspace-content){gap:8px!important;}
+body :is(.page-head,.panel-head,.quote-panel-head){margin-bottom:6px!important;}
+body .page-head{padding-bottom:7px!important;}
+body .page-head h1{font-size:22px!important;line-height:1.08!important;}
+body .page-head p{margin-top:3px!important;font-size:10px!important;}
+
+/* Panels are anchored work surfaces, not floating cards. */
+body :is(.panel,.form-card,.dashboard-card,.project-card,.quote-panel,.summary-card,.template-card,.contract-section,.revision-box,.takeoff-project-setup,.compact-rule-library,.matrix-editor-full,.takeoff-quantity-group,.part-database-card,.customer-card,.calendar-panel,.document-panel,.notes-panel,.scope-card,.pricing-card,.settings-card){
+  border:1px solid var(--sl-green-line)!important;
+  border-radius:3px!important;
+  box-shadow:none!important;
+  background:#fff!important;
+}
+body :is(.panel-head,.quote-panel-head,.dashboard-card-head,.contract-section-title,.takeoff-system-title,.section-head,.card-head){
+  background:var(--sl-green-pale)!important;
+  border-bottom:1px solid var(--sl-green-dark)!important;
+  color:#243018!important;
+}
+body :is(.panel,.form-card,.dashboard-card,.project-card,.quote-panel,.contract-section,.revision-box){padding:8px!important;}
+body :is(.panel-head,.quote-panel-head,.dashboard-card-head){padding:5px 7px!important;margin:-8px -8px 7px!important;min-height:30px!important;align-items:center!important;}
+body :is(.panel-head h2,.quote-panel-head h2,.dashboard-card-head h2){font-size:14px!important;line-height:1.15!important;margin:0!important;}
+body :is(.toolbar,.control-bar,.filter-bar,.summary-strip,.status-strip,.template-library,.rule-library-select){border-color:var(--sl-green-line)!important;box-shadow:none!important;}
+
+/* Tables: every divider uses ScopeLogic green. */
+body table{border-collapse:collapse!important;border:1px solid var(--sl-green-line)!important;background:#fff!important;box-shadow:none!important;}
+body thead th{background:var(--sl-green-pale)!important;color:#26331b!important;border:1px solid var(--sl-green-line)!important;border-bottom:2px solid var(--sl-green-dark)!important;font-size:9px!important;line-height:1.15!important;padding:4px 5px!important;}
+body tbody td,body tfoot td{border:1px solid var(--sl-green-line-soft)!important;padding:4px 5px!important;}
+body tbody tr:hover td{background:var(--sl-row-hover)!important;}
+body tbody tr.selected td,body tbody tr.active td,body tr.selected-bom-line td,body tr.rule-enabled-row td{background:var(--sl-selected)!important;}
+body :is(.quote-table-wrap,.picker-results-wrap,.table-wrap,.matrix-table-wrap,.parts-table-wrap){border:1px solid var(--sl-green-line)!important;border-radius:3px!important;box-shadow:none!important;}
+
+/* Navigation: compact folder rows and explicit deliverable children. */
+body .sidebar .nav-group{gap:1px!important;}
+body .sidebar .nav-group>:is(span,.nav-label).sl-nav-folder-heading{min-height:25px!important;padding:4px 7px!important;border-bottom:1px solid rgba(164,182,140,.45)!important;}
+body .sidebar .nav-group :is(button,a){min-height:25px!important;padding:4px 7px 4px 18px!important;border-radius:2px!important;font-size:10px!important;line-height:16px!important;}
+body .sidebar .nav-group :is(button,a).active,body .sidebar .nav-group a[aria-current="page"]{background:#dfe9d4!important;color:#1f2c17!important;box-shadow:inset 3px 0 0 var(--sl-green-dark)!important;font-weight:700!important;}
+body .sidebar .sl-deliverable-nav-link{display:block!important;}
+
+/* System selectors: one compact standard everywhere. */
+body :is(.system-filter-chips,.system-chip-grid,.combined-system-list,.difficulty-choice-grid){display:flex!important;flex-wrap:wrap!important;gap:3px!important;align-items:center!important;}
+body :is(.system-filter-chips,.system-chip-grid,.combined-system-list,.difficulty-choice-grid) label{
+  display:inline-flex!important;align-items:center!important;gap:4px!important;
+  width:auto!important;min-width:0!important;min-height:24px!important;height:24px!important;
+  padding:2px 6px!important;margin:0!important;border:1px solid var(--sl-green-line-soft)!important;
+  border-radius:3px!important;background:#fff!important;color:#27321f!important;
+  font-size:9px!important;line-height:1!important;font-weight:600!important;box-shadow:none!important;
+}
+body :is(.system-filter-chips,.system-chip-grid,.combined-system-list,.difficulty-choice-grid) label.active,
+body :is(.system-filter-chips,.system-chip-grid,.combined-system-list,.difficulty-choice-grid) label:has(input:checked){
+  background:var(--sl-selected)!important;border-color:var(--sl-green-dark)!important;box-shadow:inset 2px 0 0 var(--sl-green-dark)!important;
+}
+body :is(.system-filter-chips,.system-chip-grid,.combined-system-list,.difficulty-choice-grid) input[type=checkbox],
+body :is(.system-filter-chips,.system-chip-grid,.combined-system-list,.difficulty-choice-grid) input[type=radio]{width:13px!important;height:13px!important;min-height:13px!important;margin:0!important;}
+body .takeoff-control-grid{gap:8px!important;align-items:start!important;}
+body .takeoff-project-setup{padding:8px!important;}
+body .average-cable-field{max-width:190px!important;}
+
+/* Quote Builder / Quote Templates: compact, bordered workstation layout. */
+body .quote-layout{gap:8px!important;align-items:start!important;}
+body .quote-layout>.quote-list{width:220px!important;min-width:220px!important;border:1px solid var(--sl-green-line)!important;border-radius:3px!important;background:#fff!important;padding:5px!important;box-shadow:none!important;}
+body .quote-list>button{min-height:29px!important;padding:4px 6px!important;margin:0 0 3px!important;border:1px solid var(--sl-green-line-soft)!important;border-radius:2px!important;background:#fff!important;text-align:left!important;}
+body .quote-list>button:hover{background:var(--sl-row-hover)!important;}
+body .quote-list>button.active{background:var(--sl-selected)!important;border-color:var(--sl-green-dark)!important;box-shadow:inset 3px 0 0 var(--sl-green-dark)!important;}
+body .quote-list>button b{font-size:10px!important;}
+body .quote-list>button span,body .quote-list>button small{font-size:9px!important;line-height:1.15!important;}
+body .quote-workspace{gap:8px!important;}
+body .quote-panel{margin:0 0 8px!important;padding:8px!important;}
+body .quote-head-fields,body .template-meta-grid,body .quote-difficulty-global,body .takeoff-control-grid,body .part-filter-grid,body .adhoc-grid,body .summary-control-grid{gap:6px!important;}
+body .quote-head-fields label,body .template-meta-grid label{gap:2px!important;}
+body .quote-switcher-bar,body .quote-project-summary,body .project-total-summary,body .quote-savebar,body .quote-items-head,body .breakout-manager,body .breakout-source-tabs,body .breakout-summary-head,body .bom-bulk-actions{
+  border:1px solid var(--sl-green-line)!important;border-radius:3px!important;background:var(--sl-green-pale-2)!important;box-shadow:none!important;padding:6px!important;
+}
+body .quote-bom-tabs,body .picker-tabs{border:1px solid var(--sl-green-line)!important;border-radius:3px!important;background:var(--sl-green-pale-2)!important;padding:3px!important;gap:2px!important;}
+body .quote-bom-tabs button,body .picker-tabs button{min-height:27px!important;border:1px solid transparent!important;border-radius:2px!important;padding:3px 7px!important;}
+body .quote-bom-tabs button.active,body .picker-tabs button.active{background:var(--sl-green)!important;color:#fff!important;border-color:var(--sl-green-dark)!important;box-shadow:none!important;}
+body .quote-items-table tbody tr:not(.bom-section-row){height:33px!important;}
+body .quote-table td{height:33px!important;padding:2px 4px!important;}
+body .quote-table td input:not([type=checkbox]){height:25px!important;min-height:25px!important;}
+body .quote-table .description-input{min-width:210px!important;}
+body .bom-section-row td{background:var(--sl-green-pale)!important;border-top:2px solid var(--sl-green-dark)!important;border-bottom:1px solid var(--sl-green-line)!important;height:25px!important;}
+body .quote-picker-modal{border:2px solid var(--sl-green-dark)!important;border-radius:3px!important;box-shadow:0 12px 30px rgba(35,48,24,.25)!important;}
+
+/* Template/rule search controls match the rest of the application. */
+body :is(.slr-template-search-controls,.quote-template-search,.takeoff-rule-search){gap:5px!important;}
+body :is(.slr-template-search-controls,.quote-template-search,.takeoff-rule-search) :is(input,select){height:27px!important;min-height:27px!important;border-color:var(--sl-green-line)!important;border-radius:3px!important;font-size:10px!important;}
+body .slr-template-search-results{border-color:var(--sl-green-line)!important;border-radius:3px!important;max-height:210px!important;}
+body .slr-template-search-results>button{padding:6px 8px!important;border-bottom:1px solid var(--sl-green-line-soft)!important;}
+body .slr-template-search-results>button.selected{background:var(--sl-selected)!important;box-shadow:inset 3px 0 0 var(--sl-green-dark)!important;}
+
+/* Common tab bars / segmented controls. */
+body :is(.tabs,.subtabs,.segmented-control,.matrix-tabs,.project-tabs,.delivery-tabs){border-color:var(--sl-green-line)!important;gap:2px!important;}
+body :is(.tabs,.subtabs,.segmented-control,.matrix-tabs,.project-tabs,.delivery-tabs) button{min-height:26px!important;padding:3px 7px!important;border-radius:2px!important;}
+body :is(.tabs,.subtabs,.segmented-control,.matrix-tabs,.project-tabs,.delivery-tabs) button.active{background:var(--sl-green)!important;color:white!important;border-color:var(--sl-green-dark)!important;}
+
+/* Collapsible-panel and search-first list affordances. */
+body .sl-panel-toggle{margin-left:auto!important;width:25px!important;min-width:25px!important;padding:0!important;border:1px solid var(--sl-green-line)!important;background:#fff!important;color:var(--sl-green-dark)!important;font-weight:800!important;}
+body .sl-collapsible-panel.sl-panel-collapsed>.sl-collapse-body-hidden{display:none!important;}
+body .sl-library-show-all{width:100%!important;margin:3px 0!important;border:1px solid var(--sl-green-line)!important;background:var(--sl-green-pale-2)!important;color:#26351a!important;text-align:center!important;}
+body .sl-recent-hidden{display:none!important;}
+body .sl-rule-recent-note{display:block!important;margin:3px 0 5px!important;color:#5f6c53!important;font-size:9px!important;}
+
+@media(max-width:1000px){body .quote-layout>.quote-list{width:190px!important;min-width:190px!important;}}
+
+/* ScopeLogic workstation uniformity v3 — catches remaining legacy/CSS-module surfaces. */
+body main :is(button:not(.danger-button):not(.danger),.secondary,.link-button){border-color:var(--sl-green-line)!important;box-shadow:none!important;}
+body :is(.topbar,.page-head,.workspace-head,.workspaceHead){border-color:var(--sl-green-dark)!important;box-shadow:none!important;}
+body .topbar{border-bottom:2px solid var(--sl-green-dark)!important;}
+body .page-head{border-bottom:1px solid var(--sl-green-line)!important;}
+body hr{border-color:var(--sl-green-line-soft)!important;}
+body fieldset{border:1px solid var(--sl-green-line)!important;border-radius:3px!important;box-shadow:none!important;}
+body details{border-color:var(--sl-green-line)!important;border-radius:3px!important;box-shadow:none!important;}
+body details>summary{background:var(--sl-green-pale)!important;border-color:var(--sl-green-line)!important;}
+
+/* CSS module pages: anchor their primary panels/tables even when class names are hashed. */
+body main section[class*="panel"],body main article[class*="card"]{border-color:var(--sl-green-line)!important;border-radius:3px!important;box-shadow:none!important;}
+body main div[class*="tableWrap"],body main div[class*="table-wrap"]{border:1px solid var(--sl-green-line)!important;border-radius:3px!important;box-shadow:none!important;}
+body main div[class*="toolbar"],body main div[class*="Toolbar"],body main div[class*="controls"],body main div[class*="Controls"]{border-color:var(--sl-green-line)!important;box-shadow:none!important;}
+body main div[class*="header"],body main div[class*="Header"]{border-color:var(--sl-green-line)!important;}
+
+/* Remove legacy gray card spacing and oversized form fields across all workspaces. */
+body .workspace-shell .main,body .workspace-shell main{background:var(--sl-workspace-bg)!important;}
+body .workspace-shell :is(.form-grid,.setup-grid,.summary-grid,.dashboard-grid,.cards,.card-grid,.settings-grid,.control-grid){gap:7px!important;}
+body .workspace-shell :is(.form-card,.dashboard-card,.summary-card,.project-card,.quote-panel,.template-card){margin-bottom:7px!important;}
+body .workspace-shell :is(input:not([type=checkbox]):not([type=radio]),select){height:27px!important;min-height:27px!important;}
+body .workspace-shell textarea{min-height:48px!important;}
+
+/* Make headers and selections read as one connected workstation. */
+body :is(.quote-items-head,.quote-savebar,.quote-switcher-bar,.project-total-summary,.quote-project-summary,.breakout-manager,.breakout-source-tabs,.breakout-summary-head,.bom-bulk-actions,.takeoff-project-setup,.compact-rule-library){border-color:var(--sl-green-line)!important;box-shadow:none!important;}
+body :is(.quote-items-head,.breakout-summary-head,.takeoff-system-title){background:var(--sl-green-pale)!important;}
+body :is(.template-library,.rule-library-select,.takeoff-control-grid){border-radius:3px!important;}
+
+/* System choices must all be small controls, never large pills/cards. */
+body .system-filter-chips label,body .system-chip-grid label,body .combined-system-list label{max-width:max-content!important;min-width:0!important;height:24px!important;min-height:24px!important;padding:2px 6px!important;border-radius:3px!important;font-size:9px!important;line-height:1!important;}
+body .system-filter-chips{align-content:flex-start!important;}
+
+/* Long libraries: compact search-first presentation. */
+body .quote-template-search,body .takeoff-rule-search{padding:4px!important;border:1px solid var(--sl-green-line)!important;border-radius:3px!important;background:var(--sl-green-pale-2)!important;}
+body .sl-library-show-all{min-height:25px!important;font-size:9px!important;}
+
+/* ScopeLogic workstation uniformity v4 — final anti-drift layer for legacy selectors. */
+:root{
+  /* Older stylesheets still reference these variables. Re-point every neutral line token to ScopeLogic green. */
+  --line:var(--sl-green-line-soft);
+  --sl-border:var(--sl-green-line);
+  --sl-border-strong:var(--sl-green-dark);
+  --sl-canvas:var(--sl-workspace-bg);
+  --sl-header:var(--sl-green-pale-2);
+  --sl-header-strong:var(--sl-green-pale);
+}
+
+/* Use the same compact page rhythm on every authenticated screen. */
+body .app-shell .page,body .workspace-shell .workspace{padding:14px 16px 28px!important;}
+body .app-shell .page-head,body .workspace-shell .workspaceHead{margin-bottom:9px!important;gap:10px!important;}
+body .app-shell .page-head h1{margin:2px 0 3px!important;}
+body .app-shell .page-head p{line-height:1.3!important;}
+
+/* Legacy textarea rules were still forcing 60–125px fields. Keep standard entry boxes condensed. */
+body .app-shell .field textarea,
+body .app-shell .editor-grid textarea,
+body .app-shell .issue-editor>.field.textarea textarea,
+body .app-shell .issue-editor>.field:nth-of-type(2) textarea,
+body .app-shell .template-meta-grid textarea,
+body .app-shell .adhoc-grid textarea,
+body .app-shell .contract-fields textarea,
+body .workspace-shell .form textarea{
+  min-height:48px!important;
+  height:auto!important;
+  padding:5px 7px!important;
+  line-height:1.28!important;
+}
+
+/* Every selectable system uses one control footprint, including the internal SLR editor. */
+body .app-shell .matrix-editor-full .system-chip-grid label,
+body .app-shell .system-chip-grid label,
+body .app-shell .system-filter-chips label,
+body .app-shell .combined-system-list label,
+body .app-shell .difficulty-choice-grid label{
+  width:auto!important;
+  min-width:0!important;
+  max-width:max-content!important;
+  height:24px!important;
+  min-height:24px!important;
+  padding:2px 6px!important;
+  margin:0!important;
+  border:1px solid var(--sl-green-line-soft)!important;
+  border-radius:3px!important;
+  box-shadow:none!important;
+  font-size:9px!important;
+  line-height:1!important;
+}
+body .app-shell .matrix-editor-full .system-chip-grid input,
+body .app-shell .system-chip-grid input,
+body .app-shell .system-filter-chips input{width:13px!important;height:13px!important;min-height:13px!important;}
+
+/* Catch legacy panels/cards that older stylesheets still colored gray. */
+body .app-shell :is(.card,.standard-card,.detail-card,.matrix-card,.release-card,.empty-panel,.dialog-card,.table-card,.metric,.bidder-card,.documents-layout,.matrix-export,.template-bar,.bluebeam-layout,.revision-box,.customer-database,.customer-editor,.explorer-shell,.quote-side-card),
+body .workspace-shell :is(.card,.empty,.documentHeader,.modal){
+  border-color:var(--sl-green-line)!important;
+  border-radius:3px!important;
+  box-shadow:none!important;
+}
+body .app-shell :is(.document-line,.issue-line,.doc-current,.issue-title,.detail-tabs,.tab-panel,.timeline p,.revision-box>div,.matrix-row,.matrix-row b,.matrix-row span,.doc-list,.issue-list),
+body .workspace-shell :is(.topbar,.modal header,.modal footer){border-color:var(--sl-green-line-soft)!important;}
+body .app-shell :is(.list-header,.file-row.file-head,.doc-current,.revision-box h3,.detail-tabs){background:var(--sl-green-pale)!important;}
+
+/* Connected data areas should not float. */
+body .app-shell :is(.matrix-toolbar,.bluebeam-layout,.documents-layout,.matrix-export,.quote-layout>.quote-list,.quote-panel,.takeoff-project-setup,.compact-rule-library){box-shadow:none!important;}
+body .app-shell .matrix-toolbar{border-color:var(--sl-green-line)!important;background:var(--sl-green-pale-2)!important;}
+body .app-shell .bluebeam-layout{border-color:var(--sl-green-dark)!important;}
+body .app-shell .issue-list{border-right-color:var(--sl-green-line)!important;background:#f4f7f0!important;}
+body .app-shell .issue-list>button,body .app-shell .doc-list button{border-bottom-color:var(--sl-green-line-soft)!important;}
+
+/* Quote Template and Quote Builder need the same dense workstation rhythm as the rest of the app. */
+body .app-shell .quote-layout{gap:7px!important;}
+body .app-shell .quote-panel{padding:7px!important;margin-bottom:7px!important;}
+body .app-shell .quote-panel-head{margin:-7px -7px 6px!important;padding:5px 7px!important;}
+body .app-shell .template-meta-grid,body .app-shell .quote-head-fields,body .app-shell .adhoc-grid,body .app-shell .part-filter-grid{gap:5px!important;}
+body .app-shell .quote-list{padding:4px!important;}
+body .app-shell .quote-list>button{min-height:27px!important;margin-bottom:2px!important;}
+body .app-shell .quote-table td{height:31px!important;padding:2px 4px!important;}
+body .app-shell .quote-items-table tbody tr:not(.bom-section-row){height:31px!important;}
+
+/* ScopeLogic workstation uniformity v5 — SLR deliverable ownership + inline preview. */
+:root{
+  --sl-green-ink:#26351a;
+  --sl-green-dark:#465d29;
+  --sl-green-mid:#667d42;
+  --sl-green-line:#87996c;
+  --sl-green-line-soft:#b8c5a6;
+  --sl-green-pale:#e6eddd;
+  --sl-green-pale-2:#f1f5ed;
+  --sl-workspace-bg:#f7f9f4;
+}
+
+/* Table banners: eliminate remaining gray header bands. */
+body .app-shell table thead th,
+body .workspace-shell table thead th,
+body main table thead th{
+  background:var(--sl-green-mid)!important;
+  color:#fff!important;
+  border-color:var(--sl-green-dark)!important;
+  font-weight:800!important;
+}
+body .app-shell table thead tr,
+body .workspace-shell table thead tr,
+body main table thead tr{background:var(--sl-green-mid)!important;}
+
+/* Deliverables dropdown entries behave like compact preview selectors, never navigation links. */
+body .app-shell .nav-group>.sl-deliverable-nav-link{
+  display:block!important;
+  width:100%!important;
+  min-height:27px!important;
+  margin:0!important;
+  padding:5px 9px 5px 18px!important;
+  border:0!important;
+  border-left:2px solid transparent!important;
+  border-radius:0!important;
+  background:transparent!important;
+  color:inherit!important;
+  text-align:left!important;
+  font:inherit!important;
+  cursor:pointer!important;
+}
+body .app-shell .nav-group>.sl-deliverable-nav-link:hover{background:rgba(230,237,221,.12)!important;border-left-color:var(--sl-green-line)!important;}
+body .app-shell .nav-group>.sl-deliverable-nav-link.active{background:rgba(230,237,221,.18)!important;border-left-color:#b9d589!important;color:#fff!important;font-weight:800!important;}
+
+/* Replace the normal root workspace body with an in-place deliverable preview while selected. */
+body.sl-deliverable-preview-open .app-shell .main>*:not(.topbar):not(.sl-inline-deliverables-host){display:none!important;}
+.sl-inline-deliverables-host{display:block!important;width:100%;padding:12px 16px 30px;box-sizing:border-box;background:var(--sl-workspace-bg);}
+.sl-deliverable-preview{border:1px solid var(--sl-green-line);background:#fff;border-radius:3px;box-shadow:none;overflow:hidden;}
+.sl-deliverable-preview>header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:10px 12px;background:var(--sl-green-pale);border-bottom:1px solid var(--sl-green-line);}
+.sl-deliverable-preview>header span{display:block;font-size:9px;font-weight:900;letter-spacing:.08em;color:var(--sl-green-dark);}
+.sl-deliverable-preview>header h1{margin:2px 0 2px;font-size:19px;color:var(--sl-green-ink);}
+.sl-deliverable-preview>header p{margin:0;font-size:11px;color:#4b5840;}
+.sl-preview-actions{display:flex;gap:6px;align-items:center;}
+.sl-preview-actions button{min-height:27px;padding:4px 8px;border:1px solid var(--sl-green-line);border-radius:3px;background:var(--sl-green-pale-2);color:var(--sl-green-ink);font-size:10px;font-weight:800;cursor:pointer;}
+.sl-preview-actions button.primary{background:var(--sl-green-mid);color:#fff;border-color:var(--sl-green-dark);}
+.sl-deliverable-preview-table-wrap{overflow:auto;padding:8px;}
+.sl-deliverable-preview-table{width:100%;border-collapse:collapse;font-size:10px;}
+.sl-deliverable-preview-table th,.sl-deliverable-preview-table td{padding:5px 6px;border:1px solid var(--sl-green-line-soft);vertical-align:top;text-align:left;line-height:1.3;}
+.sl-deliverable-preview-table tbody tr:nth-child(even){background:#fafcf8;}
+.sl-empty-deliverable,.sl-preview-state{padding:18px!important;text-align:center!important;color:#66705f!important;background:var(--sl-green-pale-2)!important;}
+.sl-preview-state.error{color:#7d2d2d!important;background:#fff4f2!important;}
+.sl-release-note{display:flex;gap:10px;align-items:center;margin:0 8px 8px;padding:8px 10px;border:1px solid var(--sl-green-line);background:var(--sl-green-pale-2);font-size:10px;}
+.sl-release-note b{color:var(--sl-green-ink);}
+
+/* If an old /master-projects/.../deliverables URL is opened directly, it is a read-only preview only. */
+body.sl-deliverables-readonly-page main input:disabled,
+body.sl-deliverables-readonly-page main textarea:disabled,
+body.sl-deliverables-readonly-page main select:disabled{background:var(--sl-green-pale-2)!important;color:var(--sl-green-ink)!important;opacity:1!important;}
+
+@media(max-width:900px){
+  .sl-deliverable-preview>header,.sl-slr-deliverables-heading{flex-direction:column;}
+  .sl-slr-deliverable-grid{grid-template-columns:1fr;}
+  .sl-slr-deliverable-grid label.wide{grid-column:auto;}
+}

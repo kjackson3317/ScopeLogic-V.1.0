@@ -4,138 +4,57 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createClient } from '../lib/supabase/client';
 
-type DeliverableTab = 'matrix'|'clarifications'|'rfi'|'ve'|'checklist'|'bid-internal'|'bid-report';
-type ActionType = 'RBB'|'CL'|'RFI'|'VE'|'SLC';
-type Finding = { id:string; display_number:string; scope_item:string; systems:string[]; status:string };
-type Action = { id:string; related_master_finding_id:string|null; deliverable_type:ActionType; display_number:string; system_name:string; title:string; content:string; impact_considerations:string; reference:string; status:string; response:string; client_facing:boolean };
-type Checklist = { id:string; linked_master_finding_id:string|null; display_number:string; system_name:string; question:string; status:string; response:string; response_reason:string };
-type Bid = { id:string; related_deliverable_id:string|null; bidder_name:string; scope_item:string; proposal_status:string; proposal_reference:string; clarification:string; documented_adjustment:number|null; adjustment_type:string; pricing_source:string; client_notes:string };
-type PreviewData = { masterName:string; projectNumber:string; findings:Finding[]; actions:Action[]; checklist:Checklist[]; bids:Bid[] };
+type DeliverableTab='master-register'|'matrix'|'clarifications'|'rfi'|'ve'|'checklist'|'bid-internal'|'bid-report';
+type ActionType='RBB'|'CL'|'RFI'|'VE'|'SLC';
+type Finding={id:string;display_number:string;scope_item:string;systems:string[];status:string;scope_concern:string;resolution:string;reference:string};
+type Action={id:string;related_master_finding_id:string|null;deliverable_type:ActionType;display_number:string;system_name:string;title:string;content:string;impact_considerations:string;reference:string;status:string;response:string;client_facing:boolean};
+type Checklist={id:string;linked_master_finding_id:string|null;display_number:string;system_name:string;question:string;status:string;response:string;response_reason:string};
+type Bid={id:string;related_deliverable_id:string|null;bidder_name:string;scope_item:string;proposal_status:string;proposal_reference:string;clarification:string;documented_adjustment:number|null;adjustment_type:string;pricing_source:string;client_notes:string};
+type PreviewData={masterName:string;projectNumber:string;findings:Finding[];actions:Action[];checklist:Checklist[];bids:Bid[]};
 
-const LABELS:Record<DeliverableTab,string> = {
-  matrix:'Scope Matrix / RBB',
-  clarifications:'GC Clarifications',
-  rfi:'Formal RFI',
-  ve:'VE Opportunities',
-  checklist:'Contractor Scope Confirmation',
-  'bid-internal':'Bid Alignment',
-  'bid-report':'Reports / Official Releases',
+const LABELS:Record<DeliverableTab,string>={
+ 'master-register':'Master Coordination Register',
+ matrix:'Scope Matrix / RBB',clarifications:'GC Clarifications',rfi:'Formal RFI',ve:'VE Opportunities',checklist:'Contractor Scope Confirmation','bid-internal':'Bid Alignment','bid-report':'Reports / Official Releases',
 };
 const LOCAL_WORKSPACE_KEYS=['scopelogic-r14-8','scopelogic-r14-7','scopelogic-r14-6','scopelogic-r14-5','scopelogic-r14-4','scopelogic-r14-3','scopelogic-r14-2','technology-preconstruction-workspace'];
 const value=(input:unknown)=>String(input??'');
 
-function activeLegacyProjectId(){
-  for(const key of LOCAL_WORKSPACE_KEYS){
-    const raw=window.localStorage.getItem(key); if(!raw) continue;
-    try{const parsed=JSON.parse(raw) as {projectId?:string}; if(parsed.projectId)return parsed.projectId;}catch{/* continue */}
-  }
-  return '';
-}
-
+function activeLegacyProjectId(){for(const key of LOCAL_WORKSPACE_KEYS){const raw=window.localStorage.getItem(key);if(!raw)continue;try{const parsed=JSON.parse(raw) as {projectId?:string};if(parsed.projectId)return parsed.projectId;}catch{}}return '';}
 async function resolveMasterId(supabase:any){
-  const pathId=window.location.pathname.match(/^\/master-projects\/([^/]+)/)?.[1]||'';
-  if(pathId)return pathId;
-  const legacyId=activeLegacyProjectId();
-  if(legacyId){
-    const result=await supabase.from('projects').select('master_project_id').eq('legacy_id',legacyId).maybeSingle();
-    if(!result.error&&result.data?.master_project_id)return String(result.data.master_project_id);
-  }
-  const masters=await supabase.from('master_projects').select('id');
-  if(!masters.error&&Array.isArray(masters.data)&&masters.data.length===1)return String(masters.data[0].id);
-  return '';
+ const pathId=window.location.pathname.match(/^\/master-projects\/([^/]+)/)?.[1]||'';if(pathId)return pathId;
+ const legacyId=activeLegacyProjectId();if(legacyId){const result=await supabase.from('projects').select('master_project_id').eq('legacy_id',legacyId).maybeSingle();if(!result.error&&result.data?.master_project_id)return String(result.data.master_project_id);}
+ const masters=await supabase.from('master_projects').select('id');if(!masters.error&&Array.isArray(masters.data)&&masters.data.length===1)return String(masters.data[0].id);return '';
 }
-
-function relatedSlr(id:string|null, findings:Finding[]){return findings.find((item)=>item.id===id)?.display_number||'—';}
+function relatedSlr(id:string|null,findings:Finding[]){return findings.find((item)=>item.id===id)?.display_number||'—';}
 function adjustmentText(item:Bid){if(item.documented_adjustment==null)return 'Unpriced';const prefix=item.adjustment_type==='Deduct'?'-':item.adjustment_type==='Add'?'+':'';return `${prefix}$${Number(item.documented_adjustment).toLocaleString()}`;}
+function actionLabel(item:Action){return [item.display_number,item.status?`[${item.status}]`:'',item.title?`- ${item.title}`:''].filter(Boolean).join(' ');}
+function checklistLabel(item:Checklist){return [item.display_number,item.status?`[${item.status}]`:'',item.question?`- ${item.question}`:''].filter(Boolean).join(' ');}
 
-function PreviewTable({headers,rows}:{headers:string[];rows:(string|number)[][]}){
-  return <div className="sl-deliverable-preview-table-wrap"><table className="sl-deliverable-preview-table"><thead><tr>{headers.map((header)=><th key={header}>{header}</th>)}</tr></thead><tbody>{rows.length?rows.map((row,index)=><tr key={index}>{row.map((cell,cellIndex)=><td key={cellIndex}>{value(cell)||'—'}</td>)}</tr>):<tr><td colSpan={headers.length} className="sl-empty-deliverable">No items in this deliverable.</td></tr>}</tbody></table></div>;
-}
+function PreviewTable({headers,rows}:{headers:string[];rows:(string|number)[][]}){return <div className="sl-deliverable-preview-table-wrap"><table className="sl-deliverable-preview-table"><thead><tr>{headers.map((header)=><th key={header}>{header}</th>)}</tr></thead><tbody>{rows.length?rows.map((row,index)=><tr key={index}>{row.map((cell,cellIndex)=><td key={cellIndex}>{value(cell)||'—'}</td>)}</tr>):<tr><td colSpan={headers.length} className="sl-empty-deliverable">No items in this deliverable.</td></tr>}</tbody></table></div>;}
 
 export default function DeliverablesInlineController(){
-  const supabase=useMemo(()=>createClient() as any,[]);
-  const [tab,setTab]=useState<DeliverableTab|null>(null);
-  const [host,setHost]=useState<HTMLElement|null>(null);
-  const [data,setData]=useState<PreviewData|null>(null);
-  const [loading,setLoading]=useState(false);
-  const [error,setError]=useState('');
-
-  const ensurePreviewHost=useCallback(()=>{
-    const main=document.querySelector<HTMLElement>('.app-shell .main');
-    if(!main)return null;
-    let next=main.querySelector<HTMLElement>(':scope > .sl-inline-deliverables-host-v2');
-    if(!next){
-      next=document.createElement('div');
-      next.className='sl-inline-deliverables-host sl-inline-deliverables-host-v2';
-      const topbar=main.querySelector(':scope > .topbar');
-      if(topbar)topbar.after(next); else main.prepend(next);
-    }
-    return next;
-  },[]);
-
-  const close=useCallback(()=>{
-    setTab(null); setData(null); setError('');
-    document.body.classList.remove('sl-deliverable-preview-open');
-    document.querySelectorAll<HTMLElement>('.sl-deliverable-nav-link.active').forEach((node)=>node.classList.remove('active'));
-  },[]);
-
-  const open=useCallback((nextTab:DeliverableTab,button?:HTMLElement|null)=>{
-    const nextHost=ensurePreviewHost();
-    if(!nextHost)return;
-    document.querySelectorAll<HTMLElement>('.sl-deliverable-nav-link').forEach((node)=>node.classList.toggle('active',node===button));
-    setHost(nextHost); setTab(nextTab); setError(''); setData(null);
-    document.body.classList.add('sl-deliverable-preview-open');
-  },[ensurePreviewHost]);
-
-  useEffect(()=>{
-    const onClick=(event:MouseEvent)=>{
-      const target=event.target as HTMLElement|null;
-      const button=target?.closest<HTMLElement>('.sl-deliverable-nav-link');
-      if(!button)return;
-      const nextTab=button.dataset.deliverablePreview as DeliverableTab|undefined;
-      if(!nextTab||!LABELS[nextTab])return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      open(nextTab,button);
-    };
-    const onClose=()=>close();
-    document.addEventListener('click',onClick,true);
-    window.addEventListener('scopelogic:close-deliverable-preview',onClose);
-    return()=>{document.removeEventListener('click',onClick,true);window.removeEventListener('scopelogic:close-deliverable-preview',onClose);document.body.classList.remove('sl-deliverable-preview-open');};
-  },[close,open]);
-
-  const load=useCallback(async()=>{
-    if(!tab)return;
-    setLoading(true); setError('');
-    try{
-      const masterId=await resolveMasterId(supabase);
-      if(!masterId)throw new Error('No active Master Project could be resolved for this deliverable preview.');
-      const [master,findings,actions,checklist,bids]=await Promise.all([
-        supabase.from('master_projects').select('id,project_number,name').eq('id',masterId).maybeSingle(),
-        supabase.from('master_project_findings').select('id,display_number,scope_item,systems,status').eq('master_project_id',masterId).order('sequence_number'),
-        supabase.from('master_project_deliverable_items').select('*').eq('master_project_id',masterId).order('deliverable_type').order('sequence_number'),
-        supabase.from('master_project_checklist_items').select('*').eq('master_project_id',masterId).order('sequence_number'),
-        supabase.from('master_project_bid_alignment_items').select('*').eq('master_project_id',masterId).order('bidder_name').order('sort_order'),
-      ]);
-      const failure=master.error||findings.error||actions.error||checklist.error||bids.error;
-      if(failure)throw new Error(failure.message||'Deliverable data could not be loaded.');
-      setData({masterName:value(master.data?.name),projectNumber:value(master.data?.project_number),findings:(findings.data||[]) as Finding[],actions:(actions.data||[]) as Action[],checklist:(checklist.data||[]) as Checklist[],bids:(bids.data||[]) as Bid[]});
-    }catch(cause){setData(null);setError(cause instanceof Error?cause.message:'Deliverable data could not be loaded.');}
-    finally{setLoading(false);}
-  },[supabase,tab]);
-
-  useEffect(()=>{if(tab)void load();},[tab,load]);
-
-  if(!tab||!host)return null;
-  const actions=data?.actions||[],findings=data?.findings||[],checklist=data?.checklist||[],bids=data?.bids||[];
-  let content=<></>;
-  if(tab==='matrix')content=<PreviewTable headers={['RBB','SLR','System','Scope Item','Recommended Base Bid','Reference','Status']} rows={actions.filter((x)=>x.deliverable_type==='RBB'&&x.client_facing!==false).map((x)=>[x.display_number,relatedSlr(x.related_master_finding_id,findings),x.system_name,x.title,x.content,x.reference,x.status])}/>;
-  else if(tab==='clarifications')content=<PreviewTable headers={['CL','SLR','System','Subject','GC Clarification','Reference','Status','Response']} rows={actions.filter((x)=>x.deliverable_type==='CL'&&x.client_facing!==false).map((x)=>[x.display_number,relatedSlr(x.related_master_finding_id,findings),x.system_name,x.title,x.content,x.reference,x.status,x.response])}/>;
-  else if(tab==='rfi')content=<PreviewTable headers={['RFI','SLR','System','Subject','Question','Reference','Status','Response']} rows={actions.filter((x)=>x.deliverable_type==='RFI'&&x.client_facing!==false).map((x)=>[x.display_number,relatedSlr(x.related_master_finding_id,findings),x.system_name,x.title,x.content,x.reference,x.status,x.response])}/>;
-  else if(tab==='ve')content=<PreviewTable headers={['VE','SLR','System','Opportunity','VE Basis','Impact / Considerations','Reference','Status']} rows={actions.filter((x)=>x.deliverable_type==='VE'&&x.client_facing!==false).map((x)=>[x.display_number,relatedSlr(x.related_master_finding_id,findings),x.system_name,x.title,x.content,x.impact_considerations,x.reference,x.status])}/>;
-  else if(tab==='checklist')content=<PreviewTable headers={['CSC','SLR','System','Contractor Scope Confirmation','Response','Notes','Status']} rows={checklist.map((x)=>[x.display_number,relatedSlr(x.linked_master_finding_id,findings),x.system_name,x.question,x.response,x.response_reason,x.status])}/>;
-  else if(tab==='bid-internal'){const actionMap=new Map(actions.map((x)=>[x.id,x]));content=<PreviewTable headers={['Bidder','Scope Item','RBB / Source','Alignment','Proposal Reference','Clarification','Documented Adjustment','Pricing Source']} rows={bids.map((x)=>[x.bidder_name,x.scope_item,actionMap.get(x.related_deliverable_id||'')?.display_number||'—',x.proposal_status,x.proposal_reference,x.clarification,adjustmentText(x),x.pricing_source])}/>;}
-  else {const actionMap=new Map(actions.map((x)=>[x.id,x]));content=<><PreviewTable headers={['Bidder','Scope Item','RBB / Source','Alignment','Documented Adjustment','Client Note']} rows={bids.map((x)=>[x.bidder_name,x.scope_item,actionMap.get(x.related_deliverable_id||'')?.display_number||'—',x.proposal_status,adjustmentText(x),x.client_notes])}/><div className="sl-release-note"><b>Official Releases</b><span>Issued files remain immutable under Project Control → Official Releases. This preview is read-only.</span></div></>;}
-
-  return createPortal(<section className="sl-deliverable-preview" aria-live="polite"><header><div><span>READ-ONLY DELIVERABLE PREVIEW</span><h1>{LABELS[tab]}</h1><p>{data?`${data.projectNumber} · ${data.masterName}`:'Loading project…'}</p></div><div className="sl-preview-actions"><button type="button" onClick={()=>void load()}>Refresh</button><button type="button" className="primary" onClick={close}>Close Preview</button></div></header>{loading?<div className="sl-preview-state">Loading deliverable items…</div>:error?<div className="sl-preview-state error">{error}</div>:content}</section>,host);
+ const supabase=useMemo(()=>createClient() as any,[]);const [tab,setTab]=useState<DeliverableTab|null>(null);const [host,setHost]=useState<HTMLElement|null>(null);const [data,setData]=useState<PreviewData|null>(null);const [loading,setLoading]=useState(false);const [error,setError]=useState('');
+ const ensurePreviewHost=useCallback(()=>{const main=document.querySelector<HTMLElement>('.app-shell .main, .workspace-shell .main');if(!main)return null;let next=main.querySelector<HTMLElement>(':scope > .sl-inline-deliverables-host-v2');if(!next){next=document.createElement('div');next.className='sl-inline-deliverables-host sl-inline-deliverables-host-v2';const topbar=main.querySelector(':scope > .topbar');if(topbar)topbar.after(next);else main.prepend(next);}return next;},[]);
+ const close=useCallback(()=>{setTab(null);setData(null);setError('');document.body.classList.remove('sl-deliverable-preview-open');document.querySelectorAll<HTMLElement>('.sl-deliverable-nav-link.active').forEach((node)=>node.classList.remove('active'));},[]);
+ const open=useCallback((nextTab:DeliverableTab,button?:HTMLElement|null)=>{const nextHost=ensurePreviewHost();if(!nextHost)return;document.querySelectorAll<HTMLElement>('.sl-deliverable-nav-link').forEach((node)=>node.classList.toggle('active',node===button));setHost(nextHost);setTab(nextTab);setError('');setData(null);document.body.classList.add('sl-deliverable-preview-open');},[ensurePreviewHost]);
+ useEffect(()=>{const onClick=(event:MouseEvent)=>{const target=event.target as HTMLElement|null;const button=target?.closest<HTMLElement>('.sl-deliverable-nav-link');if(!button)return;const nextTab=button.dataset.deliverablePreview as DeliverableTab|undefined;if(!nextTab||!LABELS[nextTab])return;event.preventDefault();event.stopImmediatePropagation();open(nextTab,button);};const onCustom=(event:Event)=>{const detail=(event as CustomEvent<{tab?:DeliverableTab}>).detail;const nextTab=detail?.tab;if(nextTab&&LABELS[nextTab])open(nextTab,document.querySelector<HTMLElement>(`.sl-deliverable-nav-link[data-deliverable-preview="${nextTab}"]`));};const onClose=()=>close();document.addEventListener('click',onClick,true);window.addEventListener('scopelogic:deliverable-preview',onCustom as EventListener);window.addEventListener('scopelogic:close-deliverable-preview',onClose);return()=>{document.removeEventListener('click',onClick,true);window.removeEventListener('scopelogic:deliverable-preview',onCustom as EventListener);window.removeEventListener('scopelogic:close-deliverable-preview',onClose);document.body.classList.remove('sl-deliverable-preview-open');};},[close,open]);
+ const load=useCallback(async()=>{if(!tab)return;setLoading(true);setError('');try{const masterId=await resolveMasterId(supabase);if(!masterId)throw new Error('No active Master Project could be resolved for this deliverable preview.');const [master,findings,actions,checklist,bids]=await Promise.all([
+  supabase.from('master_projects').select('id,project_number,name').eq('id',masterId).maybeSingle(),
+  supabase.from('master_project_findings').select('id,display_number,scope_item,systems,status,scope_concern,resolution,reference').eq('master_project_id',masterId).order('sequence_number'),
+  supabase.from('master_project_deliverable_items').select('*').eq('master_project_id',masterId).order('deliverable_type').order('sequence_number'),
+  supabase.from('master_project_checklist_items').select('*').eq('master_project_id',masterId).order('sequence_number'),
+  supabase.from('master_project_bid_alignment_items').select('*').eq('master_project_id',masterId).order('bidder_name').order('sort_order'),
+ ]);const failure=master.error||findings.error||actions.error||checklist.error||bids.error;if(failure)throw new Error(failure.message||'Deliverable data could not be loaded.');setData({masterName:value(master.data?.name),projectNumber:value(master.data?.project_number),findings:(findings.data||[]).map((item:any)=>({...item,systems:Array.isArray(item.systems)?item.systems:[]})) as Finding[],actions:(actions.data||[]) as Action[],checklist:(checklist.data||[]) as Checklist[],bids:(bids.data||[]) as Bid[]});}catch(cause){setData(null);setError(cause instanceof Error?cause.message:'Deliverable data could not be loaded.');}finally{setLoading(false);}},[supabase,tab]);
+ useEffect(()=>{if(tab)void load();},[tab,load]);
+ if(!tab||!host)return null;
+ const actions=data?.actions||[],findings=data?.findings||[],checklist=data?.checklist||[],bids=data?.bids||[];let content=<></>;
+ if(tab==='master-register')content=<PreviewTable headers={['SLR','System','Scope Item','Issue / Concern','Current RBB','Spawned Records','Resolution / GC Tracking','Status']} rows={findings.map((finding)=>{const linked=actions.filter((item)=>item.related_master_finding_id===finding.id&&item.client_facing!==false&&item.deliverable_type!=='SLC');const rbbs=linked.filter((item)=>item.deliverable_type==='RBB'&&item.status!=='Superseded');const spawned=linked.filter((item)=>item.deliverable_type!=='RBB').map(actionLabel);const csc=checklist.filter((item)=>item.linked_master_finding_id===finding.id).map(checklistLabel);return [finding.display_number,(finding.systems||[]).join(', '),finding.scope_item,finding.scope_concern,rbbs.map(actionLabel).join('\n')||'—',[...spawned,...csc].join('\n')||'—',finding.resolution||'—',finding.status];})}/>;
+ else if(tab==='matrix')content=<PreviewTable headers={['RBB','SLR','System','Scope Item','Recommended Base Bid','Reference','Status']} rows={actions.filter((x)=>x.deliverable_type==='RBB'&&x.client_facing!==false).map((x)=>[x.display_number,relatedSlr(x.related_master_finding_id,findings),x.system_name,x.title,x.content,x.reference,x.status])}/>;
+ else if(tab==='clarifications')content=<PreviewTable headers={['CL','SLR','System','Subject','GC Clarification','Reference','Status','Response']} rows={actions.filter((x)=>x.deliverable_type==='CL'&&x.client_facing!==false).map((x)=>[x.display_number,relatedSlr(x.related_master_finding_id,findings),x.system_name,x.title,x.content,x.reference,x.status,x.response])}/>;
+ else if(tab==='rfi')content=<PreviewTable headers={['RFI','SLR','System','Subject','Question','Reference','Status','Response']} rows={actions.filter((x)=>x.deliverable_type==='RFI'&&x.client_facing!==false).map((x)=>[x.display_number,relatedSlr(x.related_master_finding_id,findings),x.system_name,x.title,x.content,x.reference,x.status,x.response])}/>;
+ else if(tab==='ve')content=<PreviewTable headers={['VE','SLR','System','VE Opportunity','Potential Impact / Considerations','Reference','Status']} rows={actions.filter((x)=>x.deliverable_type==='VE'&&x.client_facing!==false).map((x)=>[x.display_number,relatedSlr(x.related_master_finding_id,findings),x.system_name,[x.title,x.content].filter(Boolean).join(' - '),x.impact_considerations,x.reference,x.status])}/>;
+ else if(tab==='checklist')content=<PreviewTable headers={['CSC','SLR','System','Contractor Scope Confirmation','Response','Notes','Status']} rows={checklist.map((x)=>[x.display_number,relatedSlr(x.linked_master_finding_id,findings),x.system_name,x.question,x.response,x.response_reason,x.status])}/>;
+ else if(tab==='bid-internal'){const actionMap=new Map(actions.map((x)=>[x.id,x]));content=<PreviewTable headers={['Bidder','Scope Item','RBB / Source','Alignment','Proposal Reference','Clarification','Documented Adjustment','Pricing Source']} rows={bids.map((x)=>[x.bidder_name,x.scope_item,actionMap.get(x.related_deliverable_id||'')?.display_number||'—',x.proposal_status,x.proposal_reference,x.clarification,adjustmentText(x),x.pricing_source])}/>;}
+ else {const actionMap=new Map(actions.map((x)=>[x.id,x]));content=<><PreviewTable headers={['Bidder','Scope Item','RBB / Source','Alignment','Documented Adjustment','Client Note']} rows={bids.map((x)=>[x.bidder_name,x.scope_item,actionMap.get(x.related_deliverable_id||'')?.display_number||'—',x.proposal_status,adjustmentText(x),x.client_notes])}/><div className="sl-release-note"><b>Official Releases</b><span>Issued files remain immutable under Project Control → Official Releases. This preview is read-only.</span></div></>;}
+ return createPortal(<section className="sl-deliverable-preview" aria-live="polite"><header><div><span>READ-ONLY DELIVERABLE PREVIEW</span><h1>{LABELS[tab]}</h1><p>{data?`${data.projectNumber} · ${data.masterName}`:'Loading project…'}</p></div><div className="sl-preview-actions"><button type="button" onClick={()=>void load()}>Refresh</button><button type="button" className="primary" onClick={close}>Close Preview</button></div></header>{tab==='master-register'?<div className="sl-release-note"><b>GC Tracking Document</b><span>Tracks each SLR and the current status of its related outputs. It does not replace the individual ScopeLogic deliverables.</span></div>:null}{loading?<div className="sl-preview-state">Loading deliverable items…</div>:error?<div className="sl-preview-state error">{error}</div>:content}</section>,host);
 }

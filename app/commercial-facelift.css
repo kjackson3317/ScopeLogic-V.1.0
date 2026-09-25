@@ -306,3 +306,15 @@ tbody tr:hover td{background:#f4f7f1!important}
   .slr-child-summary-button{align-items:flex-start;flex-direction:column;gap:2px}
   .slr-child-summary-button small{margin-left:0!important;max-width:100%}
 }
+
+/* Destructive actions keep the red danger cue while using high-contrast dark lettering. */
+.danger-button{
+  background:#fbeaea!important;
+  border-color:#b84b4b!important;
+  color:#20262e!important;
+}
+.danger-button:hover{
+  background:#f6dede!important;
+  border-color:#a83f3f!important;
+  color:#111827!important;
+}
