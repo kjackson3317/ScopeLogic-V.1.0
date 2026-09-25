@@ -48,7 +48,7 @@ async function applyClarificationSuppressions(snapshot: WorkspaceSnapshot): Prom
     if (!suppressedSlrIds.size) continue;
 
     const nextIssues = issues.map((issue) => {
-      if (!suppressedSlrIds.has(issue.id) || !issue.clarification) return issue;
+      if ((!suppressedSlrIds.has(issue.uid) && !suppressedSlrIds.has(issue.id)) || !issue.clarification) return issue;
       changed = true;
       return { ...issue, clarification: false };
     });

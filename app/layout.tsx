@@ -18,7 +18,8 @@ import './quote-modern-ui-fix.css';
 import './review-release-controller.css';
 import './deliverables-preview-v2.css';
 import './slr-approved-layout.css';
-import type { Metadata } from 'next';
+import './mobile-responsive.css';
+import type { Metadata, Viewport } from 'next';
 import WorkspaceSidebarLinksV2 from './workspace-sidebar-links-v2';
 import DismissibleUiBehavior from './dismissible-ui-behavior';
 import SlrTemplateSearchEnhancer from './slr-template-search-enhancer';
@@ -37,6 +38,12 @@ export const metadata: Metadata = {
   title: 'ScopeLogic v1.0',
   description: 'Division 27/28 scope and procurement workspace',
   icons: { icon: '/brand/scopelogic-app-icon.png', apple: '/brand/scopelogic-app-icon.png' },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
