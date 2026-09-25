@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createClient } from '../lib/supabase/client';
 import { clearClarificationSuppressionForMasterSlr, suppressClarificationForMasterSlr } from '../lib/cloud-workspace';
@@ -26,9 +26,20 @@ function currentEditorContext(){
 function currentSlrId(){
   const explicit=currentEditorContext().slrId;
   if(explicit)return explicit;
-  const labels=Array.from(document.querySelectorAll<HTMLLabelElement>('.matrix-editor-full label.field'));
-  const target=labels.find((label)=>clean(label.querySelector('span')?.textContent)==='SLR ID');
-  return clean(target?.querySelector<HTMLInputElement>('input')?.value);
+
+  const labels=Array.from(
+    document.querySelectorAll<HTMLLabelElement>(
+      '.matrix-editor-full label.field'
+    )
+  );
+
+  const target=labels.find(
+    (label)=>clean(label.querySelector('span')?.textContent)==='SLR ID'
+  );
+
+  return clean(
+    target?.querySelector<HTMLInputElement>('input')?.value
+  );
 }
 
 function currentField(labelText:string){
@@ -179,45 +190,232 @@ export default function SlrDeliverablesEditorV2(){
   const [newDraft,setNewDraft]=useState<FormDraft|null>(null);
   const [clOpen,setClOpen]=useState(true);
   const [veOpen,setVeOpen]=useState(true);
+  const loadRequestRef=useRef(0);
 
   const load=useCallback(async(nextSlr?:string)=>{
-    const target=nextSlr||currentSlrId(); if(!target)return;
+    const requestId=++loadRequestRef.current;
+    const target=clean(nextSlr||currentSlrId());
+
+    if(!target){
+      if(requestId===loadRequestRef.current){
+        setSlrId('');
+        setFinding(null);
+        setActions([]);
+        setDraftActions([]);
+      }
+      return;
+    }
+
     try{
       const editorContext=currentEditorContext();
-      if(!editorContext.legacyProjectId)throw new Error('The active project is not available in the SLR workspace.');
-      const context=await resolveSlrProjectContext(editorContext.legacyProjectId);
-      if(editorContext.masterProjectId && context.masterProjectId!==editorContext.masterProjectId){
-        throw new Error('Project context changed while loading GC/VE. Reopen the SLR and try again.');
+
+      if(!editorContext.legacyProjectId){
+        throw new Error(
+          'The active project is not available in the SLR workspace.'
+        );
       }
-      setProjectId(context.projectId);setMasterId(context.masterProjectId);
-      const findingResult=await supabase.from('master_project_findings').select('id,display_number,scope_item,systems,status').eq('master_project_id',context.masterProjectId).eq('display_number',target).maybeSingle();
-      if(findingResult.error)throw new Error(findingResult.error.message);
+
+      const context=await resolveSlrProjectContext(
+        editorContext.legacyProjectId
+      );
+
+      if(
+        editorContext.masterProjectId &&
+        context.masterProjectId!==editorContext.masterProjectId
+      ){
+        throw new Error(
+          'Project context changed while loading GC/VE.'
+        );
+      }
+
+      const findingResult=await supabase
+        .from('master_project_findings')
+        .select('id,display_number,scope_item,systems,status')
+        .eq('master_project_id',context.masterProjectId)
+        .eq('display_number',target)
+        .maybeSingle();
+
+      if(findingResult.error){
+        throw new Error(findingResult.error.message);
+      }
+
       const nextFinding=(findingResult.data||null) as Finding|null;
-      setFinding(nextFinding);
+      let nextActions:Action[]=[];
+      let nextDraftActions:DraftAction[]=[];
+
       if(nextFinding){
-        const actionResult=await supabase.from('master_project_deliverable_items').select('*').eq('master_project_id',context.masterProjectId).eq('related_master_finding_id',nextFinding.id).in('deliverable_type',['CL','VE']).order('deliverable_type').order('sequence_number');
-        if(actionResult.error)throw new Error(actionResult.error.message);
-        setActions((actionResult.data||[]) as Action[]);setDraftActions([]);
+        const actionResult=await supabase
+          .from('master_project_deliverable_items')
+          .select('*')
+          .eq('master_project_id',context.masterProjectId)
+          .eq('related_master_finding_id',nextFinding.id)
+          .in('deliverable_type',['CL','VE'])
+          .order('deliverable_type')
+          .order('sequence_number');
+
+        if(actionResult.error){
+          throw new Error(actionResult.error.message);
+        }
+
+        nextActions=(actionResult.data||[]) as Action[];
       }else{
-        const draftResult=await supabase.from('slr_draft_deliverable_items').select('*').eq('project_id',context.projectId).eq('slr_legacy_uid',`display:${target}`).order('sort_order').order('created_at');
-        if(draftResult.error)throw new Error(draftResult.error.message);
-        setDraftActions((draftResult.data||[]) as DraftAction[]);setActions([]);
+        const draftResult=await supabase
+          .from('slr_draft_deliverable_items')
+          .select('*')
+          .eq('project_id',context.projectId)
+          .eq('slr_legacy_uid',`display:${target}`)
+          .order('sort_order')
+          .order('created_at');
+
+        if(draftResult.error){
+          throw new Error(draftResult.error.message);
+        }
+
+        nextDraftActions=(draftResult.data||[]) as DraftAction[];
       }
+
+      // Ignore any request belonging to an SLR that is no longer selected.
+      if(requestId!==loadRequestRef.current)return;
+
+      setProjectId(context.projectId);
+      setMasterId(context.masterProjectId);
+      setSlrId(target);
+      setFinding(nextFinding);
+      setActions(nextActions);
+      setDraftActions(nextDraftActions);
       setMessage('');
-    }catch(cause){setMessage(`GC/VE load failed: ${cause instanceof Error?cause.message:'Unknown cloud error.'}`);}
+    }catch(cause){
+      if(requestId!==loadRequestRef.current)return;
+
+      // Never leave the previous SLR visible after a failed/new load.
+      setFinding(null);
+      setActions([]);
+      setDraftActions([]);
+
+      setMessage(
+        `GC/VE load failed: ${
+          cause instanceof Error
+            ? cause.message
+            : 'Unknown cloud error.'
+        }`
+      );
+    }
   },[supabase]);
 
   useEffect(()=>{
-    let queued=false;
-    const refresh=()=>{if(queued)return;queued=true;window.requestAnimationFrame(()=>{queued=false;const nextHost=makeHost();setHost(nextHost);const id=currentSlrId();setSlrId((current)=>{if(id&&id!==current){setClOpen(true);setVeOpen(true);setNewDraft(null);void load(id);}return id||'';});});};
-    refresh();const observer=new MutationObserver(refresh);observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['value','class']});
-    const changed=()=>window.setTimeout(()=>void load(currentSlrId()),120);
-    window.addEventListener('scopelogic:slr-changed',changed);
-    window.addEventListener('scopelogic:slr-draft-saved',changed);
-    return()=>{observer.disconnect();window.removeEventListener('scopelogic:slr-changed',changed);window.removeEventListener('scopelogic:slr-draft-saved',changed);};
-  },[load]);
+    let bodyObserver:MutationObserver|null=null;
+    let matrixObserver:MutationObserver|null=null;
+    let observedMatrix:HTMLElement|null=null;
+    let activeSlr='';
 
-  useEffect(()=>{if(slrId)void load(slrId);},[slrId,load]);
+    const switchSlr=(id:string)=>{
+      const next=clean(id);
+
+      if(next===activeSlr)return;
+      activeSlr=next;
+
+      // Invalidate the previous SLR request immediately.
+      loadRequestRef.current+=1;
+
+      // Clear all prior-SLR UI immediately.
+      setNewDraft(null);
+      setFinding(null);
+      setActions([]);
+      setDraftActions([]);
+      setMessage('');
+      setClOpen(true);
+      setVeOpen(true);
+      setSlrId(next);
+
+      if(next)void load(next);
+    };
+
+    const readContext=()=>{
+      const context=currentEditorContext();
+      switchSlr(context.slrId||currentSlrId());
+    };
+
+    const bindMatrix=()=>{
+      const matrix=document.querySelector<HTMLElement>(
+        '.matrix-editor-full'
+      );
+
+      if(matrix===observedMatrix){
+        setHost(makeHost());
+        return;
+      }
+
+      matrixObserver?.disconnect();
+      matrixObserver=null;
+      observedMatrix=matrix;
+
+      setHost(makeHost());
+
+      if(!matrix){
+        switchSlr('');
+        return;
+      }
+
+      matrixObserver=new MutationObserver(()=>{
+        readContext();
+      });
+
+      // Watch only the React-owned identity attributes.
+      matrixObserver.observe(matrix,{
+        attributes:true,
+        attributeFilter:[
+          'data-slr-id',
+          'data-project-id',
+          'data-master-project-id'
+        ]
+      });
+
+      readContext();
+    };
+
+    // Body observer is now structural only.
+    // It does NOT trigger Supabase loads for arbitrary attribute changes.
+    bodyObserver=new MutationObserver(()=>{
+      bindMatrix();
+    });
+
+    bodyObserver.observe(document.body,{
+      childList:true,
+      subtree:true
+    });
+
+    bindMatrix();
+
+    const reloadCurrent=()=>{
+      const id=clean(currentEditorContext().slrId||currentSlrId());
+      if(id)void load(id);
+    };
+
+    window.addEventListener(
+      'scopelogic:slr-changed',
+      reloadCurrent
+    );
+
+    window.addEventListener(
+      'scopelogic:slr-draft-saved',
+      reloadCurrent
+    );
+
+    return()=>{
+      bodyObserver?.disconnect();
+      matrixObserver?.disconnect();
+
+      window.removeEventListener(
+        'scopelogic:slr-changed',
+        reloadCurrent
+      );
+
+      window.removeEventListener(
+        'scopelogic:slr-draft-saved',
+        reloadCurrent
+      );
+    };
+  },[load]);
 
   const saveNew=async()=>{
     if(!newDraft||!projectId||!slrId||!newDraft.title.trim()||!newDraft.content.trim())return;

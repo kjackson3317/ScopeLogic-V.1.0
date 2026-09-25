@@ -681,7 +681,7 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
   const refreshMasterProjects = useCallback(async () => {
     setMasterLoadError('');
     const [masterResult, engagementResult] = await Promise.all([
-      supabase.from('master_projects').select('id,project_number,name,location,status,revision,systems,is_archived,created_at,updated_at').order('created_at', { ascending: false }),
+      supabase.from('master_projects').select('id,project_number,name,location,status,revision,systems,is_archived,created_at,updated_at').eq('is_archived', false).order('created_at', { ascending: false }),
       supabase.from('projects').select('id,legacy_id,master_project_id,client_name,engagement_type,engagement_label').not('master_project_id', 'is', null),
     ]);
     const firstError = masterResult.error || engagementResult.error;
@@ -1476,6 +1476,18 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
 function InternalMatrix(props: any) {
   const draft: Issue | null = props.draft;
   const [selectedTemplate, setSelectedTemplate] = useState('');
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent('scopelogic:slr-context-changed', {
+        detail: {
+          slrId: draft?.id || '',
+          legacyProjectId: props.projectId || '',
+          masterProjectId: props.masterProjectId || '',
+        },
+      }),
+    );
+  }, [draft?.id, props.projectId, props.masterProjectId]);
   const patch = (key: keyof Issue, value: unknown) => props.setDraft((current: Issue | null) => current ? { ...current, [key]: value } : current);
   const chosenTemplate: Template | undefined = props.templates.find((template: Template) => template.uid === selectedTemplate);
 
@@ -2015,7 +2027,7 @@ function ProjectCalendar({ projects, active, entries, addEntry, deleteEntry, mes
 function ProjectLibrary({ masters, projects, quotesByProject, activeMasterId, entries, open, add, loadError }: { masters: MasterProjectMeta[]; projects: Project[]; quotesByProject: Record<string, Quote[]>; activeMasterId: string; entries: CalendarEntry[]; open: (id: string) => void; add: () => void; loadError: string }) {
   const [search, setSearch] = useState('');
   const normalized = search.trim().toLowerCase();
-  const sortedMasters = [...masters].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || alphaNumericCompare(a.name, b.name));
+  const sortedMasters = masters.filter((master) => !master.isArchived).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || alphaNumericCompare(a.name, b.name));
   const projectForLegacyId = (legacyId: string) => projects.find((project) => project.id === legacyId);
   const masterQuotes = (master: MasterProjectMeta) => master.engagements.flatMap((engagement) => quotesByProject[engagement.legacyId] || []);
   const masterClients = (master: MasterProjectMeta) => Array.from(new Set(master.engagements.map((engagement) => engagement.clientName || projectForLegacyId(engagement.legacyId)?.client || '').filter(Boolean))).sort(alphaNumericCompare);
