@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy } from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { aggregateCounts, buildPackage, parsePackage, type TakeoffMark, type TakeoffTool, type ToolShape } from './takeoff-exchange';
+import { aggregateCounts, buildPackage, parsePackage, type TakeoffDocument, type TakeoffMark, type TakeoffTool, type ToolShape } from './takeoff-exchange';
 import './styles.css';
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -21,6 +21,7 @@ type ToolDraft = {
 
 const uid = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+const normalizeFileName = (value: string) => value.trim().toLowerCase();
 const PROJECT_KEY = 'scopelogic.takeoff.desktop.project';
 const PANEL_KEY = 'scopelogic.takeoff.desktop.panelHeight';
 const DEFAULT_PANEL_HEIGHT = 260;
@@ -42,13 +43,15 @@ function App() {
   const resizeRef = useRef<{ startY: number; height: number } | null>(null);
 
   const [projectId, setProjectId] = useState('local-project');
+  const [documents, setDocuments] = useState<TakeoffDocument[]>([]);
   const [tools, setTools] = useState<TakeoffTool[]>([]);
   const [marks, setMarks] = useState<TakeoffMark[]>([]);
   const [selectedToolId, setSelectedToolId] = useState('');
   const [selectedMarkId, setSelectedMarkId] = useState('');
   const [mode, setMode] = useState<Mode>('pan');
   const [countScope, setCountScope] = useState<CountScope>('set');
-  const [search, setSearch] = useState('');
+  const [toolSearch, setToolSearch] = useState('');
+  const [countSearch, setCountSearch] = useState('');
   const [toolEditor, setToolEditor] = useState(false);
   const [toolDraft, setToolDraft] = useState<ToolDraft>({ name: '', system: 'Structured Cabling', shape: 'square', color: '#315f4a', takeoffRuleId: '' });
 
@@ -69,6 +72,7 @@ function App() {
     try {
       const saved = JSON.parse(localStorage.getItem(PROJECT_KEY) || 'null');
       if (saved?.projectId) setProjectId(saved.projectId);
+      if (Array.isArray(saved?.documents)) setDocuments(saved.documents);
       if (Array.isArray(saved?.tools)) setTools(saved.tools);
       if (Array.isArray(saved?.marks)) setMarks(saved.marks);
       const savedHeight = Number(localStorage.getItem(PANEL_KEY));
@@ -79,8 +83,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(PROJECT_KEY, JSON.stringify({ projectId, tools, marks }));
-  }, [projectId, tools, marks]);
+    localStorage.setItem(PROJECT_KEY, JSON.stringify({ projectId, documents, tools, marks }));
+  }, [projectId, documents, tools, marks]);
 
   useEffect(() => localStorage.setItem(PANEL_KEY, String(panelHeight)), [panelHeight]);
 
@@ -133,9 +137,9 @@ function App() {
         setSelectedMarkId('');
       }
       if (event.key === 'Escape') setSelectedMarkId('');
-      if (event.key === 'v') setMode('select');
-      if (event.key === 'h') setMode('pan');
-      if (event.key === 'c') setMode('count');
+      if (event.key.toLowerCase() === 'v') setMode('select');
+      if (event.key.toLowerCase() === 'h') setMode('pan');
+      if (event.key.toLowerCase() === 'c') setMode('count');
       if (event.key === '0') fitPage();
     };
     window.addEventListener('keydown', keyDown);
@@ -147,13 +151,13 @@ function App() {
   const scopedMarks = marks.filter((mark) => countScope === 'sheet' ? mark.documentId === documentId && mark.page === pageNum : true);
   const counts = useMemo(() => {
     const totals = new Map(aggregateCounts(scopedMarks).map((row) => [row.toolId, row.count]));
-    const query = search.trim().toLowerCase();
+    const query = countSearch.trim().toLowerCase();
     return tools
       .filter((tool) => (totals.get(tool.id) || 0) > 0)
       .filter((tool) => !query || `${tool.name} ${tool.system} ${tool.takeoffRuleId || ''}`.toLowerCase().includes(query))
       .map((tool) => ({ tool, count: totals.get(tool.id) || 0 }))
       .sort((a, b) => a.tool.system.localeCompare(b.tool.system) || a.tool.name.localeCompare(b.tool.name));
-  }, [scopedMarks, tools, search]);
+  }, [scopedMarks, tools, countSearch]);
   const visibleTotal = counts.reduce((sum, row) => sum + row.count, 0);
 
   const stageWidth = baseSize.width * scale;
@@ -195,13 +199,16 @@ function App() {
       setRendering(true);
       const bytes = new Uint8Array(await file.arrayBuffer());
       const next = await getDocument({ data: bytes }).promise;
+      const matchedDocument = documents.find((doc) => normalizeFileName(doc.fileName) === normalizeFileName(file.name));
+      const nextDocumentId = matchedDocument?.id || `local:${file.name}`;
+      if (!matchedDocument) setDocuments((current) => [...current, { id: nextDocumentId, fileName: file.name, name: file.name }]);
       setPdf(next);
       setPdfName(file.name);
-      setDocumentId(`local:${file.name}`);
+      setDocumentId(nextDocumentId);
       setPageCount(next.numPages);
       setPageNum(1);
       setPan({ x: 0, y: 0 });
-      setMessage(`${file.name} opened.`);
+      setMessage(matchedDocument ? `${file.name} opened and matched to its ScopeLogic drawing record.` : `${file.name} opened as a local drawing.`);
       requestAnimationFrame(() => fitPage());
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'The PDF could not be opened.');
@@ -284,7 +291,7 @@ function App() {
   }
 
   function exportPackage() {
-    const payload = buildPackage(projectId, tools, marks);
+    const payload = buildPackage(projectId, documents, tools, marks);
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
@@ -292,7 +299,7 @@ function App() {
     anchor.download = `${projectId || 'takeoff'}.sltakeoff.json`;
     anchor.click();
     URL.revokeObjectURL(url);
-    setMessage(`Exported ${payload.counts.reduce((sum, row) => sum + row.count, 0)} raw symbol counts.`);
+    setMessage(`Exported ${payload.counts.reduce((sum, row) => sum + row.count, 0)} raw symbol counts with ${payload.documents.length} drawing record${payload.documents.length === 1 ? '' : 's'}.`);
   }
 
   async function importPackage(file?: File) {
@@ -300,11 +307,12 @@ function App() {
     try {
       const parsed = parsePackage(JSON.parse(await file.text()));
       setProjectId(parsed.projectId);
+      setDocuments(parsed.documents);
       setTools(parsed.tools);
       setMarks(parsed.marks);
       setSelectedToolId(parsed.tools[0]?.id || '');
       setSelectedMarkId('');
-      setMessage(`Imported ${parsed.tools.length} tools and ${parsed.marks.length} count marks. Rule links were preserved.`);
+      setMessage(`Imported ${parsed.tools.length} tools, ${parsed.documents.length} drawing records, and ${parsed.marks.length} count marks. Rule links were preserved.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Takeoff package could not be imported.');
     }
@@ -327,8 +335,8 @@ function App() {
         <button className="secondary" onClick={() => packageInputRef.current?.click()}>Import Package</button>
         <button className="secondary" onClick={exportPackage} disabled={!tools.length}>Export Package</button>
       </div>
-      <input ref={pdfInputRef} hidden type="file" accept="application/pdf" onChange={(event) => openPdf(event.target.files?.[0])} />
-      <input ref={packageInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => importPackage(event.target.files?.[0])} />
+      <input ref={pdfInputRef} hidden type="file" accept="application/pdf" onChange={(event) => { openPdf(event.target.files?.[0]); event.currentTarget.value = ''; }} />
+      <input ref={packageInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => { importPackage(event.target.files?.[0]); event.currentTarget.value = ''; }} />
     </header>
 
     <div className="toolbar">
@@ -352,10 +360,10 @@ function App() {
     <main className="workspace" style={{ paddingBottom: panelOpen ? panelHeight : 48 }}>
       <aside className="left-dock">
         <div className="dock-head"><div><span>TOOL CHEST</span><b>{tools.length} count tools</b></div><button className="icon" onClick={() => setToolEditor(true)}>+</button></div>
-        <div className="tool-search"><input placeholder="Find a tool" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
+        <div className="tool-search"><input placeholder="Find a tool" value={toolSearch} onChange={(event) => setToolSearch(event.target.value)} /></div>
         <div className="tool-list">
           {!tools.length && <div className="empty-small">Import tools from ScopeLogic or create a count tool. The tool stores no BOM or labor logic.</div>}
-          {tools.filter((tool) => !search.trim() || `${tool.name} ${tool.system} ${tool.takeoffRuleId || ''}`.toLowerCase().includes(search.toLowerCase())).map((tool) => <button key={tool.id} className={selectedToolId === tool.id ? 'selected' : ''} onClick={() => { setSelectedToolId(tool.id); setMode('count'); }}>
+          {tools.filter((tool) => !toolSearch.trim() || `${tool.name} ${tool.system} ${tool.takeoffRuleId || ''}`.toLowerCase().includes(toolSearch.toLowerCase())).map((tool) => <button key={tool.id} className={selectedToolId === tool.id ? 'selected' : ''} onClick={() => { setSelectedToolId(tool.id); setMode('count'); }}>
             <Shape tool={tool} />
             <span><b>{tool.name}</b><small>{tool.system}{tool.takeoffRuleId ? ' · rule linked' : ''}</small></span>
           </button>)}
@@ -390,7 +398,7 @@ function App() {
       {panelOpen && <div className="resize-handle" onPointerDown={(event) => { event.preventDefault(); resizeRef.current = { startY: event.clientY, height: panelHeight }; }} onDoubleClick={() => setPanelOpen(false)} />}
       <div className="totals-head">
         <button className="totals-title" onClick={() => setPanelOpen((value) => !value)}><span><b>Takeoff Totals</b><small>{visibleTotal} symbols · {counts.length} tools · {countScope === 'sheet' ? `page ${pageNum}` : 'drawing set'}</small></span><strong>{panelOpen ? 'Hide' : 'Show'}</strong></button>
-        {panelOpen && <div className="totals-controls"><select value={countScope} onChange={(event) => setCountScope(event.target.value as CountScope)}><option value="set">Drawing Set</option><option value="sheet">Current Page</option></select><input placeholder="Filter counts" value={search} onChange={(event) => setSearch(event.target.value)} /></div>}
+        {panelOpen && <div className="totals-controls"><select value={countScope} onChange={(event) => setCountScope(event.target.value as CountScope)}><option value="set">Drawing Set</option><option value="sheet">Current Page</option></select><input placeholder="Filter counts" value={countSearch} onChange={(event) => setCountSearch(event.target.value)} /></div>}
       </div>
       {panelOpen && <div className="totals-body">
         {!counts.length && <div className="empty-small">No count marks in this view.</div>}
