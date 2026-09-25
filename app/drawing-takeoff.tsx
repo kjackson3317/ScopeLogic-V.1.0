@@ -10,8 +10,6 @@ export type DrawingTakeoffTool = {
   system: string;
   shape: DrawingToolShape;
   color: string;
-  multiplier: number;
-  unit: string;
   scope: DrawingToolScope;
   projectId?: string;
   formulaId?: string;
@@ -50,7 +48,11 @@ type Props = {
 
 type Mode = 'pan' | 'count' | 'calibrate' | 'distance' | 'polyline' | 'area' | 'perimeter' | 'rectangle' | 'cloud' | 'arrow' | 'highlight';
 type FitMode = 'custom' | 'page' | 'width';
-type SummaryTab = 'takeoff' | 'measurements' | 'rules';
+type SummaryTab = 'takeoff' | 'measurements' | 'rules' | 'sync';
+type CountScope = 'sheet' | 'document' | 'set';
+
+type CountSummaryRow = { tool: DrawingTakeoffTool; count: number; marks: DrawingTakeoffMark[] };
+type SyncRow = { formula: TakeoffFormula; drawingCount: number; currentCount: number; tools: string[] };
 
 const alphaNumericCompare = (a: string, b: string) => String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base', numeric: true });
 const COLORS = ['#31513b', '#477e7b', '#2563eb', '#b45309', '#b91c1c', '#6d28d9', '#111827', '#0e7490'];
@@ -73,13 +75,16 @@ function Shape({ shape, color, size = 15 }: { shape: DrawingToolShape; color: st
 }
 
 export default function DrawingTakeoffPage(props: Props) {
-  const pdfDocs = useMemo(() => props.docs.filter((doc) => doc.current && (doc.fileType === 'application/pdf' || doc.fileName.toLowerCase().endsWith('.pdf'))).sort((a,b)=>alphaNumericCompare(a.fileName,b.fileName)), [props.docs]);
-  const availableTools = useMemo(() => props.tools.filter((tool) => tool.scope === 'global' || tool.projectId === props.projectId).sort((a,b)=>alphaNumericCompare(a.name,b.name)), [props.tools, props.projectId]);
+  const pdfDocs = useMemo(() => props.docs.filter((doc) => doc.current && (doc.fileType === 'application/pdf' || doc.fileName.toLowerCase().endsWith('.pdf'))).sort((a, b) => alphaNumericCompare(a.fileName, b.fileName)), [props.docs]);
+  const availableTools = useMemo(() => props.tools.filter((tool) => tool.scope === 'global' || tool.projectId === props.projectId).sort((a, b) => alphaNumericCompare(a.name, b.name)), [props.tools, props.projectId]);
+  const currentDocIds = useMemo(() => new Set(pdfDocs.map((doc) => doc.id)), [pdfDocs]);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<SVGSVGElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const panRef = useRef({ dragging: false, clientX: 0, clientY: 0, scrollLeft: 0, scrollTop: 0 });
   const pdfRef = useRef<any>(null);
+
   const [docId, setDocId] = useState(pdfDocs[0]?.id || '');
   const [pageNum, setPageNum] = useState(1);
   const [pageCount, setPageCount] = useState(0);
@@ -100,6 +105,8 @@ export default function DrawingTakeoffPage(props: Props) {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(true);
   const [summaryTab, setSummaryTab] = useState<SummaryTab>('takeoff');
+  const [countScope, setCountScope] = useState<CountScope>('set');
+  const [countSearch, setCountSearch] = useState('');
   const [focusMode, setFocusMode] = useState(false);
 
   useEffect(() => {
@@ -115,7 +122,11 @@ export default function DrawingTakeoffPage(props: Props) {
   useEffect(() => {
     let active = true;
     if (!docId) { pdfRef.current = null; setPageCount(0); return; }
-    pdfRef.current = null; setPageCount(0); setLoading(true); setLoadError(''); setPageNum(1);
+    pdfRef.current = null;
+    setPageCount(0);
+    setLoading(true);
+    setLoadError('');
+    setPageNum(1);
     props.loadPdfBytes(docId).then(async (buffer) => {
       const pdfjs = await import('pdfjs-dist');
       pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
@@ -169,9 +180,7 @@ export default function DrawingTakeoffPage(props: Props) {
     const fit = () => {
       const availableWidth = Math.max(100, area.clientWidth - 48);
       const availableHeight = Math.max(100, area.clientHeight - 48);
-      const scale = fitMode === 'width'
-        ? availableWidth / basePagePx.w
-        : Math.min(availableWidth / basePagePx.w, availableHeight / basePagePx.h);
+      const scale = fitMode === 'width' ? availableWidth / basePagePx.w : Math.min(availableWidth / basePagePx.w, availableHeight / basePagePx.h);
       setRenderScale((current) => {
         const next = clampScale(scale);
         return Math.abs(next - current) < .002 ? current : next;
@@ -189,14 +198,18 @@ export default function DrawingTakeoffPage(props: Props) {
       const editing = target?.matches('input, textarea, select, [contenteditable="true"]');
       if (event.code === 'Space' && !editing) { event.preventDefault(); setSpacePan(true); }
       if (event.key === 'Escape') { setFocusMode(false); setDraft([]); }
+      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedMark && !editing) {
+        event.preventDefault();
+        props.setMarks(props.marks.filter((mark) => mark.id !== selectedMark));
+        setSelectedMark('');
+      }
     };
     const keyUp = (event: KeyboardEvent) => { if (event.code === 'Space') setSpacePan(false); };
     window.addEventListener('keydown', keyDown);
     window.addEventListener('keyup', keyUp);
     return () => { window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp); };
-  }, []);
+  }, [props.marks, props.setMarks, selectedMark]);
 
-  const selectedDoc = pdfDocs.find((doc) => doc.id === docId);
   const selectedTool = availableTools.find((tool) => tool.id === selectedToolId);
   const pageKey = `${docId}:${pageNum}`;
   const pageCalibration = props.calibrations[pageKey];
@@ -204,20 +217,50 @@ export default function DrawingTakeoffPage(props: Props) {
   const pageMeasurements = props.measurements.filter((measurement) => measurement.docId === docId && measurement.page === pageNum);
   const pageAnnotations = props.annotations.filter((annotation) => annotation.docId === docId && annotation.page === pageNum);
 
-  const currentDocIds = useMemo(() => new Set(pdfDocs.map((doc) => doc.id)), [pdfDocs]);
-  const summary = useMemo(() => {
-    const byTool = new Map<string, { tool: DrawingTakeoffTool; locations: number; qty: number }>();
+  const scopedMarks = useMemo(() => props.marks.filter((mark) => {
+    if (!currentDocIds.has(mark.docId)) return false;
+    if (countScope === 'sheet') return mark.docId === docId && mark.page === pageNum;
+    if (countScope === 'document') return mark.docId === docId;
+    return true;
+  }), [props.marks, currentDocIds, countScope, docId, pageNum]);
+
+  const summary = useMemo<CountSummaryRow[]>(() => {
+    const byTool = new Map<string, CountSummaryRow>();
+    for (const mark of scopedMarks) {
+      const tool = availableTools.find((item) => item.id === mark.toolId);
+      if (!tool) continue;
+      const current = byTool.get(tool.id) || { tool, count: 0, marks: [] };
+      current.count += 1;
+      current.marks.push(mark);
+      byTool.set(tool.id, current);
+    }
+    const query = countSearch.trim().toLowerCase();
+    return [...byTool.values()]
+      .filter(({ tool }) => !query || `${tool.name} ${tool.system} ${props.formulas.find((formula) => formula.id === tool.formulaId)?.name || ''}`.toLowerCase().includes(query))
+      .sort((a, b) => a.tool.system.localeCompare(b.tool.system) || a.tool.name.localeCompare(b.tool.name));
+  }, [scopedMarks, availableTools, countSearch, props.formulas]);
+
+  const totalVisibleCount = useMemo(() => summary.reduce((sum, row) => sum + row.count, 0), [summary]);
+
+  const syncRows = useMemo<SyncRow[]>(() => {
+    const byFormula = new Map<string, { drawingCount: number; tools: Set<string> }>();
     for (const mark of props.marks) {
       if (!currentDocIds.has(mark.docId)) continue;
       const tool = availableTools.find((item) => item.id === mark.toolId);
-      if (!tool) continue;
-      const current = byTool.get(tool.id) || { tool, locations: 0, qty: 0 };
-      current.locations += 1;
-      current.qty += Math.max(0, Number(tool.multiplier) || 0);
-      byTool.set(tool.id, current);
+      if (!tool?.formulaId) continue;
+      const formula = props.formulas.find((item) => item.id === tool.formulaId);
+      if (!formula) continue;
+      const current = byFormula.get(formula.id) || { drawingCount: 0, tools: new Set<string>() };
+      current.drawingCount += 1;
+      current.tools.add(tool.name);
+      byFormula.set(formula.id, current);
     }
-    return [...byTool.values()].sort((a, b) => a.tool.system.localeCompare(b.tool.system) || a.tool.name.localeCompare(b.tool.name));
-  }, [props.marks, availableTools, currentDocIds]);
+    return [...byFormula.entries()].map(([formulaId, total]) => {
+      const formula = props.formulas.find((item) => item.id === formulaId)!;
+      const currentEntry = props.entries.find((entry) => entry.formulaId === formulaId && entry.source === 'drawing');
+      return { formula, drawingCount: total.drawingCount, currentCount: Number(currentEntry?.qty) || 0, tools: [...total.tools].sort(alphaNumericCompare) };
+    }).sort((a, b) => a.formula.system.localeCompare(b.formula.system) || a.formula.name.localeCompare(b.formula.name));
+  }, [props.marks, props.formulas, props.entries, currentDocIds, availableTools]);
 
   const point = (event: ReactMouseEvent<SVGSVGElement>) => {
     const rect = overlayRef.current?.getBoundingClientRect();
@@ -236,9 +279,7 @@ export default function DrawingTakeoffPage(props: Props) {
       props.setMarks([...props.marks, { id: uid('mark'), docId, page: pageNum, toolId: selectedTool.id, x: p.x, y: p.y }]);
       return;
     }
-    if (['calibrate', 'distance', 'polyline', 'area', 'perimeter', 'rectangle', 'cloud', 'arrow', 'highlight'].includes(mode)) {
-      setDraft((items) => [...items, p]);
-    }
+    if (['calibrate', 'distance', 'polyline', 'area', 'perimeter', 'rectangle', 'cloud', 'arrow', 'highlight'].includes(mode)) setDraft((items) => [...items, p]);
   };
 
   const beginPan = (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -254,6 +295,7 @@ export default function DrawingTakeoffPage(props: Props) {
     scrollRef.current.scrollTop = panRef.current.scrollTop - (event.clientY - panRef.current.clientY);
   };
   const endPan = () => { panRef.current.dragging = false; setIsPanning(false); };
+
   const applyZoom = (nextValue: number, anchor?: { clientX: number; clientY: number }) => {
     const area = scrollRef.current;
     const next = clampScale(nextValue);
@@ -295,10 +337,7 @@ export default function DrawingTakeoffPage(props: Props) {
   const toggleFocus = () => {
     const next = !focusMode;
     setFocusMode(next);
-    if (next) {
-      setToolsOpen(false);
-      setSummaryOpen(false);
-    }
+    if (next) { setToolsOpen(false); setSummaryOpen(false); }
   };
   const drawingKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === '+' || event.key === '=') { event.preventDefault(); applyZoom(renderScale * 1.2); }
@@ -322,16 +361,16 @@ export default function DrawingTakeoffPage(props: Props) {
       if (!pageCalibration) { props.message('Calibration Required', 'Calibrate this drawing page before saving scaled measurements.'); return; }
       const pixels = draft.map(pixelPoint);
       if (pixels.length < 2) return;
-      let value = 0; let unit = 'ft';
+      let value = 0;
+      let unit = 'ft';
       if (mode === 'area') {
         if (pixels.length < 3) return;
-        value = polygonArea(pixels) / (pageCalibration.pxPerFoot ** 2); unit = 'sq ft';
+        value = polygonArea(pixels) / (pageCalibration.pxPerFoot ** 2);
+        unit = 'sq ft';
       } else if (mode === 'perimeter') {
         if (pixels.length < 3) return;
         value = lineLength([...pixels, pixels[0]]) / pageCalibration.pxPerFoot;
-      } else {
-        value = lineLength(mode === 'distance' ? pixels.slice(0, 2) : pixels) / pageCalibration.pxPerFoot;
-      }
+      } else value = lineLength(mode === 'distance' ? pixels.slice(0, 2) : pixels) / pageCalibration.pxPerFoot;
       props.setMeasurements([...props.measurements, { id: uid('measure'), docId, page: pageNum, type: mode as DrawingMeasurement['type'], points: [...draft], value, unit, name: selectedTool?.name || mode, system: selectedTool?.system || '' }]);
       props.message('Saved', `${mode[0].toUpperCase() + mode.slice(1)} measurement saved.`);
       setDraft([]);
@@ -349,31 +388,37 @@ export default function DrawingTakeoffPage(props: Props) {
     setSelectedMark('');
   };
 
-  const syncCounts = () => {
-    const totals = new Map<string, { qty: number; tools: Set<string> }>();
-    for (const mark of props.marks) {
-      if (!currentDocIds.has(mark.docId)) continue;
-      const tool = availableTools.find((item) => item.id === mark.toolId);
-      if (!tool?.formulaId) continue;
-      const formula = props.formulas.find((item) => item.id === tool.formulaId);
-      if (!formula) continue;
-      const current = totals.get(formula.id) || { qty: 0, tools: new Set<string>() };
-      current.qty += Math.max(0, Number(tool.multiplier) || 0);
-      current.tools.add(tool.name);
-      totals.set(formula.id, current);
-    }
+  const openSyncReview = () => {
+    setSummaryOpen(true);
+    setSummaryTab('sync');
+    setFocusMode(false);
+  };
+
+  const applySync = () => {
     const retained = props.entries.filter((entry) => entry.source !== 'drawing');
-    const drawingEntries: TakeoffEntry[] = [...totals.entries()].map(([formulaId, total]) => {
-      const formula = props.formulas.find((item) => item.id === formulaId)!;
-      return { id: `drawing-${formulaId}`, formulaId, description: `Drawing Take Off — ${formula.name}`, qty: total.qty, notes: `Synced from PDF Drawing Take Off (${[...total.tools].join(', ')})`, source: 'drawing' };
-    });
+    const drawingEntries: TakeoffEntry[] = syncRows.map((row) => ({
+      id: `drawing-${row.formula.id}`,
+      formulaId: row.formula.id,
+      description: `Drawing Take Off — ${row.formula.name}`,
+      qty: row.drawingCount,
+      notes: `Raw symbol count synced from PDF Drawing Take Off (${row.tools.join(', ')})`,
+      source: 'drawing',
+    }));
     props.saveEntries([...retained, ...drawingEntries]);
-    props.message('Drawing Take Off Synced', `${drawingEntries.length} linked rule${drawingEntries.length === 1 ? '' : 's'} updated in the Take Off Quantity Sheet.`);
+    props.message('Drawing Counts Synced', `${drawingEntries.length} linked rule${drawingEntries.length === 1 ? '' : 's'} updated using raw symbol counts. ScopeLogic Take Off Rules determine the BOM and labor.`);
+  };
+
+  const jumpToSummaryRow = (row: CountSummaryRow) => {
+    setSelectedToolId(row.tool.id);
+    const first = row.marks[0];
+    if (!first) return;
+    if (first.docId !== docId) setDocId(first.docId);
+    setPageNum(first.page);
+    setSelectedMark(first.id);
   };
 
   const deleteTool = (tool: DrawingTakeoffTool) => {
-    const marksUsing = props.marks.some((mark) => mark.toolId === tool.id);
-    if (marksUsing) return props.message('Tool In Use', 'Delete or change the drawing marks using this tool before removing it.');
+    if (props.marks.some((mark) => mark.toolId === tool.id)) return props.message('Tool In Use', 'Delete or change the drawing marks using this tool before removing it.');
     props.setTools(props.tools.filter((item) => item.id !== tool.id));
     if (selectedToolId === tool.id) setSelectedToolId('');
     props.message('Saved', `“${tool.name}” was removed from the Tool Chest.`);
@@ -388,53 +433,66 @@ export default function DrawingTakeoffPage(props: Props) {
     return <g key={annotation.id}><rect x={x} y={y} width={w} height={h} rx={annotation.type === 'cloud' ? 12 : 0} fill={highlight ? 'rgba(250,204,21,.28)' : 'rgba(185,28,28,.05)'} stroke={highlight ? '#ca8a04' : '#b91c1c'} strokeWidth="2" strokeDasharray={annotation.type === 'cloud' ? '7 5' : undefined} />{annotation.label && <text x={x + 5} y={Math.max(14, y - 5)} fill="#b91c1c" fontWeight="700" fontSize="12">{annotation.label}</text>}</g>;
   };
 
+  const scopeLabel = countScope === 'sheet' ? `Sheet ${pageNum}` : countScope === 'document' ? 'Current PDF' : 'Drawing Set';
+
   return <section className={`drawing-takeoff-page ${focusMode ? 'drawing-focus-mode' : ''}`}>
-    <div className="section-head"><div><span>ESTIMATING / DRAWINGS</span><h1>PDF Drawing Take Off</h1><p>Count drawing symbols, calibrate sheets, measure routes and areas, and feed drawing quantities directly into selected Take Off rules.</p></div><div className="drawing-takeoff-head-actions"><button className="secondary" onClick={() => setToolModal(true)}>+ Create Tool</button><button onClick={syncCounts}>Sync Counts to Take Off</button><button className="secondary" aria-pressed={focusMode} onClick={toggleFocus}>{focusMode ? 'Exit Focus' : 'Focus Drawing'}</button></div></div>
+    <div className="section-head"><div><span>ESTIMATING / DRAWINGS</span><h1>PDF Drawing Take Off</h1><p>Count what is shown on the drawings. ScopeLogic Take Off Rules define what each count means for BOM, labor, and pricing.</p></div><div className="drawing-takeoff-head-actions"><button className="secondary" onClick={() => setToolModal(true)}>+ Create Tool</button><button onClick={openSyncReview}>Review ScopeLogic Sync</button><button className="secondary" aria-pressed={focusMode} onClick={toggleFocus}>{focusMode ? 'Exit Focus' : 'Focus Drawing'}</button></div></div>
     <div className="drawing-document-bar">
       <label>Drawing PDF<select value={docId} onChange={(event) => setDocId(event.target.value)}><option value="">Select project PDF...</option>{pdfDocs.map((doc) => <option key={doc.id} value={doc.id}>{doc.fileName}</option>)}</select></label>
       <div className="drawing-page-controls"><button className="secondary" disabled={!pageCount || pageNum <= 1} onClick={() => setPageNum((page) => Math.max(1, page - 1))} aria-label="Previous page">◀</button><span>Page {pageCount ? `${pageNum} / ${pageCount}` : '—'}</span><button className="secondary" disabled={!pageCount || pageNum >= pageCount} onClick={() => setPageNum((page) => Math.min(pageCount, page + 1))} aria-label="Next page">▶</button></div>
       <div className="drawing-zoom-controls"><button className={fitMode === 'page' ? 'secondary active' : 'secondary'} disabled={!pageCount} aria-pressed={fitMode === 'page'} onClick={() => setFit('page')}>Fit Page</button><button className={fitMode === 'width' ? 'secondary active' : 'secondary'} disabled={!pageCount} aria-pressed={fitMode === 'width'} onClick={() => setFit('width')}>Fit Width</button><button className="secondary" disabled={!pageCount} onClick={() => applyZoom(renderScale / 1.2)} aria-label="Zoom out">−</button><label className="drawing-zoom-input"><span>Zoom</span><input aria-label="Zoom percentage" inputMode="numeric" value={zoomInput} onChange={(event) => setZoomInput(event.target.value.replace(/[^0-9.]/g, ''))} onBlur={commitZoomInput} onKeyDown={(event) => { if (event.key === 'Enter') { commitZoomInput(); event.currentTarget.blur(); } }} /><b>%</b></label><button className="secondary" disabled={!pageCount} onClick={() => applyZoom(renderScale * 1.2)} aria-label="Zoom in">+</button>{focusMode && <button className="secondary drawing-focus-exit" onClick={toggleFocus}>Exit Focus</button>}</div>
       <span className={`drawing-calibration-badge ${pageCalibration ? 'ok' : ''}`}>{pageCalibration ? `Calibrated · ${pageCalibration.label}` : 'Page not calibrated'}</span>
     </div>
+
     {!pdfDocs.length && <div className="empty-list"><b>No current PDF drawings are available.</b><p>Upload drawing PDFs under Project Documents first, then return to Drawing Take Off.</p></div>}
     {loadError && <div className="inline-warning"><b>PDF could not be opened.</b><span>{loadError}</span></div>}
+
     <div className="drawing-workspace-stack">
       <section className={`drawing-dock drawing-tools-dock ${toolsOpen ? 'open' : 'collapsed'}`}>
         <div className="drawing-dock-head"><button className="drawing-dock-toggle" aria-expanded={toolsOpen} onClick={() => setToolsOpen((current) => !current)}><span><b>Drawing Tools &amp; Tool Chest</b><small>{toolsOpen ? 'Select a markup mode or saved count tool.' : `${availableTools.length} saved tool${availableTools.length === 1 ? '' : 's'} · ${mode}`}</small></span><strong>{toolsOpen ? 'Hide' : 'Show'}</strong></button><button className="secondary" onClick={() => setToolModal(true)}>+ New Tool</button></div>
         {toolsOpen && <div className="drawing-tools-dock-body"><div className="drawing-mode-section"><h3>Drawing Tools</h3><div className="drawing-mode-grid">{([
           ['pan', 'Pan'], ['count', 'Count'], ['calibrate', 'Calibrate'], ['distance', 'Distance'], ['polyline', 'Polyline'], ['area', 'Area'], ['perimeter', 'Perimeter'], ['rectangle', 'Rectangle'], ['cloud', 'Cloud'], ['arrow', 'Arrow'], ['highlight', 'Highlight'],
-        ] as [Mode, string][]).map(([id, label]) => <button key={id} aria-pressed={mode === id} className={mode === id ? 'active' : ''} onClick={() => { setMode(id); setDraft([]); }}>{label}</button>)}</div><p className="drawing-shortcut-help">Tip: hold Space to pan temporarily. Use +, −, or 0 while the drawing is focused.</p></div><div className="drawing-tool-chest-section"><div className="drawing-tool-chest-head"><h3>Tool Chest</h3><span>{availableTools.length} saved</span></div>{!availableTools.length && <div className="compact-empty">No tools yet. Create only the count tools you use.</div>}<div className="drawing-tool-list">{availableTools.map((tool) => <div key={tool.id} className={`drawing-tool-row ${selectedToolId === tool.id ? 'selected' : ''}`}><button aria-pressed={selectedToolId === tool.id} onClick={() => { setSelectedToolId(tool.id); setMode('count'); }}><Shape shape={tool.shape} color={tool.color} /><span><b>{tool.name}</b><small>{tool.system} · ×{tool.multiplier} {tool.unit}{tool.formulaId ? ` · Linked: ${props.formulas.find((formula) => formula.id === tool.formulaId)?.name || 'Missing rule'}` : ''}</small></span></button><button className="icon-danger" title={`Delete ${tool.name}`} aria-label={`Delete ${tool.name}`} onClick={() => deleteTool(tool)}>×</button></div>)}</div>{selectedMark && <button className="danger drawing-delete-mark" onClick={deleteSelectedMark}>Delete Selected Mark</button>}</div></div>}
+        ] as [Mode, string][]).map(([id, label]) => <button key={id} aria-pressed={mode === id} className={mode === id ? 'active' : ''} onClick={() => { setMode(id); setDraft([]); }}>{label}</button>)}</div><p className="drawing-shortcut-help">Tip: hold Space to pan temporarily. Use +, −, or 0 while the drawing is focused.</p></div><div className="drawing-tool-chest-section"><div className="drawing-tool-chest-head"><h3>Tool Chest</h3><span>{availableTools.length} saved</span></div>{!availableTools.length && <div className="compact-empty">No tools yet. Create only the symbols you need to count.</div>}<div className="drawing-tool-list">{availableTools.map((tool) => <div key={tool.id} className={`drawing-tool-row ${selectedToolId === tool.id ? 'selected' : ''}`}><button aria-pressed={selectedToolId === tool.id} onClick={() => { setSelectedToolId(tool.id); setMode('count'); }}><Shape shape={tool.shape} color={tool.color} /><span><b>{tool.name}</b><small>{tool.system}{tool.formulaId ? ` · Rule: ${props.formulas.find((formula) => formula.id === tool.formulaId)?.name || 'Missing rule'}` : ' · Summary only'}</small></span></button><button className="icon-danger" title={`Delete ${tool.name}`} aria-label={`Delete ${tool.name}`} onClick={() => deleteTool(tool)}>×</button></div>)}</div>{selectedMark && <button className="danger drawing-delete-mark" onClick={deleteSelectedMark}>Delete Selected Mark</button>}</div></div>}
       </section>
+
       <main className="drawing-canvas-panel">
         {loading && <div className="drawing-loading">Loading drawing…</div>}
         {!docId && !loading && <div className="drawing-empty"><h2>Select a project drawing PDF</h2><p>PDF drawing files already uploaded to Project Documents are available above.</p></div>}
-        {docId && <div ref={scrollRef} tabIndex={0} aria-label="PDF drawing viewer" className={`drawing-scroll ${isPanMode?'pan-ready':''} ${isPanning?'panning':''}`} onKeyDown={drawingKeyDown} onMouseDown={beginPan} onMouseMove={movePan} onMouseUp={endPan} onMouseLeave={endPan} onWheel={wheelZoom}><div className="drawing-stage"><div className="drawing-sheet" style={{ width: pagePx.w, height: pagePx.h }}><canvas ref={canvasRef} /><svg ref={overlayRef} width={pagePx.w} height={pagePx.h} viewBox={`0 0 ${pagePx.w} ${pagePx.h}`} onClick={clickOverlay} className={isPanMode ? 'drawing-overlay pan' : 'drawing-overlay'}>
-          {pageMarks.map((mark) => { const tool = availableTools.find((item) => item.id === mark.toolId); if (!tool) return null; const x = mark.x * pagePx.w, y = mark.y * pagePx.h; const common = { key: mark.id, onClick: (event: ReactMouseEvent<SVGElement>) => { event.stopPropagation(); setSelectedMark(mark.id); }, className: selectedMark === mark.id ? 'drawing-mark selected' : 'drawing-mark' }; if (tool.shape === 'circle') return <circle {...common} cx={x} cy={y} r="9" fill={tool.color} />; if (tool.shape === 'square') return <rect {...common} x={x - 9} y={y - 9} width="18" height="18" fill={tool.color} />; if (tool.shape === 'diamond') return <rect {...common} x={x - 7} y={y - 7} width="14" height="14" fill={tool.color} transform={`rotate(45 ${x} ${y})`} />; return <polygon {...common} points={`${x},${y - 10} ${x - 10},${y + 9} ${x + 10},${y + 9}`} fill={tool.color} />; })}
+        {docId && <div ref={scrollRef} tabIndex={0} aria-label="PDF drawing viewer" className={`drawing-scroll ${isPanMode ? 'pan-ready' : ''} ${isPanning ? 'panning' : ''}`} onKeyDown={drawingKeyDown} onMouseDown={beginPan} onMouseMove={movePan} onMouseUp={endPan} onMouseLeave={endPan} onWheel={wheelZoom}><div className="drawing-stage"><div className="drawing-sheet" style={{ width: pagePx.w, height: pagePx.h }}><canvas ref={canvasRef} /><svg ref={overlayRef} width={pagePx.w} height={pagePx.h} viewBox={`0 0 ${pagePx.w} ${pagePx.h}`} onClick={clickOverlay} className={isPanMode ? 'drawing-overlay pan' : 'drawing-overlay'}>
+          {pageMarks.map((mark) => { const tool = availableTools.find((item) => item.id === mark.toolId); if (!tool) return null; const x = mark.x * pagePx.w, y = mark.y * pagePx.h; const common = { key: mark.id, onClick: (event: ReactMouseEvent<SVGElement>) => { event.stopPropagation(); setSelectedMark(mark.id); setSelectedToolId(mark.toolId); }, className: selectedMark === mark.id ? 'drawing-mark selected' : 'drawing-mark' }; if (tool.shape === 'circle') return <circle {...common} cx={x} cy={y} r="9" fill={tool.color} />; if (tool.shape === 'square') return <rect {...common} x={x - 9} y={y - 9} width="18" height="18" fill={tool.color} />; if (tool.shape === 'diamond') return <rect {...common} x={x - 7} y={y - 7} width="14" height="14" fill={tool.color} transform={`rotate(45 ${x} ${y})`} />; return <polygon {...common} points={`${x},${y - 10} ${x - 10},${y + 9} ${x + 10},${y + 9}`} fill={tool.color} />; })}
           {pageMeasurements.map((measurement) => <polyline key={measurement.id} points={measurement.points.map((p) => `${p.x * pagePx.w},${p.y * pagePx.h}`).join(' ')} fill={measurement.type === 'area' ? 'rgba(71,126,123,.16)' : 'none'} stroke="#477e7b" strokeWidth="2" />)}
           {pageAnnotations.map(drawAnnotation)}
           {draft.length > 0 && <polyline points={draft.map((p) => `${p.x * pagePx.w},${p.y * pagePx.h}`).join(' ')} fill="none" stroke="#b45309" strokeWidth="2" strokeDasharray="6 5" />}
         </svg></div></div></div>}
         {draft.length > 0 && <div className="drawing-finish-bar"><span>{draft.length} point{draft.length === 1 ? '' : 's'} selected</span><button onClick={finishDraft}>Finish</button><button className="secondary" onClick={() => setDraft([])}>Cancel</button></div>}
       </main>
-      <section className={`drawing-dock drawing-summary-dock ${summaryOpen ? 'open' : 'collapsed'}`}><div className="drawing-dock-head"><button className="drawing-dock-toggle" aria-expanded={summaryOpen} onClick={() => setSummaryOpen((current) => !current)}><span><b>Take Off Summary</b><small>{summary.length} count group{summary.length === 1 ? '' : 's'} · {pageMeasurements.length} page measurement{pageMeasurements.length === 1 ? '' : 's'}</small></span><strong>{summaryOpen ? 'Hide' : 'Show'}</strong></button>{summaryOpen && <div className="drawing-summary-tabs" role="tablist" aria-label="Take Off Summary views">{([['takeoff', 'Live Take Off'], ['measurements', 'Measurements'], ['rules', 'Rule Links']] as [SummaryTab, string][]).map(([id, label]) => <button key={id} role="tab" aria-selected={summaryTab === id} className={summaryTab === id ? 'active' : ''} onClick={() => setSummaryTab(id)}>{label}</button>)}</div>}</div>{summaryOpen && <div className="drawing-summary-content">{summaryTab === 'takeoff' && <div className="drawing-summary-list">{!summary.length && <div className="compact-empty">Placed count symbols will summarize here.</div>}{summary.map(({ tool, locations, qty }) => <div className="drawing-summary-row" key={tool.id}><span><Shape shape={tool.shape} color={tool.color} /><span><b>{tool.name}</b><small>{tool.system}</small></span></span><span><b>{locations}</b><small>locations</small></span><span><b>{fmt(qty)}</b><small>{tool.unit}</small></span></div>)}</div>}{summaryTab === 'measurements' && <div className="drawing-summary-list">{!pageMeasurements.length && <div className="compact-empty">No measurements on this page.</div>}{pageMeasurements.map((measurement) => <div className="drawing-measure-row" key={measurement.id}><span><b>{measurement.name}</b><small>{measurement.type}</small></span><strong>{fmt(measurement.value)} {measurement.unit}</strong></div>)}</div>}{summaryTab === 'rules' && <div className="drawing-summary-list"><p className="drawing-help">Link each count tool to a Take Off rule. Syncing replaces the prior drawing-sourced quantity instead of stacking it again.</p>{!availableTools.some((tool) => tool.formulaId) && <div className="compact-empty">No drawing tools are linked to Take Off rules.</div>}{availableTools.filter((tool) => tool.formulaId).map((tool) => <div className="drawing-link-row" key={tool.id}><b>{tool.name}</b><span>→ {props.formulas.find((formula) => formula.id === tool.formulaId)?.name || 'Missing rule'}</span></div>)}</div>}</div>}</section>
+
+      <section className={`drawing-dock drawing-summary-dock ${summaryOpen ? 'open' : 'collapsed'}`}>
+        <div className="drawing-dock-head"><button className="drawing-dock-toggle" aria-expanded={summaryOpen} onClick={() => setSummaryOpen((current) => !current)}><span><b>Takeoff Totals</b><small>{totalVisibleCount} symbol{totalVisibleCount === 1 ? '' : 's'} · {summary.length} tool{summary.length === 1 ? '' : 's'} · {scopeLabel}</small></span><strong>{summaryOpen ? 'Hide' : 'Show'}</strong></button>{summaryOpen && <div className="drawing-summary-tabs" role="tablist" aria-label="Takeoff Totals views">{([['takeoff', 'Counts'], ['measurements', 'Measurements'], ['rules', 'Rule Links'], ['sync', 'Sync Review']] as [SummaryTab, string][]).map(([id, label]) => <button key={id} role="tab" aria-selected={summaryTab === id} className={summaryTab === id ? 'active' : ''} onClick={() => setSummaryTab(id)}>{label}</button>)}</div>}</div>
+        {summaryOpen && <div className="drawing-summary-content">
+          {summaryTab === 'takeoff' && <><div className="form-grid two"><label>Count Scope<select value={countScope} onChange={(event) => setCountScope(event.target.value as CountScope)}><option value="set">Drawing Set</option><option value="document">Current PDF</option><option value="sheet">Current Sheet</option></select></label><label>Find Tool<input value={countSearch} onChange={(event) => setCountSearch(event.target.value)} placeholder="Search tool, system, or linked rule" /></label></div><div className="drawing-summary-list">{!summary.length && <div className="compact-empty">No matching count symbols in this scope.</div>}{summary.map((row) => <button className={`drawing-summary-row ${selectedToolId === row.tool.id ? 'selected' : ''}`} key={row.tool.id} onClick={() => jumpToSummaryRow(row)}><span><Shape shape={row.tool.shape} color={row.tool.color} /><span><b>{row.tool.name}</b><small>{row.tool.system}{row.tool.formulaId ? ` · ${props.formulas.find((formula) => formula.id === row.tool.formulaId)?.name || 'Missing rule'}` : ''}</small></span></span><span><b>{row.count}</b><small>count</small></span></button>)}</div></>}
+          {summaryTab === 'measurements' && <div className="drawing-summary-list">{!pageMeasurements.length && <div className="compact-empty">No measurements on this page.</div>}{pageMeasurements.map((measurement) => <div className="drawing-measure-row" key={measurement.id}><span><b>{measurement.name}</b><small>{measurement.type}</small></span><strong>{fmt(measurement.value)} {measurement.unit}</strong></div>)}</div>}
+          {summaryTab === 'rules' && <div className="drawing-summary-list"><p className="drawing-help">A count tool may link to one ScopeLogic Take Off Rule. The drawing stores only the symbol count; the rule defines material, labor, capacity, cable length, and estimating logic.</p>{!availableTools.some((tool) => tool.formulaId) && <div className="compact-empty">No drawing tools are linked to Take Off Rules.</div>}{availableTools.filter((tool) => tool.formulaId).map((tool) => <div className="drawing-link-row" key={tool.id}><b>{tool.name}</b><span>→ {props.formulas.find((formula) => formula.id === tool.formulaId)?.name || 'Missing rule'}</span></div>)}</div>}
+          {summaryTab === 'sync' && <div className="drawing-summary-list"><p className="drawing-help">Review raw drawing counts before they update ScopeLogic. Applying this review replaces prior drawing-sourced quantities; manual Take Off Quantity entries remain unchanged.</p>{!syncRows.length && <div className="compact-empty">Link a count tool to a Take Off Rule to create a sync row.</div>}{syncRows.map((row) => <div className="drawing-link-row" key={row.formula.id}><span><b>{row.formula.name}</b><small>{row.formula.system} · {row.tools.join(', ')}</small></span><span><b>{row.drawingCount}</b> drawing / {row.currentCount} current {row.drawingCount !== row.currentCount ? `(${row.drawingCount - row.currentCount > 0 ? '+' : ''}${row.drawingCount - row.currentCount})` : '(no change)'}</span></div>)}{!!syncRows.length && <div className="modal-actions"><button onClick={applySync}>Apply Drawing Counts to ScopeLogic</button></div>}</div>}
+        </div>}
+      </section>
     </div>
+
     {toolModal && <ToolModal projectId={props.projectId} systems={props.projectSystems} formulas={props.formulas} onClose={() => setToolModal(false)} onCreate={(tool) => { props.setTools([...props.tools, tool]); setSelectedToolId(tool.id); setMode('count'); setToolModal(false); props.message('Saved', `“${tool.name}” was added to the Drawing Take Off Tool Chest.`); }} />}
   </section>;
 }
 
 function ToolModal({ projectId, systems, formulas, onClose, onCreate }: { projectId: string; systems: string[]; formulas: TakeoffFormula[]; onClose: () => void; onCreate: (tool: DrawingTakeoffTool) => void }) {
-  const [value, setValue] = useState({ name: '', system: systems[0] || 'Structured Cabling', shape: 'square' as DrawingToolShape, color: COLORS[0], multiplier: 1, unit: 'qty', scope: 'project' as DrawingToolScope, formulaId: '' });
+  const [value, setValue] = useState({ name: '', system: systems[0] || 'Structured Cabling', shape: 'square' as DrawingToolShape, color: COLORS[0], scope: 'project' as DrawingToolScope, formulaId: '' });
   const systemOptions = [...new Set([...systems, ...formulas.map((formula) => formula.system)])].filter(Boolean).sort(alphaNumericCompare);
-  const eligibleRules = formulas.filter((formula) => formula.system === value.system).sort((a,b)=>alphaNumericCompare(a.name,b.name));
-  return <div className="quote-picker-backdrop"><section className="quote-picker-modal drawing-tool-modal"><div className="modal-head"><div><span>DRAWING TAKE OFF</span><h2>Create Saved Tool</h2></div><button className="modal-close" onClick={onClose}>×</button></div><div className="form-grid two">
-    <label>Tool Name<input value={value.name} onChange={(event) => setValue({ ...value, name: event.target.value })} placeholder="Example: Single Reader Door" /></label>
+  const eligibleRules = formulas.filter((formula) => formula.system === value.system).sort((a, b) => alphaNumericCompare(a.name, b.name));
+
+  return <div className="quote-picker-backdrop"><section className="quote-picker-modal drawing-tool-modal"><div className="modal-head"><div><span>DRAWING TAKE OFF</span><h2>Create Saved Count Tool</h2></div><button className="modal-close" onClick={onClose}>×</button></div><div className="form-grid two">
+    <label>Tool Name<input value={value.name} onChange={(event) => setValue({ ...value, name: event.target.value })} placeholder="Example: Dual Data" /></label>
     <label>System<select value={value.system} onChange={(event) => setValue({ ...value, system: event.target.value, formulaId: '' })}>{systemOptions.length ? systemOptions.map((system) => <option key={system}>{system}</option>) : <option>Structured Cabling</option>}</select></label>
     <label>Symbol Shape<select value={value.shape} onChange={(event) => setValue({ ...value, shape: event.target.value as DrawingToolShape })}>{SHAPES.map((shape) => <option key={shape}>{shape}</option>)}</select></label>
-    <label>Quantity Multiplier<input type="number" min="0" step="0.01" value={value.multiplier} onChange={(event) => setValue({ ...value, multiplier: Number(event.target.value) || 0 })} /></label>
-    <label>Result Unit<input value={value.unit} onChange={(event) => setValue({ ...value, unit: event.target.value })} placeholder="devices, cables, doors..." /></label>
     <label>Availability<select value={value.scope} onChange={(event) => setValue({ ...value, scope: event.target.value as DrawingToolScope })}><option value="global">Global — All Projects</option><option value="project">This Project Only</option></select></label>
-    <label className="span-two">Linked Take Off Rule<select value={value.formulaId} onChange={(event) => setValue({ ...value, formulaId: event.target.value })}><option value="">No rule link — summary only</option>{eligibleRules.map((formula) => <option key={formula.id} value={formula.id}>{formula.name}</option>)}</select><small>When linked, Sync Counts to Take Off updates this rule's drawing-sourced quantity.</small></label>
+    <label className="span-two">Linked Take Off Rule<select value={value.formulaId} onChange={(event) => setValue({ ...value, formulaId: event.target.value })}><option value="">No rule link — count summary only</option>{eligibleRules.map((formula) => <option key={formula.id} value={formula.id}>{formula.name}</option>)}</select><small>The drawing stores only the number of placed symbols. The linked ScopeLogic rule defines what one count includes.</small></label>
     <div className="span-two"><span className="field-label">Color</span><div className="drawing-color-row">{COLORS.map((color) => <button type="button" key={color} aria-label={`Use ${color}`} className={value.color === color ? 'selected' : ''} style={{ background: color }} onClick={() => setValue({ ...value, color })} />)}</div></div>
-  </div><div className="modal-actions"><button className="secondary" onClick={onClose}>Cancel</button><button disabled={!value.name.trim()} onClick={() => onCreate({ id: uid('tool'), name: value.name.trim(), system: value.system, shape: value.shape, color: value.color, multiplier: value.multiplier || 1, unit: value.unit.trim() || 'qty', scope: value.scope, projectId: value.scope === 'project' ? projectId : undefined, formulaId: value.formulaId || undefined })}>Create Tool</button></div></section></div>;
+  </div><div className="modal-actions"><button className="secondary" onClick={onClose}>Cancel</button><button disabled={!value.name.trim()} onClick={() => onCreate({ id: uid('tool'), name: value.name.trim(), system: value.system, shape: value.shape, color: value.color, scope: value.scope, projectId: value.scope === 'project' ? projectId : undefined, formulaId: value.formulaId || undefined })}>Create Tool</button></div></section></div>;
 }
-
