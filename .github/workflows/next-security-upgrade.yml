@@ -1,0 +1,50 @@
+name: Stage Next.js Security Upgrade
+
+on:
+  push:
+    branches:
+      - fix/next-16.3.6-security-20260925
+
+permissions:
+  contents: write
+
+jobs:
+  upgrade-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
+      NEXT_PUBLIC_SITE_URL: https://ci.scopelogic.invalid
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix/next-16.3.6-security-20260925
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Upgrade Next.js and refresh lockfile
+        run: npm install next@16.3.6 --save-exact
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev || true
+
+      - name: Build and type-check
+        run: npm run build -- --webpack
+
+      - name: Commit verified dependency update
+        run: |
+          if git diff --quiet -- package.json package-lock.json; then
+            echo "No dependency changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "Upgrade Next.js to 16.3.6 security patch"
+          git push origin HEAD:fix/next-16.3.6-security-20260925
