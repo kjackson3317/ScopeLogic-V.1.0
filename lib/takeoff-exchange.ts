@@ -21,6 +21,13 @@ export type TakeoffExchangeTool = {
   takeoffRuleId?: string;
 };
 
+/** Stable drawing identity lets the desktop app return marks to the correct ScopeLogic PDF. */
+export type TakeoffExchangeDocument = {
+  id: string;
+  fileName: string;
+  name?: string;
+};
+
 /** One physical count mark on one PDF sheet. One record always equals one count. */
 export type TakeoffExchangeMark = {
   id: string;
@@ -41,6 +48,7 @@ export type TakeoffExchangePackage = {
   version: typeof TAKEOFF_EXCHANGE_VERSION;
   projectId: string;
   generatedAt: string;
+  documents: TakeoffExchangeDocument[];
   tools: TakeoffExchangeTool[];
   marks: TakeoffExchangeMark[];
   counts: TakeoffExchangeCount[];
@@ -128,6 +136,7 @@ export function aggregateExchangeCounts(marks: TakeoffExchangeMark[]): TakeoffEx
 
 export function buildTakeoffExchangePackage(input: {
   projectId: string;
+  documents?: TakeoffExchangeDocument[];
   tools: InternalDrawingTool[];
   marks: InternalDrawingMark[];
   generatedAt?: string;
@@ -135,11 +144,15 @@ export function buildTakeoffExchangePackage(input: {
   const tools = input.tools.map(toExchangeTool);
   const validToolIds = new Set(tools.map((tool) => tool.id));
   const marks = input.marks.filter((mark) => validToolIds.has(mark.toolId)).map(toExchangeMark);
+  const documents = (input.documents || [])
+    .filter((doc) => doc.id && doc.fileName)
+    .map((doc) => ({ id: doc.id, fileName: doc.fileName, name: doc.name || undefined }));
   return {
     schema: TAKEOFF_EXCHANGE_SCHEMA,
     version: TAKEOFF_EXCHANGE_VERSION,
     projectId: input.projectId,
     generatedAt: input.generatedAt || new Date().toISOString(),
+    documents,
     tools,
     marks,
     counts: aggregateExchangeCounts(marks),
@@ -154,6 +167,16 @@ export function parseTakeoffExchangePackage(value: unknown): TakeoffExchangePack
 
   const projectId = cleanText(raw.projectId);
   if (!projectId) throw new Error('Takeoff exchange payload is missing projectId.');
+
+  const rawDocuments = Array.isArray(raw.documents) ? raw.documents : [];
+  const documents: TakeoffExchangeDocument[] = rawDocuments.map((item, index) => {
+    if (!item || typeof item !== 'object') throw new Error(`Invalid takeoff document at index ${index}.`);
+    const source = item as Record<string, unknown>;
+    const id = cleanText(source.id);
+    const fileName = cleanText(source.fileName);
+    if (!id || !fileName) throw new Error(`Takeoff document ${index + 1} is missing id or fileName.`);
+    return { id, fileName, name: cleanText(source.name) || undefined };
+  });
 
   const rawTools = Array.isArray(raw.tools) ? raw.tools : [];
   const tools: TakeoffExchangeTool[] = rawTools.map((item, index) => {
@@ -202,6 +225,7 @@ export function parseTakeoffExchangePackage(value: unknown): TakeoffExchangePack
     version: TAKEOFF_EXCHANGE_VERSION,
     projectId,
     generatedAt: cleanText(raw.generatedAt) || new Date().toISOString(),
+    documents,
     tools,
     marks,
     counts: aggregateExchangeCounts(marks),
