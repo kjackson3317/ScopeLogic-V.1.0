@@ -832,7 +832,13 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
 
   useEffect(() => {
     if (!hydrated) return;
-    localStorage.setItem('scopelogic-r14-8', JSON.stringify(cloudSnapshot));
+    try {
+      localStorage.setItem('scopelogic-r14-8', JSON.stringify(cloudSnapshot));
+    } catch (error) {
+      const mobile = window.matchMedia('(max-width: 1000px)').matches;
+      if (!mobile) throw error;
+      console.warn('ScopeLogic mobile browser cache skipped because local storage is unavailable or full.', error);
+    }
   }, [hydrated, cloudSnapshot]);
 
 
@@ -1482,12 +1488,13 @@ function InternalMatrix(props: any) {
       new CustomEvent('scopelogic:slr-context-changed', {
         detail: {
           slrId: draft?.id || '',
+          slrUid: draft?.uid || '',
           legacyProjectId: props.projectId || '',
           masterProjectId: props.masterProjectId || '',
         },
       }),
     );
-  }, [draft?.id, props.projectId, props.masterProjectId]);
+  }, [draft?.id, draft?.uid, props.projectId, props.masterProjectId]);
   const patch = (key: keyof Issue, value: unknown) => props.setDraft((current: Issue | null) => current ? { ...current, [key]: value } : current);
   const chosenTemplate: Template | undefined = props.templates.find((template: Template) => template.uid === selectedTemplate);
 
@@ -1528,6 +1535,7 @@ function InternalMatrix(props: any) {
       data-project-id={props.projectId || ''}
       data-master-project-id={props.masterProjectId || ''}
       data-slr-id={draft?.id || ''}
+      data-slr-uid={draft?.uid || ''}
     >
       {!draft ? <div className="empty-state large"><b>Select a submitted SLR below or create a new issue.</b><p>Only submitted entries feed deliverables and PDFs.</p></div> : <>
         <div className="draft-banner"><b>{props.selectedUid ? 'Editing submitted entry' : 'Unsubmitted draft'}</b><span>{draft.id} remains provisional until Submit Entry is selected.</span></div>
@@ -1822,7 +1830,7 @@ function MultiSelectField({ label, values, options, onChange, emptyLabel = 'Sele
   const [open, setOpen] = useState(false);
   const sortedOptions = alphaSorted(options);
   const toggle = (option: string) => onChange(values.includes(option) ? values.filter((value) => value !== option) : alphaSorted([...values, option]));
-  return <label className="field multiselect-field"><span>{label}</span><button type="button" className="multiselect-trigger" onClick={() => setOpen(!open)}>{values.length ? alphaSorted(values).join(', ') : emptyLabel}<b>{open ? 'Close' : 'Open'}</b></button>{open && <div className="multiselect-menu">{sortedOptions.map((option) => <label key={option}><input type="checkbox" checked={values.includes(option)} onChange={() => toggle(option)} /><span>{option}</span></label>)}<button type="button" className="secondary" onClick={() => setOpen(false)}>Done</button></div>}</label>;
+  return <div className="field multiselect-field"><span>{label}</span><button type="button" className="multiselect-trigger" onClick={() => setOpen(!open)}>{values.length ? alphaSorted(values).join(', ') : emptyLabel}<b>{open ? 'Close' : 'Open'}</b></button>{open && <div className="multiselect-menu">{sortedOptions.map((option) => <label key={option}><input type="checkbox" checked={values.includes(option)} onChange={() => toggle(option)} /><span>{option}</span></label>)}<button type="button" className="secondary" onClick={() => setOpen(false)}>Done</button></div>}</div>;
 }
 
 function AppDialog({ dialog, close }: { dialog: DialogState; close: () => void }) {

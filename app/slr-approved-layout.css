@@ -165,6 +165,28 @@ body .matrix-editor-full .slr-source-fields
   justify-content:space-between!important;
   gap:8px!important;
 }
+
+/* Source Type dropdown must anchor to its own field on desktop. */
+body .matrix-editor-full .slr-source-fields .multiselect-field{
+  position:relative!important;
+  overflow:visible!important;
+  z-index:40!important;
+}
+body .matrix-editor-full .slr-source-fields .multiselect-menu{
+  position:absolute!important;
+  left:0!important;
+  right:0!important;
+  top:calc(100% + 5px)!important;
+  bottom:auto!important;
+  width:100%!important;
+  max-height:330px!important;
+  overflow-y:auto!important;
+  z-index:220!important;
+}
+body .matrix-editor-full .slr-source-section,
+body .matrix-editor-full .slr-source-fields{
+  overflow:visible!important;
+}
 body .matrix-editor-full .reference-help{
   margin:0 4px 9px!important;
   padding:5px 8px!important;

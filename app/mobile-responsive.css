@@ -552,3 +552,24 @@
     gap: 3px;
   }
 }
+
+
+/* Mobile SLR dropdowns open directly below their field. */
+@media (max-width: 1000px) {
+  body .matrix-editor-full .slr-source-fields .multiselect-field {
+    position: relative !important;
+    overflow: visible !important;
+  }
+
+  body .matrix-editor-full .slr-source-fields .multiselect-menu {
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-top: 6px !important;
+    max-height: 330px;
+    overflow-y: auto;
+    z-index: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+}

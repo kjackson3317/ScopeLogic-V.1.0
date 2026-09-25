@@ -20,6 +20,7 @@ function currentEditorContext(){
     legacyProjectId: clean(matrix?.dataset.projectId),
     masterProjectId: clean(matrix?.dataset.masterProjectId),
     slrId: clean(matrix?.dataset.slrId),
+    slrUid: clean(matrix?.dataset.slrUid),
   };
 }
 
@@ -181,6 +182,7 @@ export default function SlrDeliverablesEditorV2(){
   const supabase=useMemo(()=>createClient() as any,[]);
   const [host,setHost]=useState<HTMLElement|null>(null);
   const [slrId,setSlrId]=useState('');
+  const [slrUid,setSlrUid]=useState('');
   const [projectId,setProjectId]=useState('');
   const [masterId,setMasterId]=useState('');
   const [finding,setFinding]=useState<Finding|null>(null);
@@ -192,13 +194,15 @@ export default function SlrDeliverablesEditorV2(){
   const [veOpen,setVeOpen]=useState(true);
   const loadRequestRef=useRef(0);
 
-  const load=useCallback(async(nextSlr?:string)=>{
+  const load=useCallback(async(nextSlr?:string,nextSlrUid?:string)=>{
     const requestId=++loadRequestRef.current;
     const target=clean(nextSlr||currentSlrId());
+    const targetUid=clean(nextSlrUid||currentEditorContext().slrUid);
 
     if(!target){
       if(requestId===loadRequestRef.current){
         setSlrId('');
+        setSlrUid('');
         setFinding(null);
         setActions([]);
         setDraftActions([]);
@@ -228,12 +232,16 @@ export default function SlrDeliverablesEditorV2(){
         );
       }
 
-      const findingResult=await supabase
+      let findingQuery=supabase
         .from('master_project_findings')
         .select('id,display_number,scope_item,systems,status')
-        .eq('master_project_id',context.masterProjectId)
-        .eq('display_number',target)
-        .maybeSingle();
+        .eq('master_project_id',context.masterProjectId);
+
+      findingQuery=targetUid
+        ? findingQuery.eq('legacy_uid',targetUid)
+        : findingQuery.eq('display_number',target);
+
+      const findingResult=await findingQuery.maybeSingle();
 
       if(findingResult.error){
         throw new Error(findingResult.error.message);
@@ -263,7 +271,10 @@ export default function SlrDeliverablesEditorV2(){
           .from('slr_draft_deliverable_items')
           .select('*')
           .eq('project_id',context.projectId)
-          .eq('slr_legacy_uid',`display:${target}`)
+          .in(
+            'slr_legacy_uid',
+            targetUid ? [targetUid,`display:${target}`] : [`display:${target}`]
+          )
           .order('sort_order')
           .order('created_at');
 
@@ -280,6 +291,7 @@ export default function SlrDeliverablesEditorV2(){
       setProjectId(context.projectId);
       setMasterId(context.masterProjectId);
       setSlrId(target);
+      setSlrUid(targetUid);
       setFinding(nextFinding);
       setActions(nextActions);
       setDraftActions(nextDraftActions);
@@ -306,13 +318,15 @@ export default function SlrDeliverablesEditorV2(){
     let bodyObserver:MutationObserver|null=null;
     let matrixObserver:MutationObserver|null=null;
     let observedMatrix:HTMLElement|null=null;
-    let activeSlr='';
+    let activeIdentity='';
 
-    const switchSlr=(id:string)=>{
+    const switchSlr=(id:string,uid='')=>{
       const next=clean(id);
+      const nextUid=clean(uid);
+      const identity=`${nextUid}::${next}`;
 
-      if(next===activeSlr)return;
-      activeSlr=next;
+      if(identity===activeIdentity)return;
+      activeIdentity=identity;
 
       // Invalidate the previous SLR request immediately.
       loadRequestRef.current+=1;
@@ -326,13 +340,14 @@ export default function SlrDeliverablesEditorV2(){
       setClOpen(true);
       setVeOpen(true);
       setSlrId(next);
+      setSlrUid(nextUid);
 
-      if(next)void load(next);
+      if(next)void load(next,nextUid);
     };
 
     const readContext=()=>{
       const context=currentEditorContext();
-      switchSlr(context.slrId||currentSlrId());
+      switchSlr(context.slrId||currentSlrId(),context.slrUid);
     };
 
     const bindMatrix=()=>{
@@ -365,6 +380,7 @@ export default function SlrDeliverablesEditorV2(){
         attributes:true,
         attributeFilter:[
           'data-slr-id',
+          'data-slr-uid',
           'data-project-id',
           'data-master-project-id'
         ]
@@ -387,8 +403,9 @@ export default function SlrDeliverablesEditorV2(){
     bindMatrix();
 
     const reloadCurrent=()=>{
-      const id=clean(currentEditorContext().slrId||currentSlrId());
-      if(id)void load(id);
+      const context=currentEditorContext();
+      const id=clean(context.slrId||currentSlrId());
+      if(id)void load(id,context.slrUid);
     };
 
     window.addEventListener(
@@ -425,16 +442,16 @@ export default function SlrDeliverablesEditorV2(){
       if(finding){
         const result=await supabase.from('master_project_deliverable_items').insert({owner_id:ownerId,master_project_id:masterId,created_by_user_id:actualId,related_master_finding_id:finding.id,deliverable_type:newDraft.type,sequence_number:0,display_number:'',system_name:newDraft.system_name,title:newDraft.title.trim(),content:newDraft.content.trim(),impact_considerations:newDraft.impact_considerations.trim(),reference:newDraft.reference.trim(),status:newDraft.status,response:newDraft.response.trim(),response_date:null,response_source:newDraft.response_source.trim(),client_facing:true,sort_order:0,source_child_uid:'',source_origin:'slr:manual'}).select('id,display_number').single();
         if(result.error)throw new Error(result.error.message);
-        if(newDraft.type==='CL')clearClarificationSuppressionForMasterSlr(masterId,slrId);
+        if(newDraft.type==='CL')clearClarificationSuppressionForMasterSlr(masterId,slrUid||slrId);
         setMessage(`${result.data.display_number} saved to ${slrId}.`);
       }else{
         const sort=Math.max(0,...draftActions.map((item)=>Number(item.sort_order)||0))+1;
-        const result=await supabase.from('slr_draft_deliverable_items').insert({owner_id:ownerId,created_by_user_id:actualId,project_id:projectId,slr_legacy_uid:`display:${slrId}`,draft_uid:crypto.randomUUID(),deliverable_type:newDraft.type,system_name:newDraft.system_name,title:newDraft.title.trim(),content:newDraft.content.trim(),impact_considerations:newDraft.impact_considerations.trim(),reference:newDraft.reference.trim(),status:newDraft.status,response:newDraft.response.trim(),response_source:newDraft.response_source.trim(),sort_order:sort}).select('id').single();
+        const result=await supabase.from('slr_draft_deliverable_items').insert({owner_id:ownerId,created_by_user_id:actualId,project_id:projectId,slr_legacy_uid:slrUid||`display:${slrId}`,draft_uid:crypto.randomUUID(),deliverable_type:newDraft.type,system_name:newDraft.system_name,title:newDraft.title.trim(),content:newDraft.content.trim(),impact_considerations:newDraft.impact_considerations.trim(),reference:newDraft.reference.trim(),status:newDraft.status,response:newDraft.response.trim(),response_source:newDraft.response_source.trim(),sort_order:sort}).select('id').single();
         if(result.error)throw new Error(result.error.message);
         setMessage(`${newDraft.type==='CL'?'GC Clarification':'VE Opportunity'} saved with this unsubmitted SLR.`);
       }
       if(newDraft.type==='CL')setClOpen(true);else setVeOpen(true);
-      setNewDraft(null);await load(slrId);
+      setNewDraft(null);await load(slrId,slrUid);
     }catch(cause){setMessage(`${newDraft.type==='CL'?'GC Clarification':'VE Opportunity'} save failed: ${cause instanceof Error?cause.message:'Unknown cloud error.'}`);}
   };
 
@@ -448,7 +465,7 @@ export default function SlrDeliverablesEditorV2(){
     ? actions.filter((item)=>item.deliverable_type==='VE')
     : draftActions.filter((item)=>item.deliverable_type==='VE');
 
-  const changed=()=>void load(slrId);
+  const changed=()=>void load(slrId,slrUid);
 
   const renderNewForm=(type:Type)=>{
     if(!newDraft || newDraft.type!==type) return null;
@@ -618,7 +635,7 @@ export default function SlrDeliverablesEditorV2(){
                     key={item.id}
                     item={item as Action}
                     masterId={masterId}
-                    slrId={slrId}
+                    slrId={slrUid||slrId}
                     onChanged={changed}
                     onMessage={setMessage}
                   />
