@@ -4,12 +4,9 @@ import { useEffect, useMemo, useRef } from 'react';
 import { createClient } from '../lib/supabase/client';
 
 type Master = { id: string; project_number: string; name: string };
-type Finding = { id: string; display_number: string; scope_item: string; status: string };
 type ReviewNote = { id: string; system_name: string; topic: string; source_type: string; source_reference: string; observation: string };
-type CloudDraft = { id: string; project_id: string; legacy_uid: string; display_number: string; saved_at: string; draft_data: { issue?: { uid?: string; id?: string; title?: string; status?: string } } };
 
 const LOCAL_WORKSPACE_KEYS = ['scopelogic-r14-8', 'technology-precon-r14-8', 'technology-precon-r14-7', 'technology-precon-r14-6', 'technology-precon-r14-5', 'technology-precon-r14-4', 'technology-precon-r14-3', 'technology-precon-r14-2'];
-const PENDING_DRAFT_KEY = 'scopelogic:open-cloud-slr-draft';
 const clean = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim();
 const toast = (message: string, kind: 'success' | 'error' | 'info' = 'success') => window.dispatchEvent(new CustomEvent('scopelogic:toast', { detail: { message, kind } }));
 
@@ -72,26 +69,21 @@ function noteSignature(note: Pick<ReviewNote, 'system_name' | 'topic' | 'source_
 export default function ProjectWorkflowEnhancer() {
   const supabase = useMemo(() => createClient() as any, []);
   const masterRef = useRef<Master | null>(null);
-  const findingsRef = useRef<Finding[]>([]);
-  const draftsRef = useRef<CloudDraft[]>([]);
+  const masterContextRef = useRef('');
   const noteMapRef = useRef(new Map<string, string[]>());
-  const lastLoadRef = useRef(0);
   const loadingRef = useRef(false);
-  const submittedSignatureRef = useRef('');
 
   useEffect(() => {
-    // Remove legacy Project SLR browser injected by older builds / Fast Refresh.
-    document
-      .querySelectorAll('.sl-project-slr-browser')
-      .forEach((element) => element.remove());
-
     const resolveMaster = async (force = false) => {
+      const legacyId = currentLegacyProjectId();
+      const pathId = window.location.pathname.match(/^\/master-projects\/([^/]+)/)?.[1] || '';
+      const contextKey = legacyId || pathId;
+
       if (loadingRef.current) return masterRef.current;
-      const now = Date.now();
-      if (!force && masterRef.current && now - lastLoadRef.current < 5000) return masterRef.current;
+      if (!force && masterRef.current && contextKey === masterContextRef.current) return masterRef.current;
+
       loadingRef.current = true;
       try {
-        const legacyId = currentLegacyProjectId();
         let masterId = '';
         if (legacyId) {
           const byLegacy = await supabase.from('projects').select('master_project_id').eq('legacy_id', legacyId).maybeSingle();
@@ -101,35 +93,23 @@ export default function ProjectWorkflowEnhancer() {
             if (!byId.error) masterId = clean(byId.data?.master_project_id);
           }
         }
-        if (!masterId) {
-          const pathId = window.location.pathname.match(/^\/master-projects\/([^/]+)/)?.[1] || '';
-          if (pathId) masterId = pathId;
-        }
+        if (!masterId && pathId) masterId = pathId;
         if (!masterId) return masterRef.current;
 
-        const [masterResult, findingsResult, notesResult, engagementsResult] = await Promise.all([
+        const [masterResult, notesResult] = await Promise.all([
           supabase.from('master_projects').select('id,project_number,name').eq('id', masterId).maybeSingle(),
-          supabase.from('master_project_findings').select('id,display_number,scope_item,status').eq('master_project_id', masterId).order('sequence_number'),
           supabase.from('master_project_review_notes').select('id,system_name,topic,source_type,source_reference,observation').eq('master_project_id', masterId),
-          supabase.from('projects').select('id').eq('master_project_id', masterId),
         ]);
         if (masterResult.error || !masterResult.data) return masterRef.current;
-        const engagementIds = (engagementsResult.data || []).map((row: any) => clean(row.id)).filter(Boolean);
-        let draftRows: CloudDraft[] = [];
-        if (engagementIds.length) {
-          const draftResult = await supabase.from('slr_drafts').select('id,project_id,legacy_uid,display_number,saved_at,draft_data').in('project_id', engagementIds).order('saved_at', { ascending: false });
-          if (!draftResult.error) draftRows = (draftResult.data || []) as CloudDraft[];
-        }
+
         masterRef.current = masterResult.data as Master;
-        findingsRef.current = (findingsResult.data || []) as Finding[];
-        draftsRef.current = draftRows;
+        masterContextRef.current = contextKey;
         const nextMap = new Map<string, string[]>();
         ((notesResult.data || []) as ReviewNote[]).forEach((note) => {
           const key = noteSignature(note);
           nextMap.set(key, [...(nextMap.get(key) || []), note.id]);
         });
         noteMapRef.current = nextMap;
-        lastLoadRef.current = now;
         return masterRef.current;
       } finally {
         loadingRef.current = false;
@@ -144,28 +124,6 @@ export default function ProjectWorkflowEnhancer() {
       const expected = `${master.project_number} · ${master.name}`;
       if (label.textContent !== expected) label.textContent = expected;
       label.dataset.slFullProjectLabel = 'true';
-    };
-
-    const openSlr = (number: string, notify = true) => {
-      const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.submitted-slr-list > button'));
-      const target = buttons.find((button) => clean(button.querySelector('b')?.textContent) === number);
-      if (!target) {
-        if (notify) toast(`${number} is not visible in the current Internal Matrix filters. Clear the filters and try again.`, 'error');
-        return false;
-      }
-      target.click();
-      return true;
-    };
-
-    const openCloudDraft = (draft: CloudDraft) => {
-      window.localStorage.setItem(PENDING_DRAFT_KEY, draft.legacy_uid);
-      const newIssueButton = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find((button) => clean(button.textContent) === '+ New Issue');
-      if (!newIssueButton) {
-        toast('Open saved draft failed: the Internal Matrix new-issue control is not available.', 'error');
-        return false;
-      }
-      newIssueButton.click();
-      return true;
     };
 
     const articleSignature = (article: HTMLElement) => {
@@ -218,58 +176,41 @@ export default function ProjectWorkflowEnhancer() {
     const clickCapture = (event: MouseEvent) => {
       const target = event.target instanceof Element ? event.target : null;
       const deleteButton = target?.closest<HTMLButtonElement>('.sl-review-note-delete');
-      if (deleteButton) {
-        event.preventDefault();
-        event.stopPropagation();
-        const noteId = deleteButton.dataset.noteId || '';
-        if (!noteId) return;
-        deleteButton.disabled = true;
-        void confirmInApp('Delete Review Note?', 'This removes the Review Note only. A linked SLR will not be deleted.', 'Delete Review Note').then(async (confirmed) => {
-          if (!confirmed) {
-            deleteButton.disabled = false;
-            return;
-          }
-          const result = await supabase.from('master_project_review_notes').delete().eq('id', noteId);
-          if (result.error) {
-            deleteButton.disabled = false;
-            toast(`Review note delete failed: ${result.error.message}`, 'error');
-            return;
-          }
-          toast('Review note deleted.', 'success');
-          lastLoadRef.current = 0;
-          await apply(true);
-          window.dispatchEvent(new Event('focus'));
-        });
-      }
+      if (!deleteButton) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      const noteId = deleteButton.dataset.noteId || '';
+      if (!noteId) return;
+      deleteButton.disabled = true;
+      void confirmInApp('Delete Review Note?', 'This removes the Review Note only. A linked SLR will not be deleted.', 'Delete Review Note').then(async (confirmed) => {
+        if (!confirmed) {
+          deleteButton.disabled = false;
+          return;
+        }
+        const result = await supabase.from('master_project_review_notes').delete().eq('id', noteId);
+        if (result.error) {
+          deleteButton.disabled = false;
+          toast(`Review note delete failed: ${result.error.message}`, 'error');
+          return;
+        }
+        toast('Review note deleted.', 'success');
+        window.dispatchEvent(new Event('focus'));
+      });
     };
 
-    const forceRefresh = () => { lastLoadRef.current = 0; schedule(true); };
-    const mutationRefresh = () => {
-      const signature = Array.from(document.querySelectorAll<HTMLButtonElement>('.submitted-slr-list > button')).map((button) => clean(button.querySelector('b')?.textContent)).join('|');
-      if (signature !== submittedSignatureRef.current) {
-        submittedSignatureRef.current = signature;
-        forceRefresh();
-      } else {
-        schedule(false);
-      }
-    };
+    const forceRefresh = () => schedule(true);
 
     schedule(true);
-    const observer = new MutationObserver(mutationRefresh);
+    const observer = new MutationObserver(() => schedule(false));
     observer.observe(document.body, { childList: true, subtree: true });
-    const focus = () => forceRefresh();
-    window.addEventListener('focus', focus);
-    window.addEventListener('scopelogic:slr-changed', forceRefresh as EventListener);
-    window.addEventListener('scopelogic:slr-draft-saved', forceRefresh as EventListener);
+    window.addEventListener('focus', forceRefresh);
     document.addEventListener('click', clickCapture, true);
 
     return () => {
       observer.disconnect();
-      window.removeEventListener('focus', focus);
-      window.removeEventListener('scopelogic:slr-changed', forceRefresh as EventListener);
-      window.removeEventListener('scopelogic:slr-draft-saved', forceRefresh as EventListener);
+      window.removeEventListener('focus', forceRefresh);
       document.removeEventListener('click', clickCapture, true);
-      document.querySelector('.sl-project-slr-browser')?.remove();
     };
   }, [supabase]);
 
