@@ -1,0 +1,554 @@
+/*
+ * ScopeLogic mobile-only responsive layer.
+ * This file is imported last and intentionally contains no desktop rules.
+ * Desktop behavior and layout remain unchanged above 1000px.
+ */
+
+@media (max-width: 1000px) {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  html,
+  body,
+  .app-shell,
+  .main,
+  .page {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  body {
+    overflow-x: hidden;
+  }
+
+  .app-shell {
+    display: block;
+    min-height: 100dvh;
+  }
+
+  .main,
+  .app-shell.sidebar-collapsed .main {
+    margin-left: 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .sidebar,
+  .app-shell.sidebar-collapsed .sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    width: min(88vw, 330px) !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    transform: translateX(-105%) !important;
+    z-index: 90 !important;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+
+  .sidebar.show,
+  .app-shell.sidebar-collapsed .sidebar.show {
+    transform: translateX(0) !important;
+  }
+
+  .sidebar-backdrop {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 85 !important;
+    width: 100vw;
+    height: 100dvh;
+    touch-action: manipulation;
+  }
+
+  .sidebar-mobile-head {
+    padding-top: max(11px, env(safe-area-inset-top));
+  }
+
+  .topbar {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+  }
+
+  .topbar-project,
+  .topbar-project > *,
+  .top-actions,
+  .mobile-actions-wrap {
+    min-width: 0;
+  }
+
+  .topbar-project b,
+  .topbar-project span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .topbar-project select {
+    max-width: 100% !important;
+    min-width: 0;
+  }
+
+  .mobile-menu,
+  .sidebar-close,
+  .mobile-actions-button,
+  button,
+  .primary,
+  .secondary,
+  .link-button {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    max-width: 100%;
+  }
+
+  .page,
+  .panel,
+  .form-card,
+  .issue-editor,
+  .matrix-editor-full,
+  .tab-panel,
+  .documents-layout,
+  .doc-detail,
+  .project-card,
+  .review-workspace,
+  .review-notes-workspace,
+  .quote-workspace,
+  .quote-panel,
+  .contract-section {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .matrix-export,
+  .table-wrap,
+  .file-table,
+  .standards-table,
+  .quote-table-wrap,
+  .library-calendar,
+  .review-table-wrap,
+  .release-table-wrap {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal,
+  .dialog-backdrop {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  .modal-card,
+  .app-dialog,
+  .release-dialog,
+  .bom-pdf-selector {
+    width: min(100%, 100vw - 24px);
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+}
+
+@media (max-width: 700px) {
+  /* Prevent iOS Safari from zooming the page when editing fields. */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  .page {
+    padding: 12px;
+  }
+
+  .topbar {
+    min-height: 64px;
+    height: auto;
+    grid-template-columns: auto minmax(0, 1fr) auto !important;
+    grid-auto-rows: auto;
+    gap: 6px 8px;
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-bottom: 8px;
+  }
+
+  .mobile-menu {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
+  }
+
+  .topbar-project {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center !important;
+    overflow: hidden;
+  }
+
+  .topbar-project + .topbar-project {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    width: 100%;
+  }
+
+  .topbar-project + .topbar-project select {
+    width: 100%;
+    max-width: none !important;
+    min-height: 44px;
+  }
+
+  .mobile-actions-wrap {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: center;
+  }
+
+  .topbar-sync {
+    grid-column: 1 / -1 !important;
+    grid-row: auto !important;
+    justify-self: stretch !important;
+    max-width: 100% !important;
+    width: 100%;
+    text-align: center;
+  }
+
+  .mobile-actions-menu {
+    position: fixed;
+    top: auto;
+    right: max(12px, env(safe-area-inset-right));
+    left: max(12px, env(safe-area-inset-left));
+    bottom: max(12px, env(safe-area-inset-bottom));
+    width: auto;
+    max-height: min(70dvh, 520px);
+    overflow-y: auto;
+    z-index: 110;
+  }
+
+  .page-head {
+    display: block;
+  }
+
+  .page-head h1 {
+    font-size: 23px;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+  }
+
+  .page-head p,
+  .project-card p,
+  .panel p,
+  .form-card p {
+    overflow-wrap: anywhere;
+  }
+
+  .page-head .button-row,
+  .form-actions,
+  .document-upload-controls,
+  .contract-save-footer,
+  .release-actions,
+  .dashboard-actions {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .page-head .button-row > *,
+  .form-actions > *,
+  .document-upload-controls > *,
+  .contract-save-footer > *,
+  .release-actions > *,
+  .dashboard-actions > * {
+    width: 100%;
+  }
+
+  .project-grid,
+  .metrics,
+  .dashboard-grid,
+  .form-card,
+  .editor-grid,
+  .tab-panel.two,
+  .tab-panel.checklist,
+  .system-chip-grid,
+  .system-selector-grid,
+  .matrix-reference-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .project-card,
+  .panel,
+  .form-card {
+    padding: 15px;
+  }
+
+  .project-card dl div {
+    grid-template-columns: 82px minmax(0, 1fr);
+  }
+
+  .matrix-toolbar {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    width: 100%;
+  }
+
+  .matrix-toolbar > * {
+    grid-column: 1 !important;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .matrix-toolbar span {
+    text-align: left;
+  }
+
+  .bluebeam-layout {
+    display: block !important;
+    width: 100%;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  .issue-list {
+    width: 100%;
+    max-height: 34dvh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--line);
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .issue-editor {
+    width: 100%;
+    padding: 12px !important;
+    overflow: visible !important;
+  }
+
+  .issue-title {
+    display: flex !important;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .issue-title > div,
+  .issue-title select {
+    width: 100% !important;
+    min-width: 0;
+  }
+
+  .issue-title input {
+    font-size: 20px !important;
+  }
+
+  /* Latest approved SLR layout: phone-specific stacking only. */
+  body .matrix-editor-full {
+    padding: 8px !important;
+  }
+
+  body .matrix-editor-full .issue-title {
+    padding-left: 9px !important;
+    padding-right: 9px !important;
+  }
+
+  body .matrix-editor-full .slr-source-fields {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  body .matrix-editor-full .slr-source-fields > *,
+  body .matrix-editor-full .matrix-writing-grid > *,
+  body .matrix-editor-full .recommendation-sections,
+  body .matrix-editor-full .sl-slr-deliverable-card {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  body .matrix-editor-full .recommendation-heading {
+    align-items: flex-start !important;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  body .matrix-editor-full .sl-approved-deliverable-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  body .matrix-editor-full .sl-approved-deliverable-header > div:last-child {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  body .matrix-editor-full .sl-approved-deliverable-header button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  body .matrix-editor-full .sl-slr-deliverable-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  body .matrix-editor-full .sl-slr-deliverable-grid label.wide {
+    grid-column: 1 !important;
+  }
+
+  body .matrix-editor-full .sl-slr-deliverable-card-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  body .matrix-editor-full .sl-slr-deliverable-card-head select {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  body .matrix-editor-full .sl-slr-deliverable-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+    padding: 0 8px 8px;
+  }
+
+  body .matrix-editor-full .sl-slr-deliverable-actions button {
+    width: 100%;
+  }
+
+  body .matrix-editor-full .submit-bar.sl-approved-action-bar {
+    position: static !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    width: 100%;
+    margin: 9px 0 0 !important;
+    padding: 9px !important;
+  }
+
+  body .matrix-editor-full .submit-bar .sl-approved-save,
+  body .matrix-editor-full .submit-bar .sl-approved-submit,
+  body .matrix-editor-full .submit-bar .sl-approved-template {
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+  }
+
+  .detail-tabs {
+    width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .detail-tabs button {
+    min-width: max-content;
+    min-height: 44px;
+  }
+
+  .submitted-slr-list,
+  .submitted-slr-list > button,
+  .submitted-slr-list > button > span {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .submitted-slr-list > button > span {
+    overflow-wrap: anywhere;
+  }
+
+  .documents-layout,
+  .explorer-shell {
+    display: block !important;
+    min-height: 0 !important;
+  }
+
+  .doc-list {
+    width: 100%;
+    max-height: 32dvh;
+    overflow-y: auto;
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--line);
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .doc-detail,
+  .file-properties {
+    padding: 14px !important;
+  }
+
+  .modal-card,
+  .app-dialog,
+  .release-dialog {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+    max-height: calc(100dvh - 16px) !important;
+  }
+
+  .modal-card {
+    height: calc(100dvh - 16px) !important;
+  }
+
+  .modal-card iframe {
+    height: calc(100dvh - 70px) !important;
+  }
+
+  .dialog-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    width: 100%;
+  }
+
+  .dialog-actions button {
+    width: 100%;
+  }
+
+  .calendar-grid,
+  .calendar-weekdays,
+  .matrix-table,
+  .file-row,
+  .quote-items-table,
+  .purchasing-table {
+    min-width: 720px;
+  }
+}
+
+@media (max-width: 430px) {
+  .page {
+    padding: 9px;
+  }
+
+  .topbar {
+    padding-left: max(9px, env(safe-area-inset-left));
+    padding-right: max(9px, env(safe-area-inset-right));
+  }
+
+  .mobile-menu,
+  .mobile-actions-button {
+    padding-left: 9px;
+    padding-right: 9px;
+    font-size: 11px;
+  }
+
+  body .matrix-editor-full .sl-approved-deliverable-header > div:last-child {
+    grid-template-columns: 1fr;
+  }
+
+  .project-card dl div {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+}
