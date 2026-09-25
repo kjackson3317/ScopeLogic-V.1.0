@@ -11,7 +11,6 @@ import './workstation-uniformity-v3.css';
 import './workstation-uniformity-v4.css';
 import './workstation-uniformity-v5.css';
 import './sidebar-folder-controls.css';
-import './slr-review-update.css';
 import './scopelogic-action-toast.css';
 import './quote-modern-ui.css';
 import './quote-modern-ui-fix.css';
