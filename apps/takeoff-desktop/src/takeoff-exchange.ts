@@ -15,6 +15,12 @@ export type TakeoffTool = {
   takeoffRuleId?: string;
 };
 
+export type TakeoffDocument = {
+  id: string;
+  fileName: string;
+  name?: string;
+};
+
 export type TakeoffMark = {
   id: string;
   documentId: string;
@@ -31,6 +37,7 @@ export type TakeoffPackage = {
   version: typeof TAKEOFF_EXCHANGE_VERSION;
   projectId: string;
   generatedAt: string;
+  documents: TakeoffDocument[];
   tools: TakeoffTool[];
   marks: TakeoffMark[];
   counts: TakeoffCount[];
@@ -47,7 +54,7 @@ export function aggregateCounts(marks: TakeoffMark[]): TakeoffCount[] {
     .sort((a, b) => a.toolId.localeCompare(b.toolId, undefined, { numeric: true, sensitivity: 'base' }));
 }
 
-export function buildPackage(projectId: string, tools: TakeoffTool[], marks: TakeoffMark[]): TakeoffPackage {
+export function buildPackage(projectId: string, documents: TakeoffDocument[], tools: TakeoffTool[], marks: TakeoffMark[]): TakeoffPackage {
   const validToolIds = new Set(tools.map((tool) => tool.id));
   const validMarks = marks.filter((mark) => validToolIds.has(mark.toolId));
   return {
@@ -55,6 +62,7 @@ export function buildPackage(projectId: string, tools: TakeoffTool[], marks: Tak
     version: TAKEOFF_EXCHANGE_VERSION,
     projectId: projectId.trim() || 'local-project',
     generatedAt: new Date().toISOString(),
+    documents: documents.filter((doc) => doc.id && doc.fileName),
     tools,
     marks: validMarks,
     counts: aggregateCounts(validMarks),
@@ -69,6 +77,15 @@ export function parsePackage(value: unknown): TakeoffPackage {
 
   const projectId = clean(raw.projectId);
   if (!projectId) throw new Error('Takeoff package is missing projectId.');
+
+  const documents: TakeoffDocument[] = (Array.isArray(raw.documents) ? raw.documents : []).map((item, index) => {
+    if (!item || typeof item !== 'object') throw new Error(`Invalid drawing at row ${index + 1}.`);
+    const source = item as Record<string, unknown>;
+    const id = clean(source.id);
+    const fileName = clean(source.fileName);
+    if (!id || !fileName) throw new Error(`Drawing ${index + 1} is missing id or fileName.`);
+    return { id, fileName, name: clean(source.name) || undefined };
+  });
 
   const tools: TakeoffTool[] = (Array.isArray(raw.tools) ? raw.tools : []).map((item, index) => {
     if (!item || typeof item !== 'object') throw new Error(`Invalid tool at row ${index + 1}.`);
@@ -113,6 +130,7 @@ export function parsePackage(value: unknown): TakeoffPackage {
     version: TAKEOFF_EXCHANGE_VERSION,
     projectId,
     generatedAt: clean(raw.generatedAt) || new Date().toISOString(),
+    documents,
     tools,
     marks,
     counts: aggregateCounts(marks),
