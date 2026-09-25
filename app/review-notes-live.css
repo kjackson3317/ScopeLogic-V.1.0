@@ -38,6 +38,8 @@
 .sl-review-note-actions{display:flex!important;gap:5px;align-items:center}
 .sl-review-note-actions button{min-height:25px;padding:3px 7px;border:1px solid #aeb9a6;border-radius:5px;background:#fff;color:#35452d;font-size:8px;font-weight:700;cursor:pointer}
 .sl-review-note-actions button:disabled{opacity:.55;cursor:default}
+.sl-review-note-actions .sl-review-note-delete{color:#8a3028!important;border-color:#d4aaa4!important}
+.sl-review-note-actions .sl-review-note-delete:hover{background:#fff0ed!important}
 .sl-review-recommended{display:grid;gap:3px;margin:7px 0;padding:7px 8px;border-left:3px solid #71864d;background:#f0f4eb}
 .sl-review-recommended b{font-size:8px;text-transform:uppercase;letter-spacing:.04em;color:#52633e}
 .sl-review-recommended span{font-size:10px;line-height:1.4;color:#303a2b}
