@@ -19,6 +19,7 @@ import './review-release-controller.css';
 import './deliverables-preview-v2.css';
 import './slr-approved-layout.css';
 import './mobile-responsive.css';
+import './drawing-takeoff-v1.css';
 import type { Metadata, Viewport } from 'next';
 import WorkspaceSidebarLinksV2 from './workspace-sidebar-links-v2';
 import DismissibleUiBehavior from './dismissible-ui-behavior';
