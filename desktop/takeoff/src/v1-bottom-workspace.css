@@ -1,0 +1,108 @@
+/*
+ * V1 workstation bridge.
+ *
+ * Move the existing Phase 1 Takeoff / Annotation / Sync panes into a true
+ * bottom dock before replacing their internals with the dedicated
+ * TakeoffBottomDock component. This is intentionally layout-only so PDF
+ * rendering, count placement, selection, and recovery behavior stay isolated.
+ */
+
+.desktop-workspace {
+  grid-template-columns: 245px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) 270px;
+}
+
+.left-rail {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+
+.drawing-panel {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.right-rail {
+  grid-column: 2;
+  grid-row: 2;
+  display: grid;
+  grid-template-rows: 36px minmax(0, 1fr);
+  border-left: 0;
+  border-top: 1px solid var(--sl-line-strong);
+  background: #fff;
+}
+
+.right-tabs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  height: 36px;
+}
+
+.right-tabs button {
+  position: relative;
+}
+
+.right-tabs button:first-child {
+  font-size: 0;
+}
+
+.right-tabs button:first-child::after {
+  content: 'Takeoff Totals';
+  font-size: 11px;
+}
+
+.right-content {
+  height: auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.right-content > .panel-title {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+
+/* Make the quantity rows behave like a compact estimator table in the dock. */
+.summary-table {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  align-content: start;
+}
+
+.summary-row {
+  border-right: 1px solid #e4e8eb;
+}
+
+.measurement-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+}
+
+.sync-table {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  align-content: start;
+}
+
+.sync-row {
+  border-right: 1px solid #e4e8eb;
+}
+
+/* Keep the drawing dominant on typical estimator screens. */
+@media (min-height: 900px) {
+  .desktop-workspace {
+    grid-template-rows: minmax(0, 1fr) 300px;
+  }
+}
+
+@media (max-height: 720px) {
+  .desktop-workspace {
+    grid-template-rows: minmax(0, 1fr) 215px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .desktop-workspace {
+    grid-template-columns: 210px minmax(520px, 1fr);
+  }
+}
