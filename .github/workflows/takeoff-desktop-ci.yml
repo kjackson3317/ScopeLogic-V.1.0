@@ -64,6 +64,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: npm install
       - run: npm run test
+      - name: Generate native icon set from ScopeLogic PNG
+        run: npx tauri icon src-tauri/icons/icon.png
       - run: npm run desktop:build
       - name: Upload unsigned test executable
         uses: actions/upload-artifact@v4
