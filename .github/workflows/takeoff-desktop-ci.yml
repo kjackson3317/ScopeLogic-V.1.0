@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/takeoff-desktop-phase-1
+      - 'feature/takeoff-v1-*'
     paths:
       - 'desktop/takeoff/**'
       - '.github/workflows/takeoff-desktop-ci.yml'
@@ -48,4 +49,4 @@ jobs:
       - run: npm run build
       - run: cargo check --manifest-path src-tauri/Cargo.toml
 
-# Phase 1 validation covers both the React/Vite frontend and the native Tauri shell.
+# V1 validation covers both the React/Vite frontend and the native Tauri shell.
