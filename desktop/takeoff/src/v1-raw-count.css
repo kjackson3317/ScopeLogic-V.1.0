@@ -1,0 +1,17 @@
+/*
+ * V1 raw-count guardrails.
+ *
+ * Phase 1 AppNext still carries compatibility fields for multiplier/result unit
+ * while recovery data is being migrated. Hide those controls so every newly
+ * created count tool stays at the compatibility defaults (multiplier 1), and
+ * keep result-unit labels out of the count summary. The next workspace refactor
+ * will remove the compatibility fields from AppNext entirely.
+ */
+.tool-form-grid > label:nth-child(2),
+.tool-form > label:nth-of-type(2) {
+  display: none;
+}
+
+.summary-row > small {
+  display: none;
+}
