@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Mark, Tool } from './takeoff-model';
 import {
+  getTakeoffSymbol,
+  searchTakeoffSymbols,
+  TAKEOFF_SYMBOLS,
+} from './symbol-registry';
+import {
   legacyShapeToSymbolId,
   normalizeCountTool,
   summarizeRawCounts,
@@ -79,5 +84,28 @@ describe('V1 raw-count migration', () => {
       ['camera', 2],
       ['ptz', 1],
     ]);
+  });
+});
+
+describe('V1 built-in symbol registry', () => {
+  it('includes the required low-voltage device categories', () => {
+    const ids = new Set(TAKEOFF_SYMBOLS.map((symbol) => symbol.id));
+
+    expect(ids.has('builtin.video.dome')).toBe(true);
+    expect(ids.has('builtin.access.card_reader')).toBe(true);
+    expect(ids.has('builtin.audio.ceiling_speaker')).toBe(true);
+    expect(ids.has('builtin.data.wap')).toBe(true);
+    expect(ids.has('builtin.fire.smoke')).toBe(true);
+  });
+
+  it('supports searchable device symbols', () => {
+    const results = searchTakeoffSymbols('camera');
+
+    expect(results.length).toBeGreaterThanOrEqual(4);
+    expect(results.every((symbol) => symbol.category === 'Video Surveillance')).toBe(true);
+  });
+
+  it('falls back to the generic device symbol for unknown IDs', () => {
+    expect(getTakeoffSymbol('not-a-real-symbol').id).toBe('builtin.generic.device');
   });
 });
