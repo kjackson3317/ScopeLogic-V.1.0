@@ -35,7 +35,7 @@ function storageAvailable() {
 
 function hasSnapshotShape(value: unknown) {
   if (!value || typeof value !== 'object') return false;
-  const item = value as Partial<TakeoffRecoverySnapshot> & { schemaVersion?: number };
+  const item = value as Partial<LegacyTakeoffRecoverySnapshot | TakeoffRecoverySnapshot>;
   return (item.schemaVersion === 1 || item.schemaVersion === SCHEMA_VERSION)
     && typeof item.id === 'string'
     && typeof item.name === 'string'
