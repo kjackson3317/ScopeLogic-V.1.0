@@ -3,7 +3,7 @@
 import { useCallback,useEffect,useMemo,useState } from 'react';
 import { createClient } from '../lib/supabase/client';
 import { getNextOfficialReleaseNumber,saveOfficialRelease } from '../lib/cloud-workspace';
-import { REVIEW_RELEASE_OPTIONS,buildReviewReleasePdf,reviewReleaseFileName,type ReviewBrandProfile,type ReviewReleaseData,type ReviewReleaseKind } from './review-release-pdf-v2';
+import { REVIEW_RELEASE_OPTIONS,buildReviewReleasePdf,reviewReleaseFileName,type ReviewBrandProfile,type ReviewReleaseData,type ReviewReleaseKind } from './review-release-pdf';
 
 type Engagement={legacyId:string;label:string};type DialogIntent='preview'|'official';type Loaded={masterId:string;data:ReviewReleaseData;engagements:Engagement[]};
 const LOCAL_WORKSPACE_KEYS=['scopelogic-r14-8','scopelogic-r14-7','scopelogic-r14-6','scopelogic-r14-5','scopelogic-r14-4','scopelogic-r14-3','scopelogic-r14-2','technology-preconstruction-workspace'];
