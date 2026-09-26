@@ -1,5 +1,7 @@
 import type { Tool } from './takeoff-model';
 
+const COUNT_UNIT = 'each';
+
 export type TakeoffQuantityContribution = {
   sourceType: 'takeoff';
   sourceId: string;
@@ -24,31 +26,34 @@ export type TakeoffDownstreamProposal = {
 
 export type QuantitySummaryInput = {
   tool: Tool;
-  qty: number;
+  /** V1 raw count: exactly one per placed mark. */
+  count?: number;
+  /** @deprecated Transitional alias for Phase 1 callers. */
+  qty?: number;
 };
 
 /**
  * Build a controlled proposal for downstream estimating.
  *
- * The commercial Rules Engine currently recognizes takeoff as a quantity source.
- * This desktop contract deliberately stops one step earlier: it produces a
- * review-only proposal and never emits an auto-apply instruction. The shared
- * cloud integration can later translate an approved proposal into the canonical
- * Rules/Assembly/Quote APIs without changing this safety boundary.
+ * Count tools intentionally send only their raw placed-mark count. ScopeLogic
+ * Rules own every estimating interpretation (assemblies, BOM, labor, waste,
+ * cable quantity, pricing, and other multipliers). The desktop proposal remains
+ * review-only and never emits an auto-apply instruction.
  */
 export function buildTakeoffDownstreamProposals(
   summary: QuantitySummaryInput[],
   estimateQty: Record<string, number>,
 ): TakeoffDownstreamProposal[] {
-  return summary.map(({ tool, qty }) => {
+  return summary.map(({ tool, count, qty }) => {
+    const rawCount = Number.isFinite(count) ? Number(count) : Number(qty) || 0;
     const current = estimateQty[tool.id] || 0;
     return {
       toolId: tool.id,
       toolName: tool.name,
-      takeoffQuantity: qty,
+      takeoffQuantity: rawCount,
       estimateQuantity: current,
-      difference: qty - current,
-      unit: tool.unit,
+      difference: rawCount - current,
+      unit: COUNT_UNIT,
       assemblyId: tool.downstream?.assemblyId || undefined,
       ruleId: tool.downstream?.ruleId || undefined,
       estimateSection: tool.downstream?.estimateSection || undefined,
@@ -56,8 +61,8 @@ export function buildTakeoffDownstreamProposals(
         sourceType: 'takeoff',
         sourceId: tool.id,
         label: tool.name,
-        quantity: qty,
-        unit: tool.unit,
+        quantity: rawCount,
+        unit: COUNT_UNIT,
       },
       behavior: 'review_only',
     };
