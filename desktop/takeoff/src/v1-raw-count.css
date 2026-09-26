@@ -1,17 +1,38 @@
-/*
- * V1 raw-count guardrails.
- *
- * Phase 1 AppNext still carries compatibility fields for multiplier/result unit
- * while recovery data is being migrated. Hide those controls so every newly
- * created count tool stays at the compatibility defaults (multiplier 1), and
- * keep result-unit labels out of the count summary. The next workspace refactor
- * will remove the compatibility fields from AppNext entirely.
- */
-.tool-form-grid > label:nth-child(2),
-.tool-form > label:nth-of-type(2) {
-  display: none;
+/* V1 raw-count and device-symbol presentation. */
+.tool-symbol-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.03);
 }
 
-.summary-row > small {
-  display: none;
+.tool-symbol-preview > span:last-child {
+  font-size: 11px;
+  color: var(--text-muted, #64748b);
+}
+
+.takeoff-symbol,
+.takeoff-symbol svg {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.drawing-mark.device-symbol {
+  overflow: visible;
+  cursor: pointer;
+}
+
+.drawing-mark.device-symbol .takeoff-symbol {
+  width: 100% !important;
+  height: 100% !important;
+  align-items: center;
+  justify-content: center;
+}
+
+.drawing-mark.device-symbol.selected .takeoff-symbol {
+  filter: drop-shadow(0 0 2px #ffffff) drop-shadow(0 0 3px #111827);
 }
