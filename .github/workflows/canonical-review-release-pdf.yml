@@ -1,0 +1,95 @@
+name: Stage Review Release PDF Canonicalization
+
+on:
+  push:
+    branches:
+      - refactor/canonical-review-release-pdf-20260926
+
+permissions:
+  contents: write
+
+jobs:
+  canonicalize-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
+      NEXT_PUBLIC_SITE_URL: https://ci.scopelogic.invalid
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: refactor/canonical-review-release-pdf-20260926
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Canonicalize review release PDF modules
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          legacy_path = Path('app/review-release-pdf.ts')
+          v2_path = Path('app/review-release-pdf-v2.ts')
+          base_path = Path('app/review-release-pdf-legacy.ts')
+          controller_path = Path('app/review-release-controller.tsx')
+
+          if not v2_path.exists():
+              print('Review release PDF modules are already canonicalized.')
+          else:
+              legacy = legacy_path.read_text()
+              v2 = v2_path.read_text()
+              controller = controller_path.read_text()
+
+              old_import = "from './review-release-pdf';"
+              new_import = "from './review-release-pdf-legacy';"
+              if v2.count(old_import) != 1:
+                  raise SystemExit(f'Expected exactly one legacy PDF import in v2 module; found {v2.count(old_import)}')
+              if "./review-release-pdf-v2" not in controller:
+                  raise SystemExit('Expected controller to import the v2 PDF module before canonicalization.')
+
+              base_path.write_text(legacy)
+              legacy_path.write_text(v2.replace(old_import, new_import, 1))
+              controller_path.write_text(controller.replace("./review-release-pdf-v2", "./review-release-pdf"))
+              v2_path.unlink()
+
+          forbidden = []
+          for root in (Path('app'), Path('lib')):
+              if not root.exists():
+                  continue
+              for path in root.rglob('*'):
+                  if path.suffix not in {'.ts', '.tsx'}:
+                      continue
+                  if 'review-release-pdf-v2' in path.read_text(errors='ignore'):
+                      forbidden.append(str(path))
+          if forbidden:
+              raise SystemExit('Stale review-release-pdf-v2 references remain: ' + ', '.join(forbidden))
+
+          canonical = legacy_path.read_text()
+          if "from './review-release-pdf-legacy';" not in canonical:
+              raise SystemExit('Canonical review-release-pdf.ts does not delegate legacy deliverables to the isolated legacy module.')
+          print('Review release PDF canonicalization checks passed.')
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and type-check
+        run: npm run build
+
+      - name: Commit verified canonicalization
+        run: |
+          git add app/review-release-pdf.ts app/review-release-pdf-legacy.ts app/review-release-controller.tsx
+          git add -u app/review-release-pdf-v2.ts || true
+          if git diff --cached --quiet; then
+            echo "No canonicalization changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Canonicalize review release PDF module"
+          git push origin HEAD:refactor/canonical-review-release-pdf-20260926
