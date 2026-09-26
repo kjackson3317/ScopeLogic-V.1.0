@@ -1,0 +1,27 @@
+name: ScopeLogic Version Inventory
+
+on:
+  push:
+    branches:
+      - cleanup/version-source-of-truth-20260926
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Inventory application version references
+        run: |
+          echo '=== package.json version ==='
+          node -p "require('./package.json').version"
+          echo
+          echo '=== version-like references ==='
+          grep -RInE --exclude-dir=node_modules --exclude-dir=.next --exclude='package-lock.json' \
+            '1\.0\.0-rc\.|applicationVersion|APP_VERSION|appVersion|releaseVersion|Release Version|VERSION' \
+            app lib scripts docs README.md package.json 2>/dev/null || true
