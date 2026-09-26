@@ -22,9 +22,20 @@ async function collect(directory) {
 for (const sourceRoot of ['app', 'lib']) await collect(join(root, sourceRoot));
 
 const violations = [];
+const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
+const applicationVersion = packageJson.version;
+if (typeof applicationVersion !== 'string' || !applicationVersion.trim()) {
+  violations.push('package.json: application version must be a non-empty string');
+}
 for (const filePath of sourceFiles) {
   const content = await readFile(filePath, 'utf8');
   const displayPath = relative(root, filePath).replaceAll('\\', '/');
+
+  for (const match of content.matchAll(/\bapplicationVersion\s*:\s*['"]([^'"]+)['"]/g)) {
+    if (match[1] !== applicationVersion) {
+      violations.push(`${displayPath}: applicationVersion ${match[1]} must match package.json version ${applicationVersion}`);
+    }
+  }
   if (/\b(?:window\.)?(?:alert|confirm|prompt)\s*\(/m.test(content) && !legacyDialogDebt.has(displayPath)) {
     violations.push(`${displayPath}: browser-native dialogs are prohibited; use an in-app ScopeLogic modal or message instead`);
   }
