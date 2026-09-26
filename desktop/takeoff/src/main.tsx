@@ -5,6 +5,7 @@ import { isNativeTakeoffShell, loadNativeTakeoffRecovery } from './native-persis
 import { recoveryStorageKey } from './persistence';
 import type { TakeoffRecoverySnapshot } from './takeoff-model';
 import './styles.css';
+import './v1-raw-count.css';
 
 function parseLocalRecovery(): TakeoffRecoverySnapshot | null {
   try {
