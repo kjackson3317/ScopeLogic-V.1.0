@@ -1,0 +1,36 @@
+name: ScopeLogic Native Dialog Inventory
+
+on:
+  push:
+    branches:
+      - cleanup/native-dialogs-20260926
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Inventory browser-native dialogs
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          pattern = re.compile(r'\b(?:window\.)?(?:alert|confirm|prompt)\s*\(')
+          total = 0
+          for root in (Path('app'), Path('lib')):
+              for path in root.rglob('*'):
+                  if path.suffix not in {'.ts', '.tsx', '.js', '.jsx', '.mjs'}:
+                      continue
+                  for line_no, line in enumerate(path.read_text(errors='ignore').splitlines(), 1):
+                      if pattern.search(line):
+                          total += 1
+                          print(f'{path}:{line_no}: {line.strip()}')
+          print(f'\nTOTAL_NATIVE_DIALOG_LINES={total}')
+          PY
