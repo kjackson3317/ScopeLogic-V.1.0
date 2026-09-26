@@ -1,6 +1,7 @@
 import type { Measurement, PageCalibration, Point } from './measurements';
 
 export type Shape = 'square' | 'triangle' | 'circle' | 'diamond';
+export type SymbolId = string;
 export type MarkupKind = 'text' | 'line' | 'arrow' | 'rectangle' | 'cloud' | 'highlight' | 'freehand';
 export type Uuid = ReturnType<Crypto['randomUUID']>;
 
@@ -13,9 +14,23 @@ export type ToolDownstreamLink = {
 export type Tool = {
   id: string;
   name: string;
+  /**
+   * Stable symbol identity for the V1 extensible symbol registry. Legacy tools
+   * may omit this until they pass through recovery/tool normalization.
+   */
+  symbolId?: SymbolId;
+  /** @deprecated Compatibility field for Phase 1 sessions. Use symbolId. */
   shape: Shape;
   color: string;
+  /**
+   * @deprecated Count tools are raw one-mark/one-count in V1. This field is
+   * retained temporarily so Phase 1 UI and recovery data can migrate safely.
+   */
   multiplier: number;
+  /**
+   * @deprecated Count tools use the canonical unit `each` in V1. Measurement
+   * tool units will be modeled separately.
+   */
   unit: string;
   downstream?: ToolDownstreamLink;
 };
@@ -69,8 +84,7 @@ export type DrawingIdentity = {
   fingerprint?: string;
 };
 
-export type TakeoffRecoverySnapshot = {
-  schemaVersion: 1;
+type TakeoffRecoverySnapshotBase = {
   id: Uuid;
   name: string;
   savedAt: string;
@@ -87,4 +101,12 @@ export type TakeoffRecoverySnapshot = {
   snippets: DrawingSnippet[];
   estimatePreview: Record<string, number>;
   syncSelection: Record<string, boolean>;
+};
+
+export type LegacyTakeoffRecoverySnapshot = TakeoffRecoverySnapshotBase & {
+  schemaVersion: 1;
+};
+
+export type TakeoffRecoverySnapshot = TakeoffRecoverySnapshotBase & {
+  schemaVersion: 2;
 };

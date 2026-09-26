@@ -37,15 +37,16 @@ import {
   loadTakeoffRecovery,
   saveTakeoffRecovery,
 } from './persistence';
+import { TAKEOFF_SYMBOLS, TakeoffSymbol } from './symbol-registry';
 import type {
   DrawingMarkup,
   DrawingSnippet,
   Mark,
   MarkupKind,
-  Shape,
   TakeoffRecoverySnapshot,
   Tool,
 } from './takeoff-model';
+import { legacyShapeToSymbolId, summarizeRawCounts } from './tool-normalization';
 import './measurements.css';
 import './annotations.css';
 
@@ -53,10 +54,9 @@ pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 type Mode = 'pan' | 'count' | 'calibrate' | 'snippet' | MeasurementKind | MarkupKind;
 type RightTab = 'takeoff' | 'annotations' | 'sync';
-type SummaryRow = { tool: Tool; locations: number; qty: number };
+type SummaryRow = { tool: Tool; count: number };
 
 const COLORS = ['#4B6623', '#31513b', '#2563eb', '#b45309', '#b91c1c', '#6d28d9', '#111827', '#0e7490'];
-const SHAPES: Shape[] = ['circle', 'square', 'triangle', 'diamond'];
 const MULTI_POINT_MODES: MeasurementKind[] = ['polyline', 'area', 'perimeter'];
 const MEASUREMENT_MODES: MeasurementKind[] = ['distance', 'polyline', 'area', 'perimeter'];
 const MARKUP_MODES: MarkupKind[] = ['text', 'line', 'arrow', 'rectangle', 'cloud', 'highlight', 'freehand'];
@@ -66,13 +66,7 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 const fmt = (value: number) => Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.00$/, '');
 const pointString = (points: Point[], size: PageSize) => points.map((point) => `${point.x * size.width},${point.y * size.height}`).join(' ');
 const fileStem = (value: string) => value.replace(/\.pdf$/i, '') || 'Takeoff Project';
-
-function ShapeMark({ shape, color, size = 14 }: { shape: Shape; color: string; size?: number }) {
-  if (shape === 'circle') return <span className="tool-shape circle" style={{ width: size, height: size, background: color }} />;
-  if (shape === 'square') return <span className="tool-shape square" style={{ width: size, height: size, background: color }} />;
-  if (shape === 'diamond') return <span className="tool-shape diamond" style={{ width: size, height: size, background: color }} />;
-  return <span className="tool-shape triangle" style={{ borderLeftWidth: size / 2, borderRightWidth: size / 2, borderBottomWidth: size, borderBottomColor: color }} />;
-}
+const toolSymbolId = (tool: Tool) => tool.symbolId || legacyShapeToSymbolId(tool.shape);
 
 export default function AppNext() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -108,11 +102,19 @@ export default function AppNext() {
   const [calibrationKnownUnit, setCalibrationKnownUnit] = useState<'ft' | 'in'>('ft');
 
   const [tools, setTools] = useState<Tool[]>([
-    { id: 'default-count', name: 'Count Item', shape: 'circle', color: '#4B6623', multiplier: 1, unit: 'qty' },
+    {
+      id: 'default-count',
+      name: 'Count Item',
+      symbolId: 'builtin.generic.circle',
+      shape: 'circle',
+      color: '#4B6623',
+      multiplier: 1,
+      unit: 'each',
+    },
   ]);
   const [selectedToolId, setSelectedToolId] = useState('default-count');
   const [showToolForm, setShowToolForm] = useState(false);
-  const [newTool, setNewTool] = useState({ name: '', shape: 'circle' as Shape, color: '#4B6623', multiplier: 1, unit: 'qty' });
+  const [newTool, setNewTool] = useState({ name: '', symbolId: 'builtin.generic.circle', color: '#4B6623' });
 
   const [markups, setMarkups] = useState<DrawingMarkup[]>([]);
   const [snippets, setSnippets] = useState<DrawingSnippet[]>([]);
@@ -174,22 +176,11 @@ export default function AppNext() {
     return () => { cancelled = true; };
   }, [pdfDoc, page, zoom]);
 
-  const summary = useMemo<SummaryRow[]>(() => {
-    const rows = new Map<string, SummaryRow>();
-    for (const mark of marks) {
-      const tool = tools.find((item) => item.id === mark.toolId);
-      if (!tool) continue;
-      const current = rows.get(tool.id) || { tool, locations: 0, qty: 0 };
-      current.locations += 1;
-      current.qty += Number(tool.multiplier) || 0;
-      rows.set(tool.id, current);
-    }
-    return [...rows.values()].sort((a, b) => a.tool.name.localeCompare(b.tool.name));
-  }, [marks, tools]);
+  const summary = useMemo<SummaryRow[]>(() => summarizeRawCounts(marks, tools), [marks, tools]);
 
   const syncRows = useMemo(() => summary.map((row) => {
     const current = estimateQty[row.tool.id] || 0;
-    return { ...row, current, difference: row.qty - current };
+    return { ...row, current, difference: row.count - current };
   }), [summary, estimateQty]);
 
   const measurementRows = useMemo(() => measurements.map((measurement) => ({
@@ -370,7 +361,7 @@ export default function AppNext() {
     pointerDrawingRef.current = false;
 
     if (nextMode === 'calibrate') setActivity(`Calibration mode. Pick two points on page ${page}, enter the known distance, then set the scale.`);
-    else if (nextMode === 'count') setActivity('Count mode. Select a Tool Chest item and place count marks.');
+    else if (nextMode === 'count') setActivity('Count mode. Select a Tool Chest item and place raw count marks.');
     else if (nextMode === 'pan') setActivity('Pan mode. Use the drawing scroll bars to navigate the sheet.');
     else if (MEASUREMENT_MODES.includes(nextMode as MeasurementKind)) setActivity(`${measurementKindLabel(nextMode as MeasurementKind)} mode. ${nextMode === 'distance' ? 'Pick two points.' : 'Pick points, then use Finish.'}`);
     else if (nextMode === 'snippet') setActivity('Snippet mode. Pick two corners of the drawing region to capture.');
@@ -441,7 +432,7 @@ export default function AppNext() {
       setMarks((items) => [...items, mark]);
       clearSelections();
       setSelectedMarkId(mark.id);
-      setActivity(`${tool.name} added on page ${page}. Estimate quantities remain unchanged until Sync Review is applied.`);
+      setActivity(`${tool.name} raw count added on page ${page}. ScopeLogic estimating logic remains downstream of Sync Review.`);
       return;
     }
 
@@ -625,17 +616,20 @@ export default function AppNext() {
     const tool: Tool = {
       id: uid(),
       name,
-      shape: newTool.shape,
+      symbolId: newTool.symbolId,
+      // Transitional Phase 1 compatibility fields. Raw-count V1 does not use
+      // them for quantity or rendering semantics.
+      shape: 'circle',
       color: newTool.color,
-      multiplier: Math.max(0, Number(newTool.multiplier) || 1),
-      unit: newTool.unit.trim() || 'qty',
+      multiplier: 1,
+      unit: 'each',
     };
     setTools((items) => [...items, tool]);
     setSelectedToolId(tool.id);
     changeMode('count');
-    setNewTool({ name: '', shape: 'circle', color: '#4B6623', multiplier: 1, unit: 'qty' });
+    setNewTool({ name: '', symbolId: 'builtin.generic.circle', color: '#4B6623' });
     setShowToolForm(false);
-    setActivity(`${tool.name} added to the local Tool Chest.`);
+    setActivity(`${tool.name} added to the local Tool Chest as a raw-count tool.`);
   };
 
   const deleteSelected = () => {
@@ -661,17 +655,17 @@ export default function AppNext() {
     if (selectedMarkId) {
       setMarks((items) => items.filter((item) => item.id !== selectedMarkId));
       setSelectedMarkId('');
-      setActivity('Selected takeoff mark removed. Sync Review will show the resulting quantity difference.');
+      setActivity('Selected takeoff mark removed. Sync Review will show the resulting raw-count difference.');
     }
   };
 
   const applySelectedSync = () => {
     setEstimateQty((current) => {
       const next = { ...current };
-      for (const row of syncRows) if (syncSelection[row.tool.id]) next[row.tool.id] = row.qty;
+      for (const row of syncRows) if (syncSelection[row.tool.id]) next[row.tool.id] = row.count;
       return next;
     });
-    setActivity('Selected Takeoff quantities applied to the local estimate preview. Cloud Quote/BOM connection remains an explicit later integration step.');
+    setActivity('Selected raw drawing quantities applied to the local estimate preview. Cloud Quote/BOM connection remains an explicit later integration step.');
   };
 
   const pageMarks = marks.filter((mark) => mark.page === page);
@@ -814,11 +808,16 @@ export default function AppNext() {
             {showToolForm && (
               <div className="tool-form">
                 <label><span>Name</span><input value={newTool.name} onChange={(event) => setNewTool({ ...newTool, name: event.target.value })} placeholder="Count tool name" /></label>
-                <div className="tool-form-grid">
-                  <label><span>Shape</span><select value={newTool.shape} onChange={(event) => setNewTool({ ...newTool, shape: event.target.value as Shape })}>{SHAPES.map((shape) => <option key={shape}>{shape}</option>)}</select></label>
-                  <label><span>Multiplier</span><input type="number" min="0" step="0.01" value={newTool.multiplier} onChange={(event) => setNewTool({ ...newTool, multiplier: Number(event.target.value) })} /></label>
+                <label>
+                  <span>Symbol</span>
+                  <select value={newTool.symbolId} onChange={(event) => setNewTool({ ...newTool, symbolId: event.target.value })}>
+                    {TAKEOFF_SYMBOLS.map((symbol) => <option key={symbol.id} value={symbol.id}>{symbol.category} · {symbol.name}</option>)}
+                  </select>
+                </label>
+                <div className="tool-symbol-preview">
+                  <TakeoffSymbol symbolId={newTool.symbolId} color={newTool.color} size={28} />
+                  <span>1 placed symbol = 1 raw count</span>
                 </div>
-                <label><span>Unit</span><input value={newTool.unit} onChange={(event) => setNewTool({ ...newTool, unit: event.target.value })} /></label>
                 <div className="color-row">{COLORS.map((color) => <button key={color} className={newTool.color === color ? 'selected' : ''} style={{ background: color }} aria-label={`Use ${color}`} onClick={() => setNewTool({ ...newTool, color })} />)}</div>
                 <div className="tool-form-actions"><button className="button" onClick={() => setShowToolForm(false)}>Cancel</button><button className="button primary" disabled={!newTool.name.trim()} onClick={addTool}>Add Tool</button></div>
               </div>
@@ -826,8 +825,8 @@ export default function AppNext() {
             <div className="tool-list">
               {tools.map((tool) => (
                 <button key={tool.id} className={tool.id === selectedToolId ? 'tool-row active' : 'tool-row'} onClick={() => { setSelectedToolId(tool.id); changeMode('count'); }}>
-                  <ShapeMark shape={tool.shape} color={tool.color} />
-                  <span><b>{tool.name}</b><small>×{fmt(tool.multiplier)} {tool.unit}</small></span>
+                  <TakeoffSymbol symbolId={toolSymbolId(tool)} color={tool.color} size={18} />
+                  <span><b>{tool.name}</b><small>Raw count</small></span>
                 </button>
               ))}
             </div>
@@ -842,7 +841,7 @@ export default function AppNext() {
           {!pdfDoc && !loading && !error && (
             <div className="drawing-message">
               <b>{pendingRecoveredDrawing ? 'Reopen the recovered PDF drawing set' : 'Open a PDF drawing set'}</b>
-              <span>{pendingRecoveredDrawing ? `Recovered Takeoff data is preserved. Reopen ${fileName} to restore the drawing beneath it.` : 'Takeoff quantities remain separate from Estimate quantities until you explicitly approve Sync Review changes.'}</span>
+              <span>{pendingRecoveredDrawing ? `Recovered Takeoff data is preserved. Reopen ${fileName} to restore the drawing beneath it.` : 'Takeoff stores raw drawing counts. ScopeLogic Rules determine materials, labor, and estimate output after explicit Sync Review.'}</span>
             </div>
           )}
           {pdfDoc && (
@@ -909,18 +908,24 @@ export default function AppNext() {
                     const x = mark.x * pageSize.width;
                     const y = mark.y * pageSize.height;
                     const selected = mark.id === selectedMarkId;
-                    const common = {
-                      className: selected ? 'drawing-mark selected' : 'drawing-mark',
-                      onClick: (event: ReactMouseEvent<SVGElement>) => {
-                        event.stopPropagation();
-                        clearSelections();
-                        setSelectedMarkId(mark.id);
-                      },
-                    };
-                    if (tool.shape === 'circle') return <circle key={mark.id} {...common} cx={x} cy={y} r="8" fill={tool.color} />;
-                    if (tool.shape === 'square') return <rect key={mark.id} {...common} x={x - 8} y={y - 8} width="16" height="16" fill={tool.color} />;
-                    if (tool.shape === 'diamond') return <rect key={mark.id} {...common} x={x - 7} y={y - 7} width="14" height="14" fill={tool.color} transform={`rotate(45 ${x} ${y})`} />;
-                    return <polygon key={mark.id} {...common} points={`${x},${y - 9} ${x - 9},${y + 8} ${x + 9},${y + 8}`} fill={tool.color} />;
+                    const symbolSize = 22;
+                    return (
+                      <foreignObject
+                        key={mark.id}
+                        className={selected ? 'drawing-mark device-symbol selected' : 'drawing-mark device-symbol'}
+                        x={x - symbolSize / 2}
+                        y={y - symbolSize / 2}
+                        width={symbolSize}
+                        height={symbolSize}
+                        onClick={(event: ReactMouseEvent<SVGForeignObjectElement>) => {
+                          event.stopPropagation();
+                          clearSelections();
+                          setSelectedMarkId(mark.id);
+                        }}
+                      >
+                        <TakeoffSymbol symbolId={toolSymbolId(tool)} color={tool.color} size={symbolSize} title={tool.name} />
+                      </foreignObject>
+                    );
                   })}
 
                   {measurementDraft.length > 0 && (
@@ -975,14 +980,14 @@ export default function AppNext() {
                 <small>{pageCalibration ? (pageCalibration.source === 'manual' ? 'Two-point calibration' : 'Architectural preset') : 'Set a scale before using measurement tools.'}</small>
               </div>
 
-              <div className="subsection-title"><b>Count quantities</b><span>{summary.length} tools</span></div>
+              <div className="subsection-title"><b>Raw count quantities</b><span>{summary.length} tools</span></div>
               {!summary.length && <div className="empty-compact">Placed count marks will summarize here.</div>}
               <div className="summary-table">
                 {summary.map((row) => (
                   <div className="summary-row" key={row.tool.id}>
-                    <span><ShapeMark shape={row.tool.shape} color={row.tool.color} /><span><b>{row.tool.name}</b><small>{row.locations} locations</small></span></span>
-                    <strong>{fmt(row.qty)}</strong>
-                    <small>{row.tool.unit}</small>
+                    <span><TakeoffSymbol symbolId={toolSymbolId(row.tool)} color={row.tool.color} size={18} /><span><b>{row.tool.name}</b><small>1 symbol = 1 count</small></span></span>
+                    <strong>{fmt(row.count)}</strong>
+                    <small>each</small>
                   </div>
                 ))}
               </div>
@@ -1007,7 +1012,7 @@ export default function AppNext() {
                 ))}
               </div>
 
-              <div className="rule-placeholder"><span>Controlled downstream connection</span><b>Takeoff → Sync Review → Estimate / BOM</b><p>Count and measurement data remain takeoff records until an explicit downstream sync is approved.</p></div>
+              <div className="rule-placeholder"><span>Controlled downstream connection</span><b>Raw Takeoff → Sync Review → ScopeLogic Rule</b><p>The drawing stores raw counts and measurements only. ScopeLogic Rules determine BOM, labor, pricing, and estimate interpretation.</p></div>
             </div>
           )}
 
@@ -1029,21 +1034,21 @@ export default function AppNext() {
           {rightTab === 'sync' && (
             <div className="right-content">
               <div className="panel-title"><b>Sync Review</b><span>{syncRequired ? 'Changes pending' : 'No changes'}</span></div>
-              <p className="sync-help">Drawing changes never overwrite Estimate/BOM quantities automatically. Review each difference and apply only the rows you intend to change.</p>
+              <p className="sync-help">Drawing changes never overwrite Estimate/BOM quantities automatically. Review each raw-count difference and apply only the rows you intend to change.</p>
               {!syncRows.length && <div className="empty-compact">Complete a count takeoff first.</div>}
               <div className="sync-table">
                 {syncRows.map((row) => (
                   <label className="sync-row" key={row.tool.id}>
                     <input type="checkbox" checked={syncSelection[row.tool.id] ?? true} onChange={(event) => setSyncSelection({ ...syncSelection, [row.tool.id]: event.target.checked })} />
-                    <span><b>{row.tool.name}</b><small>{row.tool.unit}</small></span>
-                    <span><small>Takeoff</small><b>{fmt(row.qty)}</b></span>
-                    <span><small>Estimate</small><b>{fmt(row.current)}</b></span>
+                    <span><b>{row.tool.name}</b><small>each</small></span>
+                    <span><small>Drawing</small><b>{fmt(row.count)}</b></span>
+                    <span><small>Applied</small><b>{fmt(row.current)}</b></span>
                     <span className={row.difference === 0 ? 'diff zero' : 'diff'}><small>Difference</small><b>{row.difference > 0 ? '+' : ''}{fmt(row.difference)}</b></span>
                   </label>
                 ))}
               </div>
               <button className="button primary wide" disabled={!syncRows.some((row) => (syncSelection[row.tool.id] ?? true) && row.difference !== 0)} onClick={applySelectedSync}>Apply Selected Changes</button>
-              <div className="local-preview-note">The current desktop phase applies approved changes to a local estimate preview only. Shared ScopeLogic Quote/BOM writeback remains an explicit later integration step.</div>
+              <div className="local-preview-note">This build applies approved changes to a local estimate preview only. The shared ScopeLogic writeback adapter will replace this preview in the next integration patch.</div>
             </div>
           )}
         </aside>

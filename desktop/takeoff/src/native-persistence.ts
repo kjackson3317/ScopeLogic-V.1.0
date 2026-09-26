@@ -1,4 +1,9 @@
-import type { TakeoffRecoverySnapshot } from './takeoff-model';
+import type {
+  LegacyTakeoffRecoverySnapshot,
+  TakeoffRecoverySnapshot,
+} from './takeoff-model';
+
+type NativeRecoverySnapshot = LegacyTakeoffRecoverySnapshot | TakeoffRecoverySnapshot;
 
 function tauriAvailable() {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -19,12 +24,12 @@ export async function saveNativeTakeoffRecovery(snapshot: TakeoffRecoverySnapsho
   return result.ok;
 }
 
-export async function loadNativeTakeoffRecovery(): Promise<TakeoffRecoverySnapshot | null> {
+export async function loadNativeTakeoffRecovery(): Promise<NativeRecoverySnapshot | null> {
   const result = await nativeInvoke<string | null>('load_takeoff_recovery');
   if (!result.ok || !result.value) return null;
   try {
-    const parsed = JSON.parse(result.value) as TakeoffRecoverySnapshot;
-    return parsed?.schemaVersion === 1 ? parsed : null;
+    const parsed = JSON.parse(result.value) as NativeRecoverySnapshot;
+    return parsed?.schemaVersion === 1 || parsed?.schemaVersion === 2 ? parsed : null;
   } catch {
     return null;
   }
