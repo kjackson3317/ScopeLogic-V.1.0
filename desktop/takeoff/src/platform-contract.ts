@@ -54,13 +54,18 @@ export type PlatformToolChestItem = {
   scope: 'company' | 'project';
   projectId?: string;
   name: string;
-  shape: Shape;
+  symbolId?: string;
   color: string;
-  multiplier: number;
-  unit: string;
   category?: string;
   downstream?: ToolDownstreamLink;
   updatedAt: string;
+
+  /** @deprecated Phase 1 compatibility only; V1 clients should use symbolId. */
+  shape?: Shape;
+  /** @deprecated Count tools are one-mark/one-count in V1. */
+  multiplier?: number;
+  /** @deprecated Count tools use canonical unit `each` in V1. */
+  unit?: string;
 };
 
 export type ApprovedTakeoffQuantityCommand = {
@@ -71,6 +76,8 @@ export type ApprovedTakeoffQuantityCommand = {
   value: number;
   unit: string;
   sourceType: 'takeoff';
+  /** Optional until the cloud endpoint adds revision-aware idempotency. */
+  sourceRevision?: number;
   proposal: TakeoffDownstreamProposal;
 };
 
@@ -100,6 +107,8 @@ export function assertApprovedCommand(command: ApprovedTakeoffQuantityCommand) {
   if (!command.quoteId.trim()) throw new Error('A Quote target is required before a Takeoff quantity can be submitted.');
   if (!command.inputKey.trim()) throw new Error('A Rules Engine input key is required before a Takeoff quantity can be submitted.');
   if (!Number.isFinite(command.value) || command.value < 0) throw new Error('Takeoff quantity must be a finite non-negative number.');
+  if (!Number.isInteger(command.value)) throw new Error('Count takeoff quantity must be a whole number.');
+  if (command.unit !== 'each') throw new Error('Count takeoff quantity must use canonical unit each.');
   if (command.sourceType !== 'takeoff') throw new Error('Takeoff Desktop may only submit quantity inputs with sourceType takeoff.');
   if (command.proposal.behavior !== 'review_only') throw new Error('Takeoff proposals must pass through explicit Sync Review before submission.');
   return command;
