@@ -50,4 +50,28 @@ jobs:
       - run: npm run build
       - run: cargo check --manifest-path src-tauri/Cargo.toml
 
-# V1 validation covers raw-count unit tests, the React/Vite frontend, and the native Tauri shell.
+  windows-test-build:
+    name: Windows test executable
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop/takeoff
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm install
+      - run: npm run test
+      - run: npm run desktop:build
+      - name: Upload unsigned test executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: scopelogic-takeoff-windows-test
+          path: desktop/takeoff/src-tauri/target/release/scopelogic-takeoff.exe
+          if-no-files-found: error
+          retention-days: 14
+
+# V1 validation covers raw-count unit tests, the React/Vite frontend, the native
+# Tauri shell, and an unsigned Windows executable for estimator testing.
