@@ -46,14 +46,15 @@ jobs:
 
           verifier = verifier_path.read_text()
           marker = "if (typeof applicationVersion !== 'string' || !applicationVersion.trim()) {\n  violations.push('package.json: application version must be a non-empty string');\n}\n"
-          guard = """const applicationDisplayVersion = typeof applicationVersion === 'string'
-  ? applicationVersion.replace(/^1\\.0\\.0-rc\\./, 'v1.0 RC')
-  : '';
-const masterWorkspaceClient = await readFile(join(root, 'app', 'master-projects', '[id]', 'master-workspace-client.tsx'), 'utf8');
-if (applicationDisplayVersion && !masterWorkspaceClient.includes(`<span>${applicationDisplayVersion}</span>`)) {
-  violations.push(`app/master-projects/[id]/master-workspace-client.tsx: displayed version must match package.json (${applicationDisplayVersion})`);
-}
-"""
+          guard = (
+              "const applicationDisplayVersion = typeof applicationVersion === 'string'\n"
+              "  ? applicationVersion.replace(/^1\\.0\\.0-rc\\./, 'v1.0 RC')\n"
+              "  : '';\n"
+              "const masterWorkspaceClient = await readFile(join(root, 'app', 'master-projects', '[id]', 'master-workspace-client.tsx'), 'utf8');\n"
+              "if (applicationDisplayVersion && !masterWorkspaceClient.includes(`<span>${applicationDisplayVersion}</span>`)) {\n"
+              "  violations.push(`app/master-projects/[id]/master-workspace-client.tsx: displayed version must match package.json (${applicationDisplayVersion})`);\n"
+              "}\n"
+          )
           if 'const applicationDisplayVersion =' not in verifier:
               if marker not in verifier:
                   raise SystemExit('Could not locate application version validation block.')
