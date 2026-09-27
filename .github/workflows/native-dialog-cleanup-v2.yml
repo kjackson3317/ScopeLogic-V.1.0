@@ -1,0 +1,64 @@
+name: Stage native dialog cleanup v2
+
+on:
+  push:
+    branches:
+      - cleanup/native-dialogs-20260926
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
+      NEXT_PUBLIC_SITE_URL: https://ci.scopelogic.invalid
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: cleanup/native-dialogs-20260926
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Apply native dialog cleanup with corrected verifier
+        run: |
+          python3 - <<'PY2'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/native-dialog-cleanup.yml').read_text()
+          marker = "          python3 - <<'PY'\n"
+          if marker not in workflow:
+              raise SystemExit('Could not locate the staged cleanup script.')
+          block = workflow.split(marker, 1)[1].split("\n          PY", 1)[0]
+          script = textwrap.dedent(block)
+          bad = "pattern = re.compile(r'\\\\b(?:window\\\\.)?(?:alert|confirm|prompt)\\\\s*\\\\(')"
+          good = "pattern = re.compile(r'\\b(?:window\\.)?(?:alert|confirm|prompt)\\s*\\(')"
+          if bad not in script:
+              raise SystemExit('Could not locate the over-escaped native-dialog verification regex.')
+          script = script.replace(bad, good, 1)
+          exec(compile(script, 'native-dialog-cleanup', 'exec'))
+          PY2
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and type-check
+        run: npm run build
+
+      - name: Commit verified cleanup
+        run: |
+          git rm -f .github/workflows/native-dialog-inventory.yml .github/workflows/native-dialog-cleanup.yml .github/workflows/native-dialog-cleanup-v2.yml
+          git add app lib scripts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Replace browser-native dialogs with ScopeLogic dialogs"
+          git push origin HEAD:cleanup/native-dialogs-20260926
