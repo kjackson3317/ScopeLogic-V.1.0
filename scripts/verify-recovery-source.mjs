@@ -4,12 +4,7 @@ import { extname, join, relative } from 'node:path';
 const root = process.cwd();
 const sourceFiles = [];
 const allowedExtensions = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs']);
-const legacyDialogDebt = new Set([
-  'app/drawing-takeoff.tsx',
-  'app/master-projects/[id]/master-workspace-client.tsx',
-  'app/master-projects/master-projects-client.tsx',
-  'app/workspace.tsx',
-]);
+const legacyDialogDebt = new Set();
 
 async function collect(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -70,4 +65,3 @@ if (violations.length) {
 }
 
 console.log('ScopeLogic recovery source verification passed.');
-if (legacyDialogDebt.size) console.log('Known native-dialog debt remains isolated to the existing legacy allowlist; new occurrences fail verification.');

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '../../lib/supabase/client';
+import { showAppConfirm } from '../../lib/client-dialog';
 
 type MasterProject = {
   id: string;
@@ -194,7 +195,7 @@ export default function MasterProjectsClient({ actualUserId, workspaceOwnerId, r
 
   const archiveMaster = async () => {
     if (!selected) return fail('No Master Project is selected.');
-    if (!window.confirm(`Archive ${selected.project_number} - ${selected.name}?`)) return;
+    if (!await showAppConfirm({ title: 'Archive Master Project', message: `Archive ${selected.project_number} - ${selected.name}?`, confirmLabel: 'Archive' })) return;
     setBusy(true);
     const { error } = await supabase.from('master_projects').update({ is_archived: true, archived_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', selected.id);
     if (error) return fail(error.message);
@@ -214,7 +215,7 @@ export default function MasterProjectsClient({ actualUserId, workspaceOwnerId, r
   const deleteMaster = async () => {
     if (!selected) return fail('No Master Project is selected.');
     if (selectedEngagements.length) return fail('This Master Project cannot be deleted because it still has Client Engagements. Archive the Master Project instead, or remove/reassign its Client Engagements first.');
-    if (!window.confirm(`Permanently delete ${selected.project_number} - ${selected.name}? This cannot be undone.`)) return;
+    if (!await showAppConfirm({ title: 'Delete Master Project', message: `Permanently delete ${selected.project_number} - ${selected.name}? This cannot be undone.`, confirmLabel: 'Delete Project', danger: true })) return;
     setBusy(true);
     const { error } = await supabase.from('master_projects').delete().eq('id', selected.id);
     if (error) return fail(error.message);
