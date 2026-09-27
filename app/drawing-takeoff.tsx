@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent } from 'react';
+import { showAppPrompt } from '../lib/client-dialog';
 
 export type DrawingToolShape = 'square' | 'triangle' | 'circle' | 'diamond';
 export type DrawingToolScope = 'global' | 'project';
@@ -306,11 +307,12 @@ export default function DrawingTakeoffPage(props: Props) {
     if (event.key === '0') { event.preventDefault(); setFit('page'); }
   };
 
-  const finishDraft = () => {
+  const finishDraft = async () => {
     if (mode === 'calibrate' && draft.length >= 2) {
       const [a, b] = draft.slice(0, 2).map(pixelPoint);
       const pixels = Math.hypot(b.x - a.x, b.y - a.y);
-      const real = Number(window.prompt('Known real distance in feet:', '10'));
+      const entered = await showAppPrompt({ title: 'Calibrate Drawing', message: 'Enter the known real distance in feet.', initialValue: '10', placeholder: 'Distance in feet', confirmLabel: 'Save Calibration' });
+      const real = Number(entered);
       if (real > 0 && pixels > 0) {
         props.setCalibrations({ ...props.calibrations, [pageKey]: { pxPerFoot: pixels / real, label: `${fmt(real)} ft calibration` } });
         props.message('Saved', `Page ${pageNum} was calibrated to ${fmt(real)} ft.`);
