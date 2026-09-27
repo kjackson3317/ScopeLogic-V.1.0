@@ -1,0 +1,33 @@
+name: Stage native dialog cleanup v2
+
+on:
+  push:
+    branches:
+      - cleanup/native-dialogs-20260926
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
+      NEXT_PUBLIC_SITE_URL: https://ci.scopelogic.invalid
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: cleanup/native-dialogs-20260926
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Apply native dialog cleanup with corrected verifier
+        run: |
+          echo "Temporary workflow placeholder"
