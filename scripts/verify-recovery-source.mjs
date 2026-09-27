@@ -22,6 +22,13 @@ const applicationVersion = packageJson.version;
 if (typeof applicationVersion !== 'string' || !applicationVersion.trim()) {
   violations.push('package.json: application version must be a non-empty string');
 }
+const applicationDisplayVersion = typeof applicationVersion === 'string'
+  ? applicationVersion.replace(/^1\.0\.0-rc\./, 'v1.0 RC')
+  : '';
+const masterWorkspaceClient = await readFile(join(root, 'app', 'master-projects', '[id]', 'master-workspace-client.tsx'), 'utf8');
+if (applicationDisplayVersion && !masterWorkspaceClient.includes(`<span>${applicationDisplayVersion}</span>`)) {
+  violations.push(`app/master-projects/[id]/master-workspace-client.tsx: displayed version must match package.json (${applicationDisplayVersion})`);
+}
 for (const filePath of sourceFiles) {
   const content = await readFile(filePath, 'utf8');
   const displayPath = relative(root, filePath).replaceAll('\\', '/');
