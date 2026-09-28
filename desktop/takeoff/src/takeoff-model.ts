@@ -22,6 +22,12 @@ export type Tool = {
   /** @deprecated Compatibility field for Phase 1 sessions. Use symbolId. */
   shape: Shape;
   color: string;
+  /** Optional estimating-system grouping used by Tool Chest and Markups List. */
+  system?: string;
+  /** Drawing appearance only. These fields never change raw-count semantics. */
+  opacity?: number;
+  size?: number;
+  showCaption?: boolean;
   /**
    * @deprecated Count tools are raw one-mark/one-count in V1. This field is
    * retained temporarily so Phase 1 UI and recovery data can migrate safely.
@@ -41,6 +47,11 @@ export type Mark = {
   toolId: string;
   x: number;
   y: number;
+  label?: string;
+  comments?: string;
+  locked?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type DrawingMarkup = {
