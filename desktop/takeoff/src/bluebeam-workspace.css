@@ -38,8 +38,10 @@
 
 .drawing-scroll.select-mode { cursor: default; }
 .drawing-scroll.action-mode { cursor: crosshair; }
-.drawing-scroll.pan-mode { cursor: grab; }
-.drawing-scroll.pan-mode:active { cursor: grabbing; }
+.drawing-scroll.pan-mode { cursor: grab; touch-action: none; }
+.drawing-scroll.pan-mode:active,
+.drawing-scroll.is-drag-panning { cursor: grabbing !important; user-select: none; }
+.drawing-scroll.is-drag-panning * { cursor: grabbing !important; user-select: none; }
 
 .drawing-count-group { cursor: pointer; }
 .selected-mark-ring {
