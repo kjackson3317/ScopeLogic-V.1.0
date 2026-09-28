@@ -1,0 +1,137 @@
+.workspace-stack {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  overflow: hidden;
+  background: var(--sl-canvas);
+}
+
+.workspace-stack > .desktop-workspace {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.right-tabs {
+  grid-template-columns: 1fr 1fr 1fr;
+  background: #26292c;
+  border-color: #151719;
+}
+
+.right-tabs button {
+  background: #292c2f;
+  color: #c7ccd0;
+  border-color: #464a4e;
+}
+
+.right-tabs button.active {
+  background: #34383c;
+  color: #fff;
+  box-shadow: inset 0 -2px #2d87bd;
+}
+
+.right-rail {
+  background: #25282b;
+  border-left-color: #17191b;
+}
+
+.drawing-scroll.select-mode { cursor: default; }
+.drawing-scroll.action-mode { cursor: crosshair; }
+.drawing-scroll.pan-mode { cursor: grab; }
+.drawing-scroll.pan-mode:active { cursor: grabbing; }
+
+.drawing-count-group { cursor: pointer; }
+.selected-mark-ring {
+  fill: rgba(30, 117, 169, .10);
+  stroke: #146da5;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.mark-caption {
+  fill: #111827;
+  stroke: #fff;
+  stroke-width: 2px;
+  paint-order: stroke;
+  font: 700 10px Arial, Helvetica, sans-serif;
+  pointer-events: none;
+}
+
+.grouped-tool-list {
+  background: #2c3033;
+}
+
+.tool-system-group {
+  border-bottom: 1px solid #3f4448;
+  background: #2c3033;
+}
+
+.tool-system-group > summary {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  list-style: none;
+  cursor: pointer;
+  background: #303438;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.tool-system-group > summary::-webkit-details-marker { display: none; }
+.tool-system-group > summary::before {
+  content: '›';
+  width: 10px;
+  color: #d9dde0;
+  font-size: 13px;
+  transition: transform .12s ease;
+}
+.tool-system-group[open] > summary::before { transform: rotate(90deg); }
+.tool-system-group > summary small {
+  margin-left: auto;
+  color: #aeb4b9;
+  font-size: 9px;
+}
+
+.grouped-tool-list .tool-row {
+  min-height: 32px;
+  padding-left: 28px;
+  border-bottom-color: #3e4347;
+  background: #292d30;
+  color: #f3f4f5;
+}
+.grouped-tool-list .tool-row:hover { background: #363b3f; }
+.grouped-tool-list .tool-row.active {
+  background: #d9d9ce;
+  color: #111827;
+  box-shadow: inset 3px 0 #2d87bd;
+}
+.grouped-tool-list .tool-row small { color: #aeb4b9; }
+.grouped-tool-list .tool-row.active small { color: #535a60; }
+
+.tool-section > .rail-heading,
+.tool-section .active-tool {
+  background: #26292c;
+  color: #fff;
+  border-color: #16181a;
+}
+.tool-section > .rail-heading button { color: #b9d9eb; }
+.tool-section .active-tool span { color: #aeb4b9; }
+
+.left-rail {
+  background: #2b2f32;
+  border-right-color: #17191b;
+}
+
+.command-bar .button.active {
+  border-color: #2c78a5;
+  background: #dbeaf3;
+  color: #17374a;
+}
+
+@media (max-width: 1250px) {
+  .desktop-workspace { grid-template-columns: 220px minmax(0, 1fr) 300px; }
+}
