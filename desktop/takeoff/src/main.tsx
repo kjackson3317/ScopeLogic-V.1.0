@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './AppNext';
+import { installDrawingNavigation } from './drawing-navigation';
 import { isNativeTakeoffShell, loadNativeTakeoffRecovery } from './native-persistence';
 import { recoveryStorageKey } from './persistence';
 import type { TakeoffRecoverySnapshot } from './takeoff-model';
@@ -39,6 +40,7 @@ async function hydrateNativeRecovery() {
 
 async function bootstrap() {
   await hydrateNativeRecovery();
+  installDrawingNavigation();
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <App />
