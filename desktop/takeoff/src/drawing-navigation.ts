@@ -23,6 +23,11 @@ function drawingScrollFromTarget(target: EventTarget | null) {
   return element?.closest('.drawing-scroll') as HTMLElement | null;
 }
 
+function updateActivityHint(message: string) {
+  const activity = document.querySelector('.activity-bar > span');
+  if (activity) activity.textContent = message;
+}
+
 function shouldStartPan(event: PointerEvent, container: HTMLElement) {
   if (event.button === 1) return true;
   if (event.button !== 0) return false;
@@ -44,6 +49,7 @@ function beginPan(event: PointerEvent) {
   };
 
   container.classList.add('is-drag-panning');
+  updateActivityHint('Pan mode: left-click and drag the drawing. Mouse wheel zooms at the cursor.');
   try { container.setPointerCapture(event.pointerId); } catch { /* WebView may not support capture on the scroll host. */ }
   event.preventDefault();
   event.stopPropagation();
@@ -68,6 +74,7 @@ function endPan(event: PointerEvent) {
   session.container.classList.remove('is-drag-panning');
   try { session.container.releasePointerCapture(event.pointerId); } catch { /* no-op */ }
   if (session.moved) suppressClickUntil = performance.now() + 250;
+  updateActivityHint('Pan mode: left-click and drag the drawing. Mouse wheel zooms at the cursor.');
   event.preventDefault();
   event.stopPropagation();
 }
@@ -79,16 +86,14 @@ function suppressPanClick(event: MouseEvent) {
   event.stopPropagation();
 }
 
-function zoomButton(direction: 1 | -1) {
+function zoomControls() {
   const readout = document.querySelector('.zoom-readout');
   if (!readout) return null;
-  const candidate = direction > 0 ? readout.nextElementSibling : readout.previousElementSibling;
-  return candidate instanceof HTMLButtonElement ? candidate : null;
-}
-
-function updateActivityHint(message: string) {
-  const activity = document.querySelector('.activity-bar > span');
-  if (activity) activity.textContent = message;
+  const zoomOut = readout.previousElementSibling;
+  const zoomIn = readout.nextElementSibling;
+  if (!(zoomOut instanceof HTMLButtonElement) || !(zoomIn instanceof HTMLButtonElement)) return null;
+  const value = Number((readout.textContent || '').replace('%', '').trim());
+  return { zoomOut, zoomIn, percent: Number.isFinite(value) ? value : null };
 }
 
 function applyWheelZoom(event: WheelEvent) {
@@ -99,8 +104,13 @@ function applyWheelZoom(event: WheelEvent) {
   if (wheelBusy || Math.abs(event.deltaY) < 0.5) return;
 
   const direction: 1 | -1 = event.deltaY < 0 ? 1 : -1;
-  const button = zoomButton(direction);
-  if (!button || button.disabled) return;
+  const controls = zoomControls();
+  if (!controls) return;
+  if ((direction > 0 && controls.percent !== null && controls.percent >= 400)
+    || (direction < 0 && controls.percent !== null && controls.percent <= 20)) return;
+
+  const button = direction > 0 ? controls.zoomIn : controls.zoomOut;
+  if (button.disabled) return;
 
   const stage = container.querySelector('.drawing-stage') as HTMLElement | null;
   if (!stage) return;
@@ -111,8 +121,9 @@ function applyWheelZoom(event: WheelEvent) {
     && event.clientY >= before.top && event.clientY <= before.bottom;
   const anchorX = insideStage ? (event.clientX - before.left) / before.width : 0.5;
   const anchorY = insideStage ? (event.clientY - before.top) / before.height : 0.5;
-  const cursorX = insideStage ? event.clientX : container.getBoundingClientRect().left + container.clientWidth / 2;
-  const cursorY = insideStage ? event.clientY : container.getBoundingClientRect().top + container.clientHeight / 2;
+  const containerRect = container.getBoundingClientRect();
+  const cursorX = insideStage ? event.clientX : containerRect.left + container.clientWidth / 2;
+  const cursorY = insideStage ? event.clientY : containerRect.top + container.clientHeight / 2;
   const oldWidth = before.width;
   const oldHeight = before.height;
 
@@ -137,7 +148,10 @@ function applyWheelZoom(event: WheelEvent) {
     }
 
     if (frames < 60) requestAnimationFrame(settle);
-    else wheelBusy = false;
+    else {
+      wheelBusy = false;
+      updateActivityHint('Mouse wheel zooms at the cursor. Pan mode: left-click and drag the drawing.');
+    }
   };
   requestAnimationFrame(settle);
 }
