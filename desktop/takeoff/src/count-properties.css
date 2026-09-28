@@ -1,0 +1,204 @@
+.count-properties-panel {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  background: #25282b;
+  color: #f3f4f5;
+}
+
+.count-properties-title {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 12px;
+  border-bottom: 1px solid #101214;
+  background: #1f2225;
+  font-size: 12px;
+}
+
+.properties-gear {
+  color: #d4d9de;
+  font-size: 15px;
+}
+
+.properties-section {
+  border-bottom: 1px solid #151719;
+}
+
+.properties-section > summary {
+  cursor: pointer;
+  list-style: none;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  color: #fff;
+  background: #272a2d;
+  font-size: 12px;
+  user-select: none;
+}
+
+.properties-section > summary::-webkit-details-marker { display: none; }
+.properties-section > summary::before { content: '›'; width: 10px; transform: rotate(0deg); transition: transform .12s ease; }
+.properties-section[open] > summary::before { transform: rotate(90deg); }
+
+.properties-section-body {
+  padding: 7px 10px 11px;
+  background: #2d3033;
+}
+
+.property-field {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  margin-bottom: 3px;
+  font-size: 11px;
+}
+
+.property-field.compact { grid-template-columns: 76px minmax(0, 1fr); }
+.property-field > span { text-align: right; color: #f0f0f0; }
+
+.property-field input,
+.property-comments {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #74787d;
+  border-radius: 2px;
+  background: #333638;
+  color: #fff;
+  outline: none;
+  font-size: 11px;
+}
+
+.property-field input { height: 24px; padding: 2px 5px; }
+.property-field input:focus,
+.property-comments:focus { border-color: #aeb3b8; box-shadow: 0 0 0 1px #aeb3b8 inset; }
+.property-field input[readonly] { color: #d1d4d7; background: #2b2e30; }
+.property-color { width: 34px !important; padding: 1px !important; }
+
+.property-comments {
+  min-height: 78px;
+  resize: vertical;
+  padding: 6px;
+  margin: 4px 0 7px;
+  font-family: inherit;
+}
+
+.property-meta {
+  padding: 3px 4px 7px;
+  color: #d5d7d9;
+  font-size: 10px;
+}
+
+.property-check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 25px;
+  padding: 0 4px;
+  color: #fff;
+  font-size: 11px;
+}
+
+.property-location {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.property-location span {
+  padding: 3px 6px;
+  border: 1px solid #555a5f;
+  border-radius: 3px;
+  background: #282b2e;
+  color: #d9dcde;
+  font-size: 9px;
+}
+
+.quick-symbol-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 7px 0;
+}
+
+.quick-symbol-row button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 31px;
+  padding: 0;
+  border: 1px solid transparent;
+  background: #2c3033;
+  color: #fff;
+  cursor: pointer;
+}
+
+.quick-symbol-row button:hover { background: #383c40; }
+.quick-symbol-row button.selected { border-color: #3477a8; background: #14557e; }
+.quick-symbol-row .more-symbols { font-size: 18px; }
+
+.count-properties-panel .symbol-picker {
+  margin: 7px 0 10px;
+  max-height: 270px;
+  border: 1px solid #50555a;
+  background: #24272a;
+}
+
+.count-properties-panel .symbol-picker-search {
+  background: #303438;
+  color: #fff;
+  border-color: #62676d;
+}
+
+.count-properties-panel .symbol-picker-scroll { max-height: 220px; }
+.count-properties-panel .symbol-picker-group header { color: #cdd1d4; }
+.count-properties-panel .symbol-picker-item { background: #2c3033; color: #fff; border-color: #44494e; }
+.count-properties-panel .symbol-picker-item:hover { background: #373c40; }
+
+.property-note {
+  margin-top: 5px;
+  color: #b8bdc2;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.properties-options {
+  display: grid;
+  gap: 6px;
+}
+
+.properties-options button {
+  min-height: 29px;
+  padding: 4px 9px;
+  border: 1px solid #767b80;
+  border-radius: 2px;
+  background: #3b3f43;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.properties-options button:hover,
+.properties-options button.active { background: #485057; border-color: #9aa0a6; }
+.properties-options .delete-property { color: #ffd4d0; border-color: #89504c; }
+
+.properties-empty-state {
+  display: grid;
+  gap: 5px;
+  padding: 18px 14px;
+  color: #bac0c5;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.properties-empty-state b { color: #fff; }
