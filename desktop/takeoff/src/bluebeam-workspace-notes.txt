@@ -1,0 +1,1 @@
+Estimator test scope: Bluebeam-inspired Select/Pan/Count interaction, Esc-to-Select, Delete-key removal, Count Measurement Properties, grouped Tool Chest, and resizable Markups List. Raw-count semantics remain one mark = one count.
