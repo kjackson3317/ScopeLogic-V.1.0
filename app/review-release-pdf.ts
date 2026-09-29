@@ -47,6 +47,8 @@ type RegisterRow = {
   status: string;
 };
 
+type DocumentGuideItem = { label: string; purpose: string };
+
 const PAGE_SIZE: [number, number] = [1008, 612];
 const MARGIN = 28;
 const BOTTOM = 31;
@@ -55,6 +57,33 @@ const FONT_SIZE = 6.2;
 const LINE_HEIGHT = 7.7;
 const HEADER_HEIGHT = 24;
 
+const DOCUMENT_GUIDE: Partial<Record<ReviewReleaseKind, DocumentGuideItem>> = {
+  'master-register': {
+    label: 'Master Coordination Register',
+    purpose: 'Primary customer coordination record containing all findings identified during the ScopeLogic review. Applicable findings feed the other project deliverables.',
+  },
+  matrix: {
+    label: 'ScopeLogic Matrix - Recommended Base Bid',
+    purpose: "ScopeLogic's recommended base-bid approach for unclear, incomplete, or conflicting scope so bidders price comparable work and the customer receives apples-to-apples pricing.",
+  },
+  'clarification-log': {
+    label: 'Clarification Log',
+    purpose: 'GC action log combining GC Clarifications requiring a response, decision, or action with RFIs requiring GC attention on one coordinated sheet.',
+  },
+  rfi: {
+    label: 'Formal RFI',
+    purpose: 'Formal Request for Information prepared for the GC to submit to the Architect/Engineer and/or Owner when contract-document clarification is required.',
+  },
+  checklist: {
+    label: 'Contractor Checklist',
+    purpose: 'Bidder-facing checklist issued to contractors for completion to confirm scope, inclusions, exclusions, assumptions, and other required bid information consistently.',
+  },
+  ve: {
+    label: 'VE Opportunity Log',
+    purpose: 'Lists Value Engineering opportunities recommended by ScopeLogic for consideration, including alternatives that may reduce cost, simplify execution, or improve project value.',
+  },
+};
+
 const safe = (value: unknown) => String(value ?? '')
   .replace(/[\u2018\u2019]/g, "'")
   .replace(/[\u201C\u201D]/g, '"')
@@ -62,6 +91,8 @@ const safe = (value: unknown) => String(value ?? '')
   .replace(/\u2022/g, '-')
   .replace(/\u2122/g, '')
   .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '');
+
+const displayNumberCompare = (a: string, b: string) => String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' });
 
 function exactWidths(ratios: number[], total: number) {
   let used = 0;
@@ -92,7 +123,7 @@ function wrapText(text: string, maxWidth: number, font: PDFFont, size: number) {
 
 function buildRegisterRows(data: ReviewReleaseData): RegisterRow[] {
   const clientActions = data.actions.filter((item) => item.client_facing !== false && item.deliverable_type !== 'SLC');
-  return data.findings.map((finding) => {
+  return [...data.findings].sort((a, b) => displayNumberCompare(a.display_number, b.display_number)).map((finding) => {
     const linkedActions = clientActions.filter((item) => item.related_master_finding_id === finding.id);
     const rbbs = linkedActions.filter((item) => item.deliverable_type === 'RBB' && item.status !== 'Superseded');
     const children = linkedActions.filter((item) => item.deliverable_type !== 'RBB');
@@ -257,12 +288,32 @@ async function applySummaryAndBranding(bytes: Uint8Array, input: BuildInput) {
     y-=Math.max(28,lines.length*11+8);
   });
 
+  const guideItems=input.kinds.map((kind)=>DOCUMENT_GUIDE[kind]).filter((item): item is DocumentGuideItem => Boolean(item));
+  if(guideItems.length){
+    y-=2;
+    cover.drawText('DOCUMENT GUIDE',{x:MARGIN,y,size:6.3,font:bold,color:muted});
+    const columnGap=18;
+    const columnWidth=(contentWidth-columnGap)/2;
+    const rowHeight=42;
+    const guideTop=y-15;
+    guideItems.forEach((item,index)=>{
+      const column=index%2;
+      const row=Math.floor(index/2);
+      const x=MARGIN+column*(columnWidth+columnGap);
+      const itemY=guideTop-row*rowHeight;
+      cover.drawText(safe(item.label),{x,y:itemY,size:7.2,font:bold,color:green});
+      wrapText(item.purpose,columnWidth,font,7.1).slice(0,3).forEach((line,lineIndex)=>cover.drawText(line,{x,y:itemY-11-lineIndex*8,size:7.1,font,color:black}));
+    });
+    y=guideTop-Math.ceil(guideItems.length/2)*rowHeight+5;
+  }
+
   const noteText=safe(input.notes).trim();
   if(noteText){
-    const noteY=Math.max(66,y-84);
-    cover.drawRectangle({x:MARGIN,y:noteY,width:contentWidth,height:72,color:pale,borderColor:border,borderWidth:.5});
-    cover.drawText('RELEASE / REVIEW NOTES',{x:MARGIN+8,y:noteY+55,size:6.3,font:bold,color:muted});
-    wrapText(noteText,contentWidth-16,font,8).slice(0,5).forEach((line,index)=>cover.drawText(line,{x:MARGIN+8,y:noteY+40-index*10,size:8,font,color:black}));
+    const noteHeight=58;
+    const noteY=Math.max(30,y-noteHeight-5);
+    cover.drawRectangle({x:MARGIN,y:noteY,width:contentWidth,height:noteHeight,color:pale,borderColor:border,borderWidth:.5});
+    cover.drawText('RELEASE / REVIEW NOTES',{x:MARGIN+8,y:noteY+noteHeight-15,size:6.3,font:bold,color:muted});
+    wrapText(noteText,contentWidth-16,font,7.5).slice(0,4).forEach((line,index)=>cover.drawText(line,{x:MARGIN+8,y:noteY+noteHeight-29-index*8.5,size:7.5,font,color:black}));
   }
 
   cover.drawLine({start:{x:MARGIN,y:22},end:{x:pageWidth-MARGIN,y:22},thickness:.35,color:border});

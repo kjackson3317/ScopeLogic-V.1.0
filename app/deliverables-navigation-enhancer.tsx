@@ -3,11 +3,11 @@
 import { useEffect } from 'react';
 
 const DELIVERABLE_LABELS: Record<string,string> = {
-  matrix: 'Scope Matrix / RBB',
-  clarifications: 'GC Clarifications',
+  matrix: 'ScopeLogic Matrix',
+  clarifications: 'Clarification Log',
   rfi: 'Formal RFI',
-  checklist: 'Contractor Scope Confirmation',
-  ve: 'VE Opportunities',
+  checklist: 'Contractor Checklist',
+  ve: 'VE Opportunity Log',
   'bid-internal': 'Bid Alignment',
   'bid-report': 'Reports / Official Releases',
 };

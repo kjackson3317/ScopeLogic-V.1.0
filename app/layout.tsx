@@ -10,6 +10,8 @@ import './quote-modern-ui.css';
 import './review-release-controller.css';
 import './deliverables-preview.css';
 import './slr-approved-layout.css';
+import './internal-matrix-workspace-enhancer.css';
+import './reports-official-releases.css';
 import './mobile-responsive.css';
 import type { Metadata, Viewport } from 'next';
 import WorkspaceSidebarLinks from './workspace-sidebar-links';
@@ -24,6 +26,8 @@ import ProjectWorkflowEnhancer from './project-workflow-enhancer';
 import ScopeLogicActionToast from './scopelogic-action-toast';
 import DeliverablesInlineController from './deliverables-inline-controller';
 import ReviewReleaseController from './review-release-controller';
+import InternalMatrixWorkspaceEnhancer from './internal-matrix-workspace-enhancer';
+import ReportsOfficialReleases from './reports-official-releases';
 
 export const metadata: Metadata = {
   title: 'ScopeLogic v1.0',
@@ -38,5 +42,5 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body><DismissibleUiBehavior /><WorkspaceSidebarLinks /><SlrTemplateSearchEnhancer /><ReviewNotesWorkspaceController /><WorkstationUniformityBehavior /><DeliverablesNavigationEnhancer /><DeliverablesReadOnlyGuard /><SlrDeliverablesEditor /><ProjectWorkflowEnhancer /><ScopeLogicActionToast /><DeliverablesInlineController /><ReviewReleaseController />{children}</body></html>;
+  return <html lang="en"><body><DismissibleUiBehavior /><WorkspaceSidebarLinks /><SlrTemplateSearchEnhancer /><ReviewNotesWorkspaceController /><WorkstationUniformityBehavior /><DeliverablesNavigationEnhancer /><DeliverablesReadOnlyGuard /><SlrDeliverablesEditor /><ProjectWorkflowEnhancer /><ScopeLogicActionToast /><DeliverablesInlineController /><ReviewReleaseController /><InternalMatrixWorkspaceEnhancer /><ReportsOfficialReleases />{children}</body></html>;
 }
