@@ -9,6 +9,7 @@ import './styles.css';
 import './v1-raw-count.css';
 import './takeoff-bottom-dock.css';
 import './bluebeam-workspace.css';
+import './pro-desktop-theme.css';
 
 function parseLocalRecovery(): TakeoffRecoverySnapshot | null {
   try {
