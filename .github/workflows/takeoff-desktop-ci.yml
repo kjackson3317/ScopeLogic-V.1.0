@@ -75,5 +75,38 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  source-review-package:
+    name: Source review package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build source-only review ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          STAGE="$RUNNER_TEMP/ScopeLogic-Takeoff-Source"
+          mkdir -p "$STAGE"
+          cp -R desktop/takeoff/. "$STAGE/"
+          rm -rf "$STAGE/node_modules" "$STAGE/dist" "$STAGE/src-tauri/target"
+          cat > "$STAGE/SOURCE_REVIEW_MANIFEST.txt" <<EOF
+          ScopeLogic Takeoff source review package
+          Repository: $GITHUB_REPOSITORY
+          Branch: $GITHUB_REF_NAME
+          Commit: $GITHUB_SHA
+          Generated: $(date -u +'%Y-%m-%dT%H:%M:%SZ')
+
+          Included: desktop/takeoff source, tests, configuration, and Tauri/Rust shell.
+          Excluded: node_modules, dist, compiled src-tauri/target output.
+          EOF
+          cd "$RUNNER_TEMP"
+          zip -qr "$GITHUB_WORKSPACE/ScopeLogic-Takeoff-Source-Review.zip" ScopeLogic-Takeoff-Source
+      - name: Upload source review ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: scopelogic-takeoff-source-review
+          path: ScopeLogic-Takeoff-Source-Review.zip
+          if-no-files-found: error
+          retention-days: 14
+
 # V1 validation covers raw-count unit tests, the React/Vite frontend, the native
-# Tauri shell, and an unsigned Windows executable for estimator testing.
+# Tauri shell, an unsigned Windows executable, and a source-only review package.
