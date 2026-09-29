@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './AppNext';
 import { installDrawingNavigation } from './drawing-navigation';
+import { installDesktopChrome } from './desktop-chrome';
 import { isNativeTakeoffShell, loadNativeTakeoffRecovery } from './native-persistence';
 import { recoveryStorageKey } from './persistence';
 import type { TakeoffRecoverySnapshot } from './takeoff-model';
@@ -11,6 +12,7 @@ import './takeoff-bottom-dock.css';
 import './bluebeam-workspace.css';
 import './pro-desktop-theme.css';
 import './desktop-polish.css';
+import './desktop-chrome.css';
 
 function parseLocalRecovery(): TakeoffRecoverySnapshot | null {
   try {
@@ -48,6 +50,7 @@ async function bootstrap() {
       <App />
     </React.StrictMode>,
   );
+  installDesktopChrome();
 }
 
 void bootstrap();
