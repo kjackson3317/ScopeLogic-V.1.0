@@ -1,0 +1,70 @@
+:root {
+  --takeoff-left-rail-width: 250px;
+  --takeoff-right-rail-width: 320px;
+}
+
+.desktop-workspace {
+  grid-template-columns: var(--takeoff-left-rail-width) minmax(0, 1fr) var(--takeoff-right-rail-width) !important;
+}
+
+.desktop-workspace > .left-rail,
+.desktop-workspace > .right-rail {
+  position: relative;
+  min-width: 0;
+}
+
+.workspace-rail-resizer {
+  position: absolute;
+  z-index: 80;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  background: transparent;
+}
+
+.workspace-rail-resizer.left {
+  right: -4px;
+}
+
+.workspace-rail-resizer.right {
+  left: -4px;
+}
+
+.workspace-rail-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: transparent;
+}
+
+.workspace-rail-resizer.left::after {
+  right: 3px;
+}
+
+.workspace-rail-resizer.right::after {
+  left: 3px;
+}
+
+.workspace-rail-resizer:hover::after,
+.workspace-rail-resizer.dragging::after {
+  width: 2px;
+  background: #3a9bd1;
+}
+
+body.resizing-workspace-rail,
+body.resizing-workspace-rail * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+@media (max-width: 980px) {
+  :root {
+    --takeoff-left-rail-width: 205px;
+    --takeoff-right-rail-width: 260px;
+  }
+}

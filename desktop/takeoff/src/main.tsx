@@ -1,12 +1,20 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './AppNext';
+import { installDrawingNavigation } from './drawing-navigation';
+import { installWorkspaceRailResize } from './workspace-rail-resize';
+import { installPdfDropOpen } from './pdf-drop-open';
 import { isNativeTakeoffShell, loadNativeTakeoffRecovery } from './native-persistence';
 import { recoveryStorageKey } from './persistence';
 import type { TakeoffRecoverySnapshot } from './takeoff-model';
 import './styles.css';
 import './v1-raw-count.css';
 import './takeoff-bottom-dock.css';
+import './bluebeam-workspace.css';
+import './pro-desktop-theme.css';
+import './desktop-polish.css';
+import './workspace-rail-resize.css';
+import './pdf-drop-open.css';
 
 function parseLocalRecovery(): TakeoffRecoverySnapshot | null {
   try {
@@ -38,6 +46,9 @@ async function hydrateNativeRecovery() {
 
 async function bootstrap() {
   await hydrateNativeRecovery();
+  installDrawingNavigation();
+  installWorkspaceRailResize();
+  installPdfDropOpen();
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <App />
