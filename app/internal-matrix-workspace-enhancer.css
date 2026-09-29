@@ -1,0 +1,83 @@
+/* Internal Matrix persistent workspace controls and submitted-SLR list behavior. */
+body .page-head.slr-sticky-page-head{
+  position:sticky;
+  top:72px;
+  z-index:9;
+  margin-bottom:18px;
+  padding:10px 0;
+  background:var(--bg);
+  border-bottom:1px solid rgba(220,226,218,.9);
+  box-shadow:0 5px 10px rgba(20,32,20,.04);
+}
+body .page-head.slr-sticky-page-head>.button-row{
+  align-items:center;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+}
+body .slr-persistent-workflow-actions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  order:-1;
+}
+body .slr-persistent-workflow-actions button:disabled{
+  cursor:not-allowed;
+  opacity:.48;
+}
+body .slr-persistent-submit{
+  background:#365f20!important;
+  border-color:#365f20!important;
+  color:#fff!important;
+}
+/* The existing controls remain the authoritative handlers; the sticky controls proxy them. */
+body .matrix-editor-full .submit-bar.sl-approved-action-bar{
+  display:none!important;
+}
+body .matrix-toolbar.matrix-toolbar-bottom{
+  grid-template-columns:minmax(260px,1fr) 190px 180px auto auto;
+}
+body .submitted-slr-collapse-button{
+  white-space:nowrap;
+  padding:8px 11px;
+  font-size:11px;
+}
+body .submitted-slr-list.slr-list-collapsed>button,
+body .submitted-slr-list.slr-list-collapsed>.empty-list{
+  display:none!important;
+}
+body .submitted-slr-list.slr-list-collapsed .submitted-slr-head{
+  border-bottom:0;
+}
+@media(max-width:1000px){
+  body .page-head.slr-sticky-page-head{top:72px;}
+  body .matrix-toolbar.matrix-toolbar-bottom{
+    grid-template-columns:minmax(220px,1fr) 150px 150px auto;
+  }
+  body .matrix-toolbar.matrix-toolbar-bottom .submitted-slr-collapse-button{
+    grid-column:1/-1;
+    justify-self:end;
+  }
+}
+@media(max-width:700px){
+  body .page-head.slr-sticky-page-head{
+    top:72px;
+    padding:8px 0;
+  }
+  body .page-head.slr-sticky-page-head>.button-row{
+    display:flex;
+  }
+  body .slr-persistent-workflow-actions{
+    width:100%;
+  }
+  body .slr-persistent-workflow-actions button{
+    flex:1 1 auto;
+  }
+  body .matrix-toolbar.matrix-toolbar-bottom{
+    grid-template-columns:1fr 1fr;
+  }
+  body .matrix-toolbar.matrix-toolbar-bottom .submitted-slr-collapse-button{
+    grid-column:1/-1;
+    width:100%;
+  }
+}
