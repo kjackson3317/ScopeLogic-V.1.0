@@ -22,6 +22,8 @@ import {
   renameProjectFile,
   saveOfficialRelease,
   saveProposalRelease,
+  saveSlrTemplateCloud,
+  deleteSlrTemplateCloud,
   saveWorkspaceToCloud,
   uploadProjectFile,
   type CloudWorkspaceStatus,
@@ -858,6 +860,30 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
     setView('internal');
   }, [hydrated, dataMode, masterProjects, projects, projectId]);
 
+  useEffect(() => {
+    if (!hydrated || dataMode !== 'cloud' || view !== 'internal') return;
+    let active = true;
+    supabase
+      .from('slr_templates')
+      .select('id,legacy_id,name,template_data,active,created_at')
+      .eq('active', true)
+      .order('created_at')
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) {
+          setSyncError(`SLR templates could not be refreshed: ${error.message}`);
+          return;
+        }
+        const rows = (data || []).map((row: any): Template => ({
+          uid: String(row.legacy_id || row.id),
+          name: String(row.name || 'Untitled Template'),
+          issue: (row.template_data || {}) as Template['issue'],
+        }));
+        setTemplates(rows);
+      });
+    return () => { active = false; };
+  }, [hydrated, dataMode, view, supabase]);
+
 
   const cloudSnapshot = useMemo<WorkspaceSnapshot>(() => ({
     projects, projectId, issuesByProject, docsByProject, templates, notesByProject, exportsByProject, calendarEntries, customers, laborRates, difficultyMultipliers, parts, quotesByProject, quoteTemplates, takeoffFormulas, takeoffEntriesByProject, takeoffSettingsByProject, drawingTakeoffTools, drawingTakeoffMarksByProject, drawingMeasurementsByProject, drawingCalibrationsByProject, drawingAnnotationsByProject, scopeOfWorkByProject,
@@ -1020,7 +1046,7 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
 
   const saveTemplate = () => {
     if (!draft) return;
-    requestInput('Save SLR Template', 'Enter a reusable template name. This template will be available in every project.', draft.title || 'Saved SLR Template', (value) => {
+    requestInput('Save SLR Template', 'Enter a reusable template name. This template will be available in every project.', draft.title || 'Saved SLR Template', async (value) => {
       const name = value.trim();
       if (!name) return message('Template Name Required', 'Enter a name before saving the template.');
       const templateDraft = JSON.parse(JSON.stringify(draft)) as Issue;
@@ -1030,13 +1056,27 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
       templateDraft.recommendBaseBids = templateDraft.recommendBaseBids.map((rbb) => ({ ...rbb, baseSequence: 0, baseNumber: '', sections: Object.fromEntries(Object.entries(rbb.sections).map(([system, section]) => [system, { ...section, suffix: '', displayNumber: '', status: 'Current', locked: false, contentReleased: false, releasedAt: '', supersedesNumber: '', basedOnRfiUids: [] }])) }));
       templateDraft.checklistQuestions = templateDraft.checklistQuestions.map((child) => ({ ...child, number: '', status: 'Open', response: 'Included', responseReason: '', locked: false, releasedAt: '', verifiesRbbNumbers: [] }));
       const { uid, id, rfi, snippet, ...issue } = templateDraft;
-      setTemplates((items) => [...items, { uid: crypto.randomUUID(), name, issue }]);
-      message('Saved', `The global SLR template "${name}" was saved.`);
+      const template: Template = { uid: crypto.randomUUID(), name, issue };
+      try {
+        if (dataMode === 'cloud') await saveSlrTemplateCloud(template);
+        setTemplates((items) => [...items, template]);
+        message('Saved', `The global SLR template "${name}" was saved.`);
+      } catch (cause) {
+        message('Template Not Saved', cause instanceof Error ? cause.message : 'The SLR template could not be verified in cloud storage.');
+      }
     }, 'Save Template');
   };
 
   const requestDeleteTemplate = (template: Template) => {
-    confirmAction('Delete SLR Template?', `Delete the global template "${template.name}"? This does not remove SLRs already created from it.`, () => setTemplates((items) => items.filter((item) => item.uid !== template.uid)), 'Delete Template', true);
+    confirmAction('Delete SLR Template?', `Delete the global template "${template.name}"? This does not remove SLRs already created from it.`, async () => {
+      try {
+        if (dataMode === 'cloud') await deleteSlrTemplateCloud(template.uid);
+        setTemplates((items) => items.filter((item) => item.uid !== template.uid));
+        message('Template Deleted', `The global SLR template "${template.name}" was deleted.`);
+      } catch (cause) {
+        message('Template Not Deleted', cause instanceof Error ? cause.message : 'The SLR template could not be deleted from cloud storage.');
+      }
+    }, 'Delete Template', true);
   };
 
   const addProject = () => {
@@ -1555,7 +1595,7 @@ function InternalMatrix(props: any) {
   const patchRecommendation = (system: string, value: string) => props.setDraft((current: Issue | null) => current ? { ...current, recommendations: { ...current.recommendations, [system]: value } } : current);
   const patchChecklistItem = (system: string, value: string) => props.setDraft((current: Issue | null) => current ? { ...current, checklistItems: { ...current.checklistItems, [system]: value } } : current);
   return <>
-    <PageHead eyebrow="Primary Workspace" title="ScopeLogic Internal Matrix" description="Create one SLR for a scope issue, select every affected system, and enter a separate Recommend Base Bid for each system." action={<div className="button-row"><button className="secondary" onClick={props.remove}>{draft && !props.selectedUid ? 'Discard Draft' : 'Delete'}</button><button className="primary" onClick={() => props.newDraft()}>+ New Issue</button></div>} />
+    <PageHead eyebrow="Primary Workspace" title="ScopeLogic Internal Matrix" description="Create one SLR for a scope issue, select every affected system, and enter a separate Recommend Base Bid for each system." action={<div className="button-row"><div className="slr-persistent-workflow-actions"><button type="button" className="secondary slr-persistent-save" disabled={!draft} onClick={() => { const source = document.querySelector<HTMLButtonElement>('.matrix-editor-full .slr-child-editor .slr-section-save'); if (source && !source.disabled) source.click(); }}>Save SLR</button><button type="button" className="primary slr-persistent-submit" disabled={!draft} onClick={props.submit}>Submit Entry</button><button type="button" className="secondary slr-persistent-template" disabled={!draft} onClick={props.saveTemplate}>SLR as Template</button></div><button className="secondary" onClick={props.remove}>{draft && !props.selectedUid ? 'Discard Draft' : 'Delete'}</button><button className="primary" onClick={() => props.newDraft()}>+ New Issue</button></div>} />
     <div className="template-bar template-library">
       <div><b>SLR Template Library</b><span>Global templates remain available across every project.</span></div>
       <select value={selectedTemplate} onChange={(event) => setSelectedTemplate(event.target.value)}><option value="">{props.templates.length ? 'Select a saved SLR template...' : 'No saved templates yet'}</option>{[...props.templates].sort((a: Template,b: Template)=>alphaNumericCompare(a.name,b.name)).map((template: Template) => <option key={template.uid} value={template.uid}>{template.name}</option>)}</select>
