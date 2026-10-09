@@ -333,6 +333,36 @@ export async function createWorkspaceBackup(
   await insertWorkspaceBackup(supabase, user.id, snapshot, reason, kind, true);
 }
 
+export async function saveSlrTemplateCloud(template: Template) {
+  const supabase = createClient();
+  const user = await currentUser(supabase);
+  const legacyId = text(template.uid);
+  if (!legacyId) throw new Error('The SLR template does not have a stable identity.');
+  const result = await supabase.from('slr_templates').upsert({
+    owner_id: user.id,
+    legacy_id: legacyId,
+    name: text(template.name) || 'Untitled Template',
+    template_data: template.issue || {},
+    active: true,
+  }, { onConflict: 'owner_id,legacy_id' }).select('id,legacy_id,name').single();
+  requireResult(result, 'Save SLR template');
+  if (!result.data?.id) throw new Error('The SLR template could not be verified after save.');
+}
+
+export async function deleteSlrTemplateCloud(templateUid: string) {
+  const supabase = createClient();
+  const user = await currentUser(supabase);
+  const legacyId = text(templateUid);
+  if (!legacyId) throw new Error('The SLR template does not have a stable identity.');
+  const result = await supabase.from('slr_templates')
+    .delete()
+    .eq('owner_id', user.id)
+    .eq('legacy_id', legacyId)
+    .select('id');
+  requireResult(result, 'Delete SLR template');
+  if (!result.data?.length) throw new Error('The SLR template was not found in cloud storage.');
+}
+
 export async function listWorkspaceBackups(limit = 22): Promise<WorkspaceBackupSummary[]> {
   const supabase = createClient();
   const user = await currentUser(supabase);
@@ -870,14 +900,19 @@ async function performWorkspaceSave(snapshot: WorkspaceSnapshot) {
   if (contractRows.length) requireResult(await supabase.from('contracts').upsert(contractRows, { onConflict: 'project_id' }), 'Save contracts');
   if (noteRows.length) requireResult(await supabase.from('internal_notes').upsert(noteRows, { onConflict: 'project_id' }), 'Save internal notes');
 
-  requireResult(await supabase.from('slr_templates').delete().eq('owner_id', ownerId), 'Prepare templates');
-  await insertChunks(supabase, 'slr_templates', snapshot.templates.map((template, index) => ({
+  const templateRows = snapshot.templates.map((template, index) => ({
     owner_id: ownerId,
     legacy_id: template.uid || `template-${index + 1}`,
     name: template.name || 'Untitled Template',
     template_data: template.issue || {},
     active: true,
-  })));
+  }));
+  if (templateRows.length) {
+    requireResult(
+      await supabase.from('slr_templates').upsert(templateRows, { onConflict: 'owner_id,legacy_id' }),
+      'Save SLR templates',
+    );
+  }
 
   requireResult(await supabase.from('calendar_events').delete().eq('owner_id', ownerId), 'Prepare calendar events');
   await insertChunks(supabase, 'calendar_events', snapshot.calendarEntries.map((entry, index) => ({
