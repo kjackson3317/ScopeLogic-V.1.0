@@ -619,6 +619,7 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
   const skipNextCloudSync = useRef(true);
   const sidebarRef = useRef<HTMLElement>(null);
   const mobileNavHistoryPushed = useRef(false);
+  const deepLinkAppliedRef = useRef(false);
 
   const openMobileNav = useCallback(() => {
     if (mobileNav) return;
@@ -826,6 +827,37 @@ export default function Workspace({ userEmail }: { userEmail: string; userId: st
   useEffect(() => {
     if (hydrated && view === 'production' && dataMode === 'cloud') void refreshWorkspaceBackups();
   }, [hydrated, view, dataMode, refreshWorkspaceBackups]);
+
+  useEffect(() => {
+    if (!hydrated || dataMode !== 'cloud' || !masterProjects.length || deepLinkAppliedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const requestedMasterId = String(params.get('masterProjectId') || '').trim();
+    const requestedView = String(params.get('view') || '').trim();
+    if (!requestedMasterId || requestedView !== 'internal') return;
+
+    deepLinkAppliedRef.current = true;
+    const master = masterProjects.find((item) => item.id === requestedMasterId);
+    if (!master) {
+      setView('projects');
+      setDialog({ kind: 'message', title: 'Master Project Unavailable', message: 'The requested Master Project could not be found in the current ScopeLogic workspace.' });
+      return;
+    }
+
+    const available = master.engagements.filter((engagement) => projects.some((item) => item.id === engagement.legacyId));
+    if (!available.length) {
+      setView('projects');
+      setDialog({ kind: 'message', title: 'Client Engagement Required', message: 'The full ScopeLogic Internal Matrix requires a Client Engagement linked to this Master Project. Add the engagement, then open the Internal Matrix again.' });
+      return;
+    }
+
+    const nextProjectId = available.some((engagement) => engagement.legacyId === projectId) ? projectId : available[0].legacyId;
+    setProjectId(nextProjectId);
+    setSelectedUid('');
+    setDraft(null);
+    setPdfUrls({});
+    setView('internal');
+  }, [hydrated, dataMode, masterProjects, projects, projectId]);
+
 
   const cloudSnapshot = useMemo<WorkspaceSnapshot>(() => ({
     projects, projectId, issuesByProject, docsByProject, templates, notesByProject, exportsByProject, calendarEntries, customers, laborRates, difficultyMultipliers, parts, quotesByProject, quoteTemplates, takeoffFormulas, takeoffEntriesByProject, takeoffSettingsByProject, drawingTakeoffTools, drawingTakeoffMarksByProject, drawingMeasurementsByProject, drawingCalibrationsByProject, drawingAnnotationsByProject, scopeOfWorkByProject,

@@ -38,7 +38,11 @@ export default function MasterWorkspaceClient({masterProjectId,workspaceOwnerId,
  },[engagementId,masterProjectId,supabase]); useEffect(()=>{void load()},[load]);
 
  const selectedEngagement=engagements.find(x=>x.id===engagementId)||null; const requiresEngagement=ENGAGEMENT_VIEWS.has(view);
- const go=(next:View)=>{if(ENGAGEMENT_VIEWS.has(next)&&!engagements.length){setActionError('This section requires a Client Engagement. Add at least one Client Engagement to this Master Project first.');return;}setView(next)};
+ const go=(next:View)=>{
+  if(next==='internal'){window.location.href=`/?masterProjectId=${encodeURIComponent(masterProjectId)}&view=internal`;return;}
+  if(ENGAGEMENT_VIEWS.has(next)&&!engagements.length){setActionError('This section requires a Client Engagement. Add at least one Client Engagement to this Master Project first.');return;}
+  setView(next)
+ };
  const toggleSystem=(system:string)=>setForm(c=>({...c,systems:c.systems.includes(system)?c.systems.filter(x=>x!==system):[...c.systems,system]}));
  const toggleSlrSystem=(system:string)=>setSlr(c=>({...c,systems:c.systems.includes(system)?c.systems.filter(x=>x!==system):[...c.systems,system]}));
 
